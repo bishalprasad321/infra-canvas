@@ -23,44 +23,7 @@ type CanvasState = {
 };
 
 // Define initial nodes (You can plug your 6 nodes in here for testing)
-const initialNodes: Node[] = [
-    {
-        id: 'update-packages',
-        type: 'serverNode', // assuming you used this type from our previous step
-        position: { x: 100, y: 100 },
-        data: { label: 'Update Packages', icon: '📦' },
-    },
-    {
-        id: 'install-nginx',
-        type: 'serverNode',
-        position: { x: 100, y: 200 },
-        data: { label: 'Install Nginx', icon: '📦' },
-    },
-    {
-        id: 'install-nodejs',
-        type: 'serverNode',
-        position: { x: 100, y: 300 },
-        data: { label: 'Install Node.js', icon: '📦' },
-    },
-    {
-        id: 'postgre-sql',
-        type: 'serverNode',
-        position: { x: 100, y: 400 },
-        data: { label: 'PostgreSQL', icon: '📦' },
-    },
-    {
-        id: 'open-port',
-        type: 'serverNode',
-        position: { x: 100, y: 500 },
-        data: { label: 'Open Port', icon: '📦' },
-    },
-    {
-        id: 'copy-env-file',
-        type: 'serverNode',
-        position: { x: 100, y: 600 },
-        data: { label: 'Copy .env File', icon: '📦' },
-    },
-];
+const initialNodes: Node[] = []
 
 // Create the Zustand store
 const useCanvasStore = create<CanvasState>((set, get) => ({
