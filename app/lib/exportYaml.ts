@@ -41,12 +41,27 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         state: present\n\n`;
     }
     else if (label.includes('PostgreSQL')) {
-      yamlString += `    - name: Install PostgreSQL
+      yamlString += `    - name: PostgreSQL
       ansible.builtin.apt:
         name: postgresql
         state: present\n\n`;
     }
-    // Add additional conditions for Open Port, Copy .env, etc.
+    else if (label.includes('Open Port')) {
+      yamlString += `    - name: Open Port 80 in UFW
+      ansible.builtin.ufw:
+        port: 80
+        protocol: tcp
+        action: allow\n\n`;
+    }
+    else if (label.includes('Copy .env')) {
+      yamlString += `    - name: Copy .env file to server
+      ansible.builtin.copy:
+        src: .env
+        dest: /home/ubuntu/.env
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'\n\n`;
+    }
   });
 
   return yamlString;
