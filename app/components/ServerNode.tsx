@@ -1,34 +1,67 @@
 import { Handle, Position } from '@xyflow/react';
 
-// You can pass custom data to your nodes via the 'data' prop
+// Category mapping for node types
+const categoryMap: Record<string, { type: string; color: string }> = {
+  'Update Packages': { type: 'SYSTEM', color: 'bg-slate-700/40 text-slate-300' },
+  'Install Nginx': { type: 'WEB', color: 'bg-indigo-700/40 text-indigo-300' },
+  'Install Node.js': { type: 'WEB', color: 'bg-indigo-700/40 text-indigo-300' },
+  'PostgreSQL': { type: 'DATABASE', color: 'bg-emerald-700/40 text-emerald-300' },
+  'Open Port': { type: 'NETWORK', color: 'bg-blue-700/40 text-blue-300' },
+  'Copy .env File': { type: 'FILE', color: 'bg-purple-700/40 text-purple-300' },
+};
+
+// Neutral icon mapping
+const iconMap: Record<string, string> = {
+  'Update Packages': '📦',
+  'Install Nginx': '🖥️',
+  'Install Node.js': '⚙️',
+  'PostgreSQL': '🗄️',
+  'Open Port': '🔒',
+  'Copy .env File': '📄',
+};
+
 export default function ServerNode({ data }: { data: { label: string; icon?: string } }) {
+  const icon = iconMap[data.label] || data.icon || '⚙️';
+  const category = categoryMap[data.label] || { type: 'TASK', color: 'bg-slate-700/40 text-slate-300' };
+
   return (
-    // The wrapper needs standard styling. Tailwind is great for this!
-    <div className="px-4 py-2 shadow-md rounded-md bg-white border-2 border-slate-800 min-w-[150px]">
-      
-      {/* INPUT HANDLE: Where connections come IN (Target) */}
+    <div className="flex flex-col gap-0 select-none">
+      {/* INPUT HANDLE - Top */}
       <Handle 
         type="target" 
         position={Position.Top} 
-        className="w-3 h-3 bg-blue-500" 
+        className="w-3 h-3 bg-indigo-400 border-2 border-indigo-300 rounded-full !opacity-0 hover:!opacity-100 transition-opacity" 
       />
 
-      {/* NODE CONTENT */}
-      <div className="flex items-center justify-center">
-        <div className="text-lg font-bold text-slate-800">
-          {data.icon && <span className="mr-2">{data.icon}</span>}
-          {data.label}
+      {/* NODE CONTENT - Themed card style */}
+      <div className="px-4 py-3 bg-slate-800/60 border border-slate-700/80 hover:border-slate-600 rounded-lg min-w-[180px] shadow-md hover:shadow-lg transition-all duration-200 backdrop-blur-sm group">
+        
+        {/* Category Badge */}
+        <div className={`text-[10px] uppercase tracking-widest font-bold px-2 py-1 rounded ${category.color} mb-2 w-fit border border-current/30`}>
+          {category.type}
+        </div>
+
+        {/* Icon and Label */}
+        <div className="flex items-center gap-3 mb-2">
+          <span className="text-xl group-hover:scale-110 transition-transform duration-200 flex-shrink-0">
+            {icon}
+          </span>
+          <div className="font-semibold text-slate-100 text-sm leading-tight break-words">
+            {data.label}
+          </div>
+        </div>
+
+        {/* Metadata - subtle detail */}
+        <div className="text-xs text-slate-400 font-mono mt-1 pl-8">
+          Ubuntu 22.04
         </div>
       </div>
-      
-      {/* Optional: Add more details below the label */}
-      <div className="text-xs text-slate-500 text-center mt-1">Ubuntu 22.04</div>
 
-      {/* OUTPUT HANDLE: Where connections go OUT (Source) */}
+      {/* OUTPUT HANDLE - Bottom */}
       <Handle 
         type="source" 
         position={Position.Bottom} 
-        className="w-3 h-3 bg-blue-500" 
+        className="w-3 h-3 bg-emerald-400 border-2 border-emerald-300 rounded-full !opacity-0 hover:!opacity-100 transition-opacity" 
       />
     </div>
   );

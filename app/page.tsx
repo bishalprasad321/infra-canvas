@@ -8,9 +8,9 @@ import useCanvasStore from './store/useCanvasStore';
 import ServerNode from './components/ServerNode';
 import Sidebar from './components/Sidebar';
 import RightPanel from './components/RightPanel';
+import { Button } from './lib/uiComponents';
 
-// We extract the actual canvas logic into a child component 
-// so it can access the ReactFlow context via useReactFlow()
+// Canvas component that uses ReactFlow context
 function FlowCanvas() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode } = useCanvasStore();
@@ -18,36 +18,29 @@ function FlowCanvas() {
 
   const nodeTypes = useMemo(() => ({ serverNode: ServerNode }), []);
 
-  // Required to allow the drop effect
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  // Handles the actual drop event
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
 
-      // Extract the data we packed in the Sidebar
       const type = event.dataTransfer.getData('application/reactflow');
       const label = event.dataTransfer.getData('application/reactflow-label');
 
-      // Check if the dropped element is valid
       if (typeof type === 'undefined' || !type) {
         return;
       }
 
-      // Convert pixel drop location to React Flow canvas coordinates
       const position = screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
 
-      // Generate a unique ID for the new node
       const newNodeId = `dndnode_${Date.now()}`;
 
-      // Create the new node object
       const newNode = {
         id: newNodeId,
         type,
@@ -55,7 +48,6 @@ function FlowCanvas() {
         data: { label: label, icon: label.includes('Nginx') ? '🌐' : '📦' },
       };
 
-      // Push it to the Zustand store
       addNode(newNode);
     },
     [screenToFlowPosition, addNode]
@@ -63,12 +55,18 @@ function FlowCanvas() {
 
   return (
     <div className="flex-grow h-full relative" ref={reactFlowWrapper}>
-      {/* Empty placeholder */}
+      {/* Empty state placeholder */}
       {nodes.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <p className="text-slate-500 text-lg font-medium tracking-wide">
-            Drag modules here to start building your infrastructure.
-          </p>
+          <div className="text-center">
+            <div className="text-5xl mb-4 opacity-30">🏗️</div>
+            <p className="text-slate-400 text-lg font-medium tracking-wide">
+              Drag modules from the sidebar to start building your infrastructure
+            </p>
+            <p className="text-slate-500 text-sm mt-2">
+              Connect nodes to define deployment sequences
+            </p>
+          </div>
         </div>
       )}
 
@@ -83,30 +81,58 @@ function FlowCanvas() {
         onDragOver={onDragOver}
         fitView
       >
-        <Background color="#333" gap={16} />
+        <Background color="#334155" gap={16} size={1} />
         <Controls />
       </ReactFlow>
     </div>
   );
 }
 
-// The main page wraps everything in the Provider and sets up the layout
+// Main page component
 export default function CanvasPage() {
+  const { nodes } = useCanvasStore();
+
   return (
-    <div className="flex w-screen h-screen bg-slate-950 overflow-hidden">
-      {/* TODO: Add top toolbar layout (Deployment Flow and Deploy Button)*/}
-      {/* 1. Left Panel (Modules Bar) */}
-      <Sidebar />
+    <div className="flex flex-col w-screen h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 overflow-hidden">
+      {/* Top Toolbar */}
+      <header className="h-16 border-b border-slate-700/50 bg-gradient-to-r from-slate-900/80 to-slate-900/50 backdrop-blur-md flex items-center justify-between px-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
+            <span className="text-white font-bold text-lg">⚙️</span>
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-white">InfraCanvas</h1>
+            <p className="text-xs text-slate-400">Visual Infrastructure Editor</p>
+          </div>
+        </div>
 
-      {/* 2. Middle Column: The Canvas */}
-      <div className="flex-grow flex flex-col relative h-full">
-        <ReactFlowProvider>
-          <FlowCanvas />
-        </ReactFlowProvider>
+        <div className="flex items-center gap-4">
+          <div className="text-sm">
+            <span className="text-slate-400">Tasks: </span>
+            <span className="text-white font-semibold">{nodes.length}</span>
+          </div>
+          <div className="w-px h-6 bg-slate-700" />
+          <Button size="sm" variant="primary" disabled>
+            🚀 Deploy
+          </Button>
+        </div>
+      </header>
+
+      {/* Main content area */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Panel - Sidebar */}
+        <Sidebar />
+
+        {/* Middle - Canvas */}
+        <div className="flex-grow flex flex-col relative h-full">
+          <ReactFlowProvider>
+            <FlowCanvas />
+          </ReactFlowProvider>
+        </div>
+
+        {/* Right Panel - YAML Output */}
+        <RightPanel />
       </div>
-
-      {/* 3. Right Panel (Generated YAML) */}
-      <RightPanel />
     </div>
   );
 }
