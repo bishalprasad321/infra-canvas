@@ -38,12 +38,20 @@ const modules: ModuleItem[] = [
     icon: '⬡',
   },
   {
-    id: 'postgresql',
-    label: 'PostgreSQL',
+    id: 'install-postgresql',
+    label: 'Install PostgreSQL',
     type: 'serverNode',
     category: 'Database',
     description: 'Install PostgreSQL database',
     icon: '�️',
+  },
+  {
+    id: 'create-postgresql-user',
+    label: 'Create PostgreSQL User',
+    type: 'serverNode',
+    category: 'Database',
+    description: 'Create a user for the PostgreSQL database',
+    icon: '️�',
   },
   {
     id: 'open-port',

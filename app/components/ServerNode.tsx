@@ -1,4 +1,5 @@
 import { Handle, Position } from '@xyflow/react';
+import useCanvasStore from '../store/useCanvasStore';
 
 // Category mapping for node types
 const categoryMap: Record<string, { type: string; color: string }> = {
@@ -20,7 +21,9 @@ const iconMap: Record<string, string> = {
   'Copy .env File': '📄',
 };
 
-export default function ServerNode({ data }: { data: { label: string; icon?: string } }) {
+export default function ServerNode({ id, data }: { id: string, data: { label: string; icon?: string } }) {
+  // hook into the store to set the active mode
+  const { setSelectedNodeId } = useCanvasStore();
   const icon = iconMap[data.label] || data.icon || '⚙️';
   const category = categoryMap[data.label] || { type: 'TASK', color: 'bg-slate-700/40 text-slate-300' };
 
@@ -34,8 +37,20 @@ export default function ServerNode({ data }: { data: { label: string; icon?: str
       />
 
       {/* NODE CONTENT - Themed card style */}
-      <div className="px-4 py-3 bg-slate-800/60 border border-slate-700/80 hover:border-slate-600 rounded-lg min-w-[180px] shadow-md hover:shadow-lg transition-all duration-200 backdrop-blur-sm group">
+      <div className="relative px-4 py-3 bg-slate-800/60 border border-slate-700/80 hover:border-slate-600 rounded-lg min-w-[180px] shadow-md hover:shadow-lg transition-all duration-200 backdrop-blur-sm group">
         
+        {/* Settings icon - apprars on group hover */}
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedNodeId(id);
+          }}
+          className="absolute top-3 right-3 text-slate-400 hover:text-slate-emareld-400 opacity-0 group-hover:opacity-100 transition-all z-10" 
+          title="Configure Node"
+        >
+          ⚙️
+        </button>
+
         {/* Category Badge */}
         <div className={`text-[10px] uppercase tracking-widest font-bold px-2 py-1 rounded ${category.color} mb-2 w-fit border border-current/30`}>
           {category.type}

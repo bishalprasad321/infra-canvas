@@ -20,6 +20,10 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
   // so the pipeline strictly follows the connection arrows).
   
   nodes.forEach((node) => {
+    if (!node || !node.data || !node.data.label) {
+      return;
+    }
+
     const label = node.data.label as string;
 
     // Map each visual node to its corresponding Ansible YAML block
@@ -44,18 +48,30 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         name: nodejs
         state: present\n\n`;
     }
-    else if (label.includes('PostgreSQL')) {
-      yamlString += `    # PostgreSQL
-    - name: PostgreSQL
+    else if (label.includes('Create PostgreSQL User')) {
+      const dbUser = node.data.dbUser || '{{ db_user }}';
+      const dbPass = node.data.dbPass || '{{ db_pass }}';
+
+      yamlString += `    # Create PostgreSQL User
+    - name: Create PostgreSQL user
+      community.postgresql.postgresql_user:
+        name: "${dbUser}"
+        password: "${dbPass}"
+        state: present\n\n`;
+    }
+    else if (label.includes('Install PostgreSQL')) {
+      yamlString += `    # Install PostgreSQL Database
+    - name: Install PostgreSQL
       ansible.builtin.apt:
         name: postgresql
         state: present\n\n`;
     }
     else if (label.includes('Open Port')) {
+      const port = node.data.port || '{{ port_number }}';
       yamlString += `    # Open Port 80 in UFW
     - name: Open Port 80 in UFW
       ansible.builtin.ufw:
-        port: 80
+        port: "${port}"
         protocol: tcp
         action: allow\n\n`;
     }

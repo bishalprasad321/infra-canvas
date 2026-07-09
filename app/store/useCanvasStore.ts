@@ -14,12 +14,15 @@ import {
 type CanvasState = {
     nodes: Node[];
     edges: Edge[];
+    selectedNodeId: string | null;
     onNodesChange: (changes: NodeChange[]) => void;
     onEdgesChange: (changes: EdgeChange[]) => void;
     onConnect: (connection: Connection) => void;
     setNodes: (nodes: Node[]) => void;
     setEdges: (edges: Edge[]) => void;
     addNode: (node: Node) => void;
+    setSelectedNodeId: (id: string | null) => void;
+    updateNodeData: (nodeId: string, newData: any) => void;
 };
 
 // Define initial nodes (You can plug your 6 nodes in here for testing)
@@ -27,6 +30,26 @@ const initialNodes: Node[] = []
 
 // Create the Zustand store
 const useCanvasStore = create<CanvasState>((set, get) => ({
+    selectedNodeId: null,
+
+    setSelectedNodeId: (id) => set({ selectedNodeId: id }),
+    
+    updateNodeData: (nodeId: string, newData: any) => {
+        set((state) => ({
+            nodes: state.nodes.map((node) => {
+                if (node.id === nodeId) {
+                    return { 
+                        ...node,
+                        data: {
+                            ...node.data,
+                            ...newData
+                        }
+                    };
+                }
+                return node;
+            }),
+        }));
+    },
 
     nodes: initialNodes,
     edges: [],

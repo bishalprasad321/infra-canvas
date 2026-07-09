@@ -9,14 +9,25 @@ import ServerNode from './components/ServerNode';
 import Sidebar from './components/Sidebar';
 import RightPanel from './components/RightPanel';
 import { Button } from './lib/uiComponents';
+import NodeSettingsModal from './components/NodeSettingsModal';
 
 // Canvas component that uses ReactFlow context
 function FlowCanvas() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode } = useCanvasStore();
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, setSelectedNodeId } = useCanvasStore();
   const { screenToFlowPosition } = useReactFlow();
 
   const nodeTypes = useMemo(() => ({ serverNode: ServerNode }), []);
+
+  // create click handler
+  const onNodeClick = useCallback((event: React.MouseEvent, node: any) => {
+    setSelectedNodeId(node.id);
+  }, [setSelectedNodeId]);
+
+  // add a click on the background to deselect when clicking on the empty space
+  const onPaneClick = useCallback(() => {
+    setSelectedNodeId(null);
+  }, [setSelectedNodeId]);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -80,6 +91,8 @@ function FlowCanvas() {
         onDrop={onDrop}
         onDragOver={onDragOver}
         fitView
+        onNodeClick={onNodeClick}
+        onPaneClick={onPaneClick}
       >
         <Background color="#334155" gap={16} size={1} />
         <Controls />
@@ -132,6 +145,8 @@ export default function CanvasPage() {
 
         {/* Right Panel - YAML Output */}
         <RightPanel />
+        {/* NodeSettingsModal */}
+        <NodeSettingsModal />
       </div>
     </div>
   );
