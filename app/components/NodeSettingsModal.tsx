@@ -35,27 +35,32 @@ export default function NodeSettingsModal() {
           {/* Example 1: PostgreSQL Settings */}
           {label.includes('Create PostgreSQL User') && (
             <>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Database User</span>
+            <label className="flex flex-col gap-1.5 relative">
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Database User</span>
+              <div className="flex gap-2">
                 <input 
                   type="text"
-                  className="bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                  className="flex-grow bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
                   value={(selectedNode.data.dbUser as string) || ''}
                   onChange={(e) => updateNodeData(selectedNode.id, { dbUser: e.target.value })}
-                  placeholder="e.g., admin"
+                  placeholder="e.g., admin or {{ db_user }}"
                 />
-              </label>
-              
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Database Password</span>
-                <input 
-                  type="password"
-                  className="bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
-                  value={(selectedNode.data.dbPass as string) || ''}
-                  onChange={(e) => updateNodeData(selectedNode.id, { dbPass: e.target.value })}
-                  placeholder="••••••••"
-                />
-              </label>
+                {/* Variable Helper Button */}
+                <button 
+                  onClick={() => {
+                    const currentVal = (selectedNode.data.dbUser as string) || 'db_user';
+                    // Only wrap if it's not already wrapped
+                    if (!currentVal.startsWith('{{')) {
+                      updateNodeData(selectedNode.id, { dbUser: `{{ ${currentVal} }}` });
+                    }
+                  }}
+                  className="px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md text-slate-400 hover:text-emerald-400 text-xs font-mono transition-colors"
+                  title="Convert to Variable"
+                >
+                  {`{x}`}
+                </button>
+              </div>
+            </label>
             </>
           )}
 
