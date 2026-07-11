@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, ReactNode } from 'react';
+import { Node } from '@xyflow/react';
 import useCanvasStore from '../store/useCanvasStore';
 import { generateAnsibleYAML } from '../lib/exportYaml';
 import { Button, IconButton, Badge } from '../lib/uiComponents';
@@ -202,7 +203,37 @@ export default function RightPanel() {
   const yamlCode = useMemo(() => generateAnsibleYAML(nodes, edges), [nodes, edges]);
   const highlightedCode = useMemo(() => highlightYAML(yamlCode), [yamlCode]);
 
+  // 🛡️ THE VALIDATION ENGINE
+  const validateDeployment = (currentNodes: Node[]): string | null => {
+    if (currentNodes.length === 0) {
+      return "Your canvas is empty. Add some modules before downloading.";
+    }
+
+    for (const node of currentNodes) {
+      if (!node.data || !node.data.label) continue;
+      
+      const label = node.data.label as string;
+
+      if (label.includes('Open Port')) {
+        if (node.data.port && !String(node.data.port).startsWith('{{')) {
+          const portNum = parseInt(node.data.port as string, 10);
+          if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+            return `Invalid port number on "${label}" node. Ports must be between 1 and 65535.`;
+          }
+        }
+      }
+    }
+    return null; 
+  };
+
   const handleCopy = async () => {
+    // 🛡️ Trigger validation before copying
+    const error = validateDeployment(nodes);
+    if (error) {
+      alert(`⚠️Error Downloading:\n${error}`);
+      return;
+    }
+
     try {
       await navigator.clipboard.writeText(yamlCode);
       setCopySuccess(true);
@@ -213,6 +244,13 @@ export default function RightPanel() {
   };
 
   const handleDownload = () => {
+    // 🛡️ Trigger validation before downloading
+    const error = validateDeployment(nodes);
+    if (error) {
+      alert(`⚠️Error Downloading:\n${error}`);
+      return; 
+    }
+
     const blob = new Blob([yamlCode], { type: 'text/yaml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
