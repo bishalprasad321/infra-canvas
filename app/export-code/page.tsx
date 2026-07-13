@@ -223,7 +223,7 @@ export default function ExportCodeModalOverlay() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-background text-foreground flex flex-col relative font-sans overflow-hidden h-[calc(100vh-48px)]">
+    <div className="h-screen w-full bg-background text-foreground flex flex-col relative font-sans overflow-hidden">
       {/* Underlay: Simulating the live visual canvas blurred behind the modal */}
       <div className="absolute inset-0 bg-background/40 backdrop-blur-xl z-0 pointer-events-none"></div>
 

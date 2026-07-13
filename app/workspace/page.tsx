@@ -314,63 +314,69 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({
 
   return (
     <aside className={clsx(
-      "border-r border-border bg-card/95 backdrop-blur-md flex flex-col shrink-0 z-20 transition-all duration-300 relative select-none",
-      collapsed ? "w-0 overflow-hidden border-r-0" : "w-80"
+      "bg-card/95 backdrop-blur-md flex flex-col shrink-0 z-20 transition-all duration-300 relative select-none overflow-visible",
+      collapsed ? "w-0 border-r-0" : "w-80 border-r border-border"
     )}>
-      {/* Search & Quick Filters */}
-      <div className="p-4 border-b border-border flex flex-col gap-3">
-        <div className="relative">
-          <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search automation nodes..."
-            className="w-full bg-muted border border-border rounded-lg pl-9 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-          />
-        </div>
+      {/* Sliding Window Container */}
+      <div className="w-full h-full overflow-hidden">
+        {/* Fixed Width Content Panel */}
+        <div className="w-80 h-full flex flex-col">
+          {/* Search & Quick Filters */}
+          <div className="p-4 border-b border-border flex flex-col gap-3">
+            <div className="relative">
+              <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder="Search automation nodes..."
+                className="w-full bg-muted border border-border rounded-lg pl-9 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+              />
+            </div>
 
-        {/* Technology Quick Filters */}
-        <div className="grid grid-cols-4 gap-1">
-          {['All', 'Terraform', 'Ansible', 'Kubernetes'].map((tech) => (
-            <button
-              key={tech}
-              onClick={() => onTechFilterSelect(tech)}
-              className={clsx(
-                "py-1.5 px-1 border border-border rounded-md text-[10px] font-medium flex items-center justify-center gap-1 transition-all cursor-pointer",
-                techFilter === tech
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-muted hover:bg-muted/80 text-foreground"
-              )}
-            >
-              {tech === 'All' ? 'All' : tech === 'Terraform' ? 'TF' : tech === 'Ansible' ? 'Ans' : 'K8s'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Draggable/Clickable Nodes List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {categories.map((category) => (
-          <div key={category}>
-            <h3 className="text-xs font-heading font-bold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <Icon icon="lucide:layers" className="text-xs" />
-              {category}
-            </h3>
-            <div className="space-y-2.5">
-              {filteredNodes
-                .filter((n) => n.category === category)
-                .map((node) => (
-                  <NodeCard key={node.id} node={node} onAddNode={onAddNode} />
-                ))}
+            {/* Technology Quick Filters */}
+            <div className="grid grid-cols-4 gap-1">
+              {['All', 'Terraform', 'Ansible', 'Kubernetes'].map((tech) => (
+                <button
+                  key={tech}
+                  onClick={() => onTechFilterSelect(tech)}
+                  className={clsx(
+                    "py-1.5 px-1 border border-border rounded-md text-[10px] font-medium flex items-center justify-center gap-1 transition-all cursor-pointer",
+                    techFilter === tech
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-muted hover:bg-muted/80 text-foreground"
+                  )}
+                >
+                  {tech === 'All' ? 'All' : tech === 'Terraform' ? 'TF' : tech === 'Ansible' ? 'Ans' : 'K8s'}
+                </button>
+              ))}
             </div>
           </div>
-        ))}
-        {filteredNodes.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground text-xs">
-            No matching automation blocks found.
+
+          {/* Draggable/Clickable Nodes List */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            {categories.map((category) => (
+              <div key={category}>
+                <h3 className="text-xs font-heading font-bold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  <Icon icon="lucide:layers" className="text-xs" />
+                  {category}
+                </h3>
+                <div className="space-y-2.5">
+                  {filteredNodes
+                    .filter((n) => n.category === category)
+                    .map((node) => (
+                      <NodeCard key={node.id} node={node} onAddNode={onAddNode} />
+                    ))}
+                </div>
+              </div>
+            ))}
+            {filteredNodes.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground text-xs">
+                No matching automation blocks found.
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Collapse Trigger Button */}
@@ -706,10 +712,105 @@ const CodePreview: React.FC<CodePreviewProps> = ({ selectedNode, ansiblePlaybook
           {copied ? 'Copied!' : 'Copy'}
         </button>
       </div>
-      <div className="flex-1 bg-[#080B11] border border-border rounded-lg p-3 overflow-auto font-mono text-[11px] text-muted-foreground leading-relaxed h-[calc(100%-24px)] max-h-[500px]">
+      <div className="flex-1 bg-[#080B11] border border-border rounded-lg p-3 overflow-auto font-mono text-[11px] text-muted-foreground leading-relaxed h-[calc(100%-24px)]">
         <pre className="whitespace-pre-wrap break-all">
           <code>{highlightedBlock}</code>
         </pre>
+      </div>
+    </div>
+  );
+};
+
+// A sub-component to show all canvas components when no node is active
+const CanvasSummary: React.FC<{
+  nodes: Node[];
+  onSelectNode: (id: string) => void;
+}> = ({ nodes, onSelectNode }) => {
+  const tfNodes = nodes.filter((n) => n.data?.tech === 'Terraform');
+  const ansNodes = nodes.filter((n) => n.data?.tech === 'Ansible');
+  const k8sNodes = nodes.filter((n) => n.data?.tech === 'Kubernetes');
+
+  return (
+    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+      <div className="border-b border-border/80 pb-2">
+        <h4 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Canvas Summary</h4>
+        <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+          Select any active block below to edit its configurations.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {tfNodes.length > 0 && (
+          <div className="space-y-2">
+            <h5 className="text-[10px] font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse"></span>
+              Terraform ({tfNodes.length})
+            </h5>
+            <div className="grid gap-1.5">
+              {tfNodes.map((node) => (
+                <button
+                  key={node.id}
+                  onClick={() => onSelectNode(node.id)}
+                  className="w-full text-left bg-muted/30 hover:bg-muted/70 border border-border/60 hover:border-primary/40 rounded-lg p-2.5 flex items-center justify-between text-xs text-foreground transition-all duration-200 group cursor-pointer"
+                >
+                  <span className="font-semibold truncate max-w-[200px] flex items-center gap-2">
+                    <Icon icon={node.data.icon as string} className="text-primary text-sm flex-shrink-0" />
+                    {node.id}
+                  </span>
+                  <Icon icon="lucide:chevron-right" className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all text-xs" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {ansNodes.length > 0 && (
+          <div className="space-y-2">
+            <h5 className="text-[10px] font-bold text-[#00A4FF] uppercase tracking-wider flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#00A4FF] animate-pulse"></span>
+              Ansible ({ansNodes.length})
+            </h5>
+            <div className="grid gap-1.5">
+              {ansNodes.map((node) => (
+                <button
+                  key={node.id}
+                  onClick={() => onSelectNode(node.id)}
+                  className="w-full text-left bg-muted/30 hover:bg-muted/70 border border-border/60 hover:border-[#00A4FF]/40 rounded-lg p-2.5 flex items-center justify-between text-xs text-foreground transition-all duration-200 group cursor-pointer"
+                >
+                  <span className="font-semibold truncate max-w-[200px] flex items-center gap-2">
+                    <Icon icon={node.data.icon as string} className="text-[#00A4FF] text-sm flex-shrink-0" />
+                    {node.data.label as string}
+                  </span>
+                  <Icon icon="lucide:chevron-right" className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all text-xs" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {k8sNodes.length > 0 && (
+          <div className="space-y-2">
+            <h5 className="text-[10px] font-bold text-[#326CE5] uppercase tracking-wider flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#326CE5] animate-pulse"></span>
+              Kubernetes ({k8sNodes.length})
+            </h5>
+            <div className="grid gap-1.5">
+              {k8sNodes.map((node) => (
+                <button
+                  key={node.id}
+                  onClick={() => onSelectNode(node.id)}
+                  className="w-full text-left bg-muted/30 hover:bg-muted/70 border border-border/60 hover:border-[#326CE5]/40 rounded-lg p-2.5 flex items-center justify-between text-xs text-foreground transition-all duration-200 group cursor-pointer"
+                >
+                  <span className="font-semibold truncate max-w-[200px] flex items-center gap-2">
+                    <Icon icon={node.data.icon as string} className="text-[#326CE5] text-sm flex-shrink-0" />
+                    {node.data.label as string}
+                  </span>
+                  <Icon icon="lucide:chevron-right" className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all text-xs" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -724,6 +825,8 @@ interface InspectorPanelProps {
   onTabChange: (tab: string) => void;
   updateNodeData: (nodeId: string, newData: any) => void;
   ansiblePlaybook: string;
+  nodes: Node[];
+  setSelectedNodeId: (id: string | null) => void;
 }
 
 const InspectorPanel: React.FC<InspectorPanelProps> = ({
@@ -734,6 +837,8 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   onTabChange,
   updateNodeData,
   ansiblePlaybook,
+  nodes,
+  setSelectedNodeId,
 }) => {
   const [newTagKey, setNewTagKey] = useState('');
   const [newTagVal, setNewTagVal] = useState('');
@@ -791,279 +896,294 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
   return (
     <aside className={clsx(
-      "border-l border-border bg-card/95 backdrop-blur-md flex flex-col shrink-0 z-20 transition-all duration-300 relative",
-      collapsed ? "w-0 overflow-hidden border-l-0" : "w-90"
+      "bg-card/95 backdrop-blur-md flex flex-col shrink-0 z-20 transition-all duration-300 relative overflow-visible",
+      collapsed ? "w-0 border-l-0" : "w-90 border-l border-border"
     )}>
-      {/* Inspector Header */}
-      <div className="p-4 border-b border-border flex items-center justify-between select-none">
-        <div className="flex items-center gap-2">
-          <div className="h-6 w-6 rounded bg-primary/10 border border-primary/20 flex items-center justify-center">
-            <Icon 
-              icon={(selectedNode?.data?.icon as string) || "lucide:globe"} 
-              className={clsx("text-sm", (selectedNode?.data?.tech as string) === 'Terraform' ? 'text-primary' : (selectedNode?.data?.tech as string) === 'Ansible' ? 'text-[#00A4FF]' : 'text-[#326CE5]')} 
-            />
+      {/* Sliding Window Container */}
+      <div className="w-full h-full overflow-hidden">
+        {/* Fixed Width Content Panel */}
+        <div className="w-90 h-full flex flex-col">
+          {/* Inspector Header */}
+          <div className="p-4 border-b border-border flex items-center justify-between select-none">
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded bg-primary/10 border border-primary/20 flex items-center justify-center">
+                <Icon 
+                  icon={(selectedNode?.data?.icon as string) || "lucide:globe"} 
+                  className={clsx("text-sm", (selectedNode?.data?.tech as string) === 'Terraform' ? 'text-primary' : (selectedNode?.data?.tech as string) === 'Ansible' ? 'text-[#00A4FF]' : 'text-[#326CE5]')} 
+                />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground truncate max-w-[150px]">{selectedNode?.id || "No Selection"}</h3>
+                <p className="text-[10px] text-muted-foreground">{(selectedNode?.data?.tech as string) || 'Global'} Configuration</p>
+              </div>
+            </div>
+            <button onClick={onToggle} className="p-1.5 text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-all cursor-pointer" title="Close Inspector">
+              <Icon icon="lucide:x" className="text-sm" />
+            </button>
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-foreground truncate max-w-[150px]">{selectedNode?.id || "No Selection"}</h3>
-            <p className="text-[10px] text-muted-foreground">{(selectedNode?.data?.tech as string) || 'Global'} Configuration</p>
+
+          {/* Tabs Navigation */}
+          <div className="flex border-b border-border select-none">
+            <button
+              onClick={() => onTabChange('Parameters')}
+              className={clsx(
+                "flex-1 py-2.5 text-xs font-semibold text-center border-b-2 transition-all cursor-pointer",
+                activeTab === 'Parameters' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Parameters
+            </button>
+            <button
+              onClick={() => onTabChange('Live Code Preview')}
+              className={clsx(
+                "flex-1 py-2.5 text-xs font-semibold text-center border-b-2 transition-all cursor-pointer",
+                activeTab === 'Live Code Preview' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Live Code Preview
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          <div className={clsx("flex-1 p-4", activeTab === 'Parameters' ? "overflow-y-auto space-y-4" : "flex flex-col overflow-hidden")}>
+            {activeTab === 'Parameters' ? (
+              !selectedNode ? (
+                nodes.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground text-xs select-none animate-in fade-in duration-200">
+                    <div className="text-2xl mb-2">📋</div>
+                    <p className="font-semibold text-white text-sm">Canvas is empty</p>
+                    <p className="text-[10px] text-slate-500 mt-1 leading-normal max-w-[200px] mx-auto">
+                      Add automation components to the canvas to configure parameters.
+                    </p>
+                  </div>
+                ) : (
+                  <CanvasSummary nodes={nodes} onSelectNode={setSelectedNodeId} />
+                )
+              ) : (
+                <div className="space-y-3">
+                  {/* 1. TERRAFORM INSTANCE NODE PARAMETERS */}
+                  {selectedNode.id === 'aws_instance.web_server' && (
+                    <>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Name</label>
+                        <input
+                          type="text"
+                          value={p.instanceName}
+                          onChange={(e) => handleParameterChange('instanceName', e.target.value)}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">AMI ID</label>
+                          <input
+                            type="text"
+                            value={p.amiId}
+                            onChange={(e) => handleParameterChange('amiId', e.target.value)}
+                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Type</label>
+                          <div className="relative">
+                            <select
+                              value={p.instanceType}
+                              onChange={(e) => handleParameterChange('instanceType', e.target.value)}
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                            >
+                              <option value="t3.medium">t3.medium</option>
+                              <option value="t3.large">t3.large</option>
+                              <option value="m5.large">m5.large</option>
+                            </select>
+                            <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VPC Subnet ID</label>
+                        <input
+                          type="text"
+                          value={p.subnetId}
+                          onChange={(e) => handleParameterChange('subnetId', e.target.value)}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1 select-none">
+                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Root Volume Size</label>
+                          <span className="text-xs font-semibold text-foreground">{p.rootVolumeSize} GB</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="8"
+                          max="200"
+                          value={p.rootVolumeSize}
+                          onChange={(e) => handleParameterChange('rootVolumeSize', parseInt(e.target.value))}
+                          className="w-full accent-primary bg-muted h-1 rounded-lg appearance-none cursor-pointer"
+                        />
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1 select-none">
+                          <span>8 GB</span>
+                          <span>200 GB</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Tags</label>
+                        <div className="flex flex-wrap gap-1.5 p-2 bg-muted border border-border rounded-lg">
+                          {p.tags.map((tag: any, idx: number) => (
+                            <span key={idx} className="inline-flex items-center gap-1 bg-card px-2 py-0.5 rounded text-[10px] text-foreground border border-border">
+                              {tag.key}: {tag.value}
+                              <button onClick={() => handleTagDelete(idx)} className="text-muted-foreground hover:text-red-400 transition-colors cursor-pointer">
+                                <Icon icon="lucide:x" className="text-[10px]" />
+                              </button>
+                            </span>
+                          ))}
+                          {!showAddTag ? (
+                            <button
+                              onClick={() => setShowAddTag(true)}
+                              className="text-[10px] text-primary hover:text-primary/90 font-semibold px-2 py-0.5 flex items-center gap-1 cursor-pointer"
+                            >
+                              <Icon icon="lucide:plus" className="text-xs" /> Add tag
+                            </button>
+                          ) : (
+                            <form onSubmit={handleTagAdd} className="flex items-center gap-1 w-full mt-1">
+                              <input
+                                type="text"
+                                placeholder="Key"
+                                value={newTagKey}
+                                onChange={(e) => setNewTagKey(e.target.value)}
+                                className="bg-card border border-border rounded px-1.5 py-0.5 text-[10px] w-1/2 text-foreground focus:outline-none"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Value"
+                                value={newTagVal}
+                                onChange={(e) => setNewTagVal(e.target.value)}
+                                className="bg-card border border-border rounded px-1.5 py-0.5 text-[10px] w-1/2 text-foreground focus:outline-none"
+                              />
+                              <button type="submit" className="text-emerald-400 hover:text-emerald-300 cursor-pointer">
+                                <Icon icon="lucide:check" className="text-xs" />
+                              </button>
+                              <button type="button" onClick={() => setShowAddTag(false)} className="text-rose-400 hover:text-rose-300 cursor-pointer">
+                                <Icon icon="lucide:x" className="text-xs" />
+                              </button>
+                            </form>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* 2. ANSIBLE DYNAMIC NODE PARAMETERS (VARIABLES) */}
+                  {selectedNode.data.tech === 'Ansible' && (
+                    <div className="space-y-4">
+                      <p className="text-[11px] text-muted-foreground">Ansible playbooks support variable binding using `{`{ variable }`}`. Click `{`{x}`}` to convert hardcoded values to variables.</p>
+                      
+                      {nodeLabel.includes('Open Port') && (
+                        <div>
+                          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Open Firewall Port</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={portVal}
+                              onChange={(e) => updateNodeData(selectedNode.id, { port: e.target.value })}
+                              placeholder="e.g. 80 or {{ port }}"
+                              className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all font-mono"
+                            />
+                            <button
+                              onClick={() => {
+                                const current = portVal || 'port_number';
+                                if (!current.startsWith('{{')) {
+                                  updateNodeData(selectedNode.id, { port: `{{ ${current} }}` });
+                                }
+                              }}
+                              className="px-3 bg-muted border border-border rounded-lg text-muted-foreground hover:text-primary transition-all font-mono text-xs cursor-pointer flex items-center justify-center"
+                              title="Convert to Variable"
+                            >
+                              {'{x}'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {(nodeLabel.includes('PostgreSQL') || nodeLabel.includes('Postgres')) && (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Database User</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={dbUserVal}
+                                onChange={(e) => updateNodeData(selectedNode.id, { dbUser: e.target.value })}
+                                placeholder="e.g. admin or {{ db_user }}"
+                                className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all font-mono"
+                              />
+                              <button
+                                onClick={() => {
+                                  const current = dbUserVal || 'db_user';
+                                  if (!current.startsWith('{{')) {
+                                    updateNodeData(selectedNode.id, { dbUser: `{{ ${current} }}` });
+                                  }
+                                }}
+                                className="px-3 bg-muted border border-border rounded-lg text-muted-foreground hover:text-primary transition-all font-mono text-xs cursor-pointer flex items-center justify-center"
+                                title="Convert to Variable"
+                              >
+                                {'{x}'}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Database Password</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={dbPassVal}
+                                onChange={(e) => updateNodeData(selectedNode.id, { dbPass: e.target.value })}
+                                placeholder="e.g. password or {{ db_pass }}"
+                                className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all font-mono"
+                              />
+                              <button
+                                onClick={() => {
+                                  const current = dbPassVal || 'db_pass';
+                                  if (!current.startsWith('{{')) {
+                                    updateNodeData(selectedNode.id, { dbPass: `{{ ${current} }}` });
+                                  }
+                                }}
+                                className="px-3 bg-muted border border-border rounded-lg text-muted-foreground hover:text-primary transition-all font-mono text-xs cursor-pointer flex items-center justify-center"
+                                title="Convert to Variable"
+                              >
+                                {'{x}'}
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {!nodeLabel.includes('Open Port') && !nodeLabel.includes('Postgres') && !nodeLabel.includes('PostgreSQL') && (
+                        <div className="text-center py-6 text-muted-foreground text-xs select-none">
+                          No custom variables to configure for this Ansible block.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 3. STATIC / MOCK NODES */}
+                  {selectedNode.data.tech !== 'Ansible' && selectedNode.id !== 'aws_instance.web_server' && (
+                    <div className="text-center py-6 text-muted-foreground text-xs select-none">
+                      No custom parameters defined for this mock infrastructure block.
+                    </div>
+                  )}
+                </div>
+              )
+            ) : (
+              <CodePreview selectedNode={selectedNode} ansiblePlaybook={ansiblePlaybook} />
+            )}
           </div>
         </div>
-        <button onClick={onToggle} className="p-1.5 text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-all cursor-pointer" title="Close Inspector">
-          <Icon icon="lucide:x" className="text-sm" />
-        </button>
-      </div>
-
-      {/* Tabs Navigation */}
-      <div className="flex border-b border-border select-none">
-        <button
-          onClick={() => onTabChange('Parameters')}
-          className={clsx(
-            "flex-1 py-2.5 text-xs font-semibold text-center border-b-2 transition-all cursor-pointer",
-            activeTab === 'Parameters' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
-          )}
-        >
-          Parameters
-        </button>
-        <button
-          onClick={() => onTabChange('Live Code Preview')}
-          className={clsx(
-            "flex-1 py-2.5 text-xs font-semibold text-center border-b-2 transition-all cursor-pointer",
-            activeTab === 'Live Code Preview' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
-          )}
-        >
-          Live Code Preview
-        </button>
-      </div>
-
-      {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {!selectedNode ? (
-          <div className="text-center py-12 text-muted-foreground text-xs select-none">
-            Click on a canvas node to configure parameters.
-          </div>
-        ) : activeTab === 'Parameters' ? (
-          <div className="space-y-3">
-            {/* 1. TERRAFORM INSTANCE NODE PARAMETERS */}
-            {selectedNode.id === 'aws_instance.web_server' && (
-              <>
-                <div>
-                  <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Name</label>
-                  <input
-                    type="text"
-                    value={p.instanceName}
-                    onChange={(e) => handleParameterChange('instanceName', e.target.value)}
-                    className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">AMI ID</label>
-                    <input
-                      type="text"
-                      value={p.amiId}
-                      onChange={(e) => handleParameterChange('amiId', e.target.value)}
-                      className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Type</label>
-                    <div className="relative">
-                      <select
-                        value={p.instanceType}
-                        onChange={(e) => handleParameterChange('instanceType', e.target.value)}
-                        className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
-                      >
-                        <option value="t3.medium">t3.medium</option>
-                        <option value="t3.large">t3.large</option>
-                        <option value="m5.large">m5.large</option>
-                      </select>
-                      <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VPC Subnet ID</label>
-                  <input
-                    type="text"
-                    value={p.subnetId}
-                    onChange={(e) => handleParameterChange('subnetId', e.target.value)}
-                    className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1 select-none">
-                    <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Root Volume Size</label>
-                    <span className="text-xs font-semibold text-foreground">{p.rootVolumeSize} GB</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="8"
-                    max="200"
-                    value={p.rootVolumeSize}
-                    onChange={(e) => handleParameterChange('rootVolumeSize', parseInt(e.target.value))}
-                    className="w-full accent-primary bg-muted h-1 rounded-lg appearance-none cursor-pointer"
-                  />
-                  <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1 select-none">
-                    <span>8 GB</span>
-                    <span>200 GB</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Tags</label>
-                  <div className="flex flex-wrap gap-1.5 p-2 bg-muted border border-border rounded-lg">
-                    {p.tags.map((tag: any, idx: number) => (
-                      <span key={idx} className="inline-flex items-center gap-1 bg-card px-2 py-0.5 rounded text-[10px] text-foreground border border-border">
-                        {tag.key}: {tag.value}
-                        <button onClick={() => handleTagDelete(idx)} className="text-muted-foreground hover:text-red-400 transition-colors cursor-pointer">
-                          <Icon icon="lucide:x" className="text-[10px]" />
-                        </button>
-                      </span>
-                    ))}
-                    {!showAddTag ? (
-                      <button
-                        onClick={() => setShowAddTag(true)}
-                        className="text-[10px] text-primary hover:text-primary/90 font-semibold px-2 py-0.5 flex items-center gap-1 cursor-pointer"
-                      >
-                        <Icon icon="lucide:plus" className="text-xs" /> Add tag
-                      </button>
-                    ) : (
-                      <form onSubmit={handleTagAdd} className="flex items-center gap-1 w-full mt-1">
-                        <input
-                          type="text"
-                          placeholder="Key"
-                          value={newTagKey}
-                          onChange={(e) => setNewTagKey(e.target.value)}
-                          className="bg-card border border-border rounded px-1.5 py-0.5 text-[10px] w-1/2 text-foreground focus:outline-none"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Value"
-                          value={newTagVal}
-                          onChange={(e) => setNewTagVal(e.target.value)}
-                          className="bg-card border border-border rounded px-1.5 py-0.5 text-[10px] w-1/2 text-foreground focus:outline-none"
-                        />
-                        <button type="submit" className="text-emerald-400 hover:text-emerald-300 cursor-pointer">
-                          <Icon icon="lucide:check" className="text-xs" />
-                        </button>
-                        <button type="button" onClick={() => setShowAddTag(false)} className="text-rose-400 hover:text-rose-300 cursor-pointer">
-                          <Icon icon="lucide:x" className="text-xs" />
-                        </button>
-                      </form>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* 2. ANSIBLE DYNAMIC NODE PARAMETERS (VARIABLES) */}
-            {selectedNode.data.tech === 'Ansible' && (
-              <div className="space-y-4">
-                <p className="text-[11px] text-muted-foreground">Ansible playbooks support variable binding using `{`{ variable }`}`. Click `{`{x}`}` to convert hardcoded values to variables.</p>
-                
-                {nodeLabel.includes('Open Port') && (
-                  <div>
-                    <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Open Firewall Port</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={portVal}
-                        onChange={(e) => updateNodeData(selectedNode.id, { port: e.target.value })}
-                        placeholder="e.g. 80 or {{ port }}"
-                        className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all font-mono"
-                      />
-                      <button
-                        onClick={() => {
-                          const current = portVal || 'port_number';
-                          if (!current.startsWith('{{')) {
-                            updateNodeData(selectedNode.id, { port: `{{ ${current} }}` });
-                          }
-                        }}
-                        className="px-3 bg-muted border border-border rounded-lg text-muted-foreground hover:text-primary transition-all font-mono text-xs cursor-pointer flex items-center justify-center"
-                        title="Convert to Variable"
-                      >
-                        {'{x}'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {(nodeLabel.includes('PostgreSQL') || nodeLabel.includes('Postgres')) && (
-                  <>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Database User</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={dbUserVal}
-                          onChange={(e) => updateNodeData(selectedNode.id, { dbUser: e.target.value })}
-                          placeholder="e.g. admin or {{ db_user }}"
-                          className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all font-mono"
-                        />
-                        <button
-                          onClick={() => {
-                            const current = dbUserVal || 'db_user';
-                            if (!current.startsWith('{{')) {
-                              updateNodeData(selectedNode.id, { dbUser: `{{ ${current} }}` });
-                            }
-                          }}
-                          className="px-3 bg-muted border border-border rounded-lg text-muted-foreground hover:text-primary transition-all font-mono text-xs cursor-pointer flex items-center justify-center"
-                          title="Convert to Variable"
-                        >
-                          {'{x}'}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Database Password</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={dbPassVal}
-                          onChange={(e) => updateNodeData(selectedNode.id, { dbPass: e.target.value })}
-                          placeholder="e.g. password or {{ db_pass }}"
-                          className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all font-mono"
-                        />
-                        <button
-                          onClick={() => {
-                            const current = dbPassVal || 'db_pass';
-                            if (!current.startsWith('{{')) {
-                              updateNodeData(selectedNode.id, { dbPass: `{{ ${current} }}` });
-                            }
-                          }}
-                          className="px-3 bg-muted border border-border rounded-lg text-muted-foreground hover:text-primary transition-all font-mono text-xs cursor-pointer flex items-center justify-center"
-                          title="Convert to Variable"
-                        >
-                          {'{x}'}
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {!nodeLabel.includes('Open Port') && !nodeLabel.includes('Postgres') && !nodeLabel.includes('PostgreSQL') && (
-                  <div className="text-center py-6 text-muted-foreground text-xs select-none">
-                    No custom variables to configure for this Ansible block.
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* TODO: Non-Ansible and non-EC2 nodes currently display a static placeholder warning. Define input parameter schemas and visual controls (e.g. Security Group ports, K8s Replicas/Images) for these nodes in this configuration panel. */}
-            {/* 3. STATIC / MOCK NODES */}
-            {selectedNode.data.tech !== 'Ansible' && selectedNode.id !== 'aws_instance.web_server' && (
-              <div className="text-center py-6 text-muted-foreground text-xs select-none">
-                No custom parameters defined for this mock infrastructure block.
-              </div>
-            )}
-          </div>
-        ) : (
-          <CodePreview selectedNode={selectedNode} ansiblePlaybook={ansiblePlaybook} />
-        )}
       </div>
 
       {/* Collapse Trigger Button */}
@@ -1235,6 +1355,27 @@ function WorkspaceCanvas() {
         <Controls showInteractive={false} className="!bg-card !border-border !text-foreground" />
       </ReactFlow>
 
+      {nodes.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 p-6 select-none animate-in fade-in zoom-in duration-300">
+          <div className="max-w-md w-full bg-slate-900/80 border border-slate-700/50 backdrop-blur-md rounded-2xl p-6 text-center shadow-2xl flex flex-col items-center gap-4">
+            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-lg">
+              <Icon icon="lucide:layers" className="text-white text-2xl animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white tracking-tight">Design Your Infrastructure Canvas</h3>
+              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                Drag and drop cloud resources or configuration modules from the library panel on the left to begin provisioning (Terraform), configuring (Ansible), or deploying containers (Kubernetes).
+              </p>
+            </div>
+            <div className="flex items-center gap-6 mt-2 text-slate-500 text-[11px] font-semibold uppercase tracking-wider">
+              <span className="flex items-center gap-1.5"><Icon icon="lucide:code" className="text-primary text-xs" /> Terraform</span>
+              <span className="flex items-center gap-1.5"><Icon icon="lucide:zap" className="text-[#00A4FF] text-xs" /> Ansible</span>
+              <span className="flex items-center gap-1.5"><Icon icon="lucide:layers" className="text-[#326CE5] text-xs" /> Kubernetes</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* SVG linear gradients definitions for connections */}
       <svg style={{ position: 'absolute', width: 0, height: 0 }}>
         <defs>
@@ -1255,7 +1396,7 @@ function WorkspaceCanvas() {
 // --- WORKSPACE LAYOUT WRAPPER ---
 function WorkspaceContent() {
   const router = useRouter();
-  const { nodes, edges, selectedNodeId, updateNodeData, resetCanvas } = useCanvasStore();
+  const { nodes, edges, selectedNodeId, updateNodeData, resetCanvas, setSelectedNodeId } = useCanvasStore();
   const { zoomIn, zoomOut, setViewport, getZoom } = useReactFlow();
 
   const [selectedProject] = useState("Web-Server-Orchestration");
@@ -1482,6 +1623,8 @@ resource "aws_instance" "${p.instanceName}" {
           onTabChange={handleInspectorTabChange}
           updateNodeData={updateNodeData}
           ansiblePlaybook={ansiblePlaybook}
+          nodes={nodes}
+          setSelectedNodeId={setSelectedNodeId}
         />
       </div>
     </div>
@@ -1490,7 +1633,7 @@ resource "aws_instance" "${p.instanceName}" {
 
 export default function WorkspacePage() {
   return (
-    <div className="min-h-screen w-full bg-background text-foreground flex flex-col relative font-sans overflow-hidden h-[calc(100vh-48px)]">
+    <div className="h-screen w-full bg-background text-foreground flex flex-col relative font-sans overflow-hidden">
       <ReactFlowProvider>
         <WorkspaceContent />
       </ReactFlowProvider>

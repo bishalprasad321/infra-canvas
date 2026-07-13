@@ -127,9 +127,9 @@ const getInitialEdges = (): Edge[] => [
 
 // Create the Zustand store
 const useCanvasStore = create<CanvasState>((set, get) => ({
-    nodes: getInitialNodes(),
-    edges: getInitialEdges(),
-    selectedNodeId: 'aws_instance.web_server', // Default selected node as in design-idea
+    nodes: [],
+    edges: [],
+    selectedNodeId: null,
 
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
     
@@ -219,9 +219,9 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
     
     resetCanvas: () => {
       set({
-        nodes: getInitialNodes(),
-        edges: getInitialEdges(),
-        selectedNodeId: 'aws_instance.web_server'
+        nodes: [],
+        edges: [],
+        selectedNodeId: null
       });
     }
 }));

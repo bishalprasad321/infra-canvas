@@ -7,6 +7,10 @@ import { clsx } from 'clsx';
 export default function Navbar() {
   const pathname = usePathname();
 
+  if (pathname === '/workspace' || pathname === '/export-code') {
+    return null;
+  }
+
   const getLinkClass = (href: string) => {
     const isActive = pathname === href;
     return clsx(
