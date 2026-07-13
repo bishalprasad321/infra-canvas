@@ -1,3 +1,4 @@
+// TODO: This component is a legacy version of the canvas nodes. The active custom node is implemented inside app/components/ReactFlowCanvasNode.tsx. Future engineers should integrate or remove this legacy component.
 import { Handle, Position } from '@xyflow/react';
 import useCanvasStore from '../store/useCanvasStore';
 

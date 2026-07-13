@@ -1,5 +1,7 @@
 'use client';
 
+// TODO: This component is a legacy version of the sidebar. The active node library panel is implemented directly inside app/workspace/page.tsx. Future engineers should integrate or remove this legacy component.
+
 import React from 'react';
 import { Button } from '../lib/uiComponents';
 
@@ -38,20 +40,12 @@ const modules: ModuleItem[] = [
     icon: '⬡',
   },
   {
-    id: 'install-postgresql',
-    label: 'Install PostgreSQL',
+    id: 'postgresql',
+    label: 'PostgreSQL',
     type: 'serverNode',
     category: 'Database',
     description: 'Install PostgreSQL database',
-    icon: '�️',
-  },
-  {
-    id: 'create-postgresql-user',
-    label: 'Create PostgreSQL User',
-    type: 'serverNode',
-    category: 'Database',
-    description: 'Create a user for the PostgreSQL database',
-    icon: '️�',
+    icon: '🗂️',
   },
   {
     id: 'open-port',
@@ -59,7 +53,7 @@ const modules: ModuleItem[] = [
     type: 'serverNode',
     category: 'Network',
     description: 'Open port in UFW firewall',
-    icon: '�',
+    icon: '🚪',
   },
   {
     id: 'copy-env',
