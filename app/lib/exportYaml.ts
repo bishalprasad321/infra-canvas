@@ -1,5 +1,62 @@
 import { Node, Edge } from '@xyflow/react';
 
+// Helper function to topologically sort canvas nodes based on connection edges
+function getSortedNodes(nodes: Node[], edges: Edge[]): Node[] {
+  const nodeMap = new Map<string, Node>();
+  nodes.forEach(n => nodeMap.set(n.id, n));
+
+  const adj = new Map<string, string[]>();
+  const inDegree = new Map<string, number>();
+
+  nodes.forEach(n => {
+    adj.set(n.id, []);
+    inDegree.set(n.id, 0);
+  });
+
+  edges.forEach(edge => {
+    const u = edge.source;
+    const v = edge.target;
+    if (nodeMap.has(u) && nodeMap.has(v)) {
+      adj.get(u)!.push(v);
+      inDegree.set(v, inDegree.get(v)! + 1);
+    }
+  });
+
+  const queue: string[] = [];
+  // To keep a stable ordering for unconnected nodes, we iterate in original nodes order
+  nodes.forEach(n => {
+    if (inDegree.get(n.id) === 0) {
+      queue.push(n.id);
+    }
+  });
+
+  const sortedIds: string[] = [];
+  while (queue.length > 0) {
+    const u = queue.shift()!;
+    sortedIds.push(u);
+
+    const neighbors = adj.get(u) || [];
+    neighbors.forEach(v => {
+      inDegree.set(v, inDegree.get(v)! - 1);
+      if (inDegree.get(v) === 0) {
+        queue.push(v);
+      }
+    });
+  }
+
+  // Handle cycles or unvisited nodes by appending them in original order
+  if (sortedIds.length < nodes.length) {
+    const sortedSet = new Set(sortedIds);
+    nodes.forEach(n => {
+      if (!sortedSet.has(n.id)) {
+        sortedIds.push(n.id);
+      }
+    });
+  }
+
+  return sortedIds.map(id => nodeMap.get(id)!).filter(Boolean);
+}
+
 export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
   // If the canvas is empty, return a comment
   if (nodes.length === 0) {
@@ -15,13 +72,12 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
   tasks:
 \n`;
 
-  let tasksString = `    tasks:\n\n`;
+  let tasksString = '';
 
-  // For v1, we will map through the nodes based on their order in the array.
-  // (In a future update, we can use the 'edges' array to do a topological sort 
-  // so the pipeline strictly follows the connection arrows).
-  
-  nodes.forEach((node) => {
+  // Sort nodes topologically using the connections (edges)
+  const sortedNodes = getSortedNodes(nodes, edges);
+
+  sortedNodes.forEach((node) => {
     if (!node || !node.data || !node.data.label) {
       return;
     }
@@ -61,11 +117,20 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         password: "${dbPass}"
         state: present\n\n`;
     }
-    else if (label.includes('Install PostgreSQL')) {
+    else if (label.includes('PostgreSQL') || label.includes('Postgres') || label.includes('Install PostgreSQL')) {
       tasksString += `    # Install PostgreSQL Database
     - name: Install PostgreSQL
       ansible.builtin.apt:
         name: postgresql
+        state: present\n\n`;
+
+      const dbUser = node.data.dbUser || '{{ db_user }}';
+      const dbPass = node.data.dbPass || '{{ db_pass }}';
+      tasksString += `    # Create PostgreSQL User
+    - name: Create PostgreSQL user
+      community.postgresql.postgresql_user:
+        name: "${dbUser}"
+        password: "${dbPass}"
         state: present\n\n`;
     }
     else if (label.includes('Open Port')) {

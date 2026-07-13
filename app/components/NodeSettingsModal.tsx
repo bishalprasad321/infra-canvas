@@ -1,5 +1,7 @@
 'use client';
 
+// TODO: This component is a legacy version of the node settings modal. Future engineers should integrate or remove this legacy component.
+
 import useCanvasStore from '../store/useCanvasStore';
 
 export default function NodeSettingsModal() {

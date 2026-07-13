@@ -1,5 +1,7 @@
 'use client';
 
+// TODO: This component is a legacy version of the node configuration panel. The active parameter panel is implemented directly inside app/workspace/page.tsx. Future engineers should integrate or remove this legacy component.
+
 import useCanavasStore from '../store/useCanvasStore';
 
 export default function NodeConfigPanel() {

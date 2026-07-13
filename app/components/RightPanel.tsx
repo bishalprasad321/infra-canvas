@@ -1,5 +1,7 @@
 'use client';
 
+// TODO: This component is a legacy version of the right configuration panel. The active inspector panel is implemented directly inside app/workspace/page.tsx. Future engineers should integrate or remove this legacy component.
+
 import { useMemo, useState, ReactNode } from 'react';
 import { Node } from '@xyflow/react';
 import useCanvasStore from '../store/useCanvasStore';
