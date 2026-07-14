@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  localstack:
+    container_name: infra-localstack
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=ec2,s3
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
+  ubuntu_ssh_1:
+    container_name: ubuntu_ssh_1
+    build:
+      context: .
+      dockerfile: Dockerfile.ssh
+    ports:
+      - "2222:22"
+
+  ubuntu_ssh_2:
+    container_name: ubuntu_ssh_2
+    build:
+      context: .
+      dockerfile: Dockerfile.ssh
+    ports:
+      - "2223:22"
