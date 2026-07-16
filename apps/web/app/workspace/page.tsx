@@ -19,7 +19,7 @@ import { clsx } from 'clsx';
 import useCanvasStore from '../store/useCanvasStore';
 import ReactFlowCanvasNode from '../components/ReactFlowCanvasNode';
 import { generateAnsibleYAML } from '../lib/exportYaml';
-import { downloadZipBundle } from '../lib/bundleGenerator';
+import { downloadZipBundle, generateBundleFiles } from '../lib/bundleGenerator';
 
 // Define layout components inside the workspace directory for encapsulation
 
@@ -61,6 +61,10 @@ interface HeaderProps {
   onZoomReset: () => void;
   onExport: () => void;
   onExportFormat: (format: string) => void;
+  onDeploy: () => void;
+  deployStatus: string;
+  isTerminalOpen: boolean;
+  onToggleTerminal: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -73,6 +77,10 @@ const Header: React.FC<HeaderProps> = ({
   onZoomReset,
   onExport,
   onExportFormat,
+  onDeploy,
+  deployStatus,
+  isTerminalOpen,
+  onToggleTerminal,
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -220,8 +228,34 @@ const Header: React.FC<HeaderProps> = ({
                 </div>
               </>
             )}
-          </div>
         </div>
+      </div>
+
+      {/* Deploy Button */}
+        <button
+          onClick={onDeploy}
+          disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING'}
+          className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-emerald-950/20 cursor-pointer disabled:cursor-not-allowed"
+        >
+          {deployStatus === 'RUNNING' || deployStatus === 'PENDING' ? (
+            <Icon icon="lucide:loader-2" className="text-base animate-spin" />
+          ) : (
+            <Icon icon="lucide:play" className="text-base" />
+          )}
+          <span>Deploy</span>
+        </button>
+
+        {/* Toggle Terminal Button */}
+        <button
+          onClick={onToggleTerminal}
+          className={clsx(
+            "p-2 rounded-lg border border-border flex items-center justify-center transition-all cursor-pointer h-[38px] w-[38px]",
+            isTerminalOpen ? "bg-primary/20 text-primary border-primary" : "bg-card text-muted-foreground hover:text-foreground"
+          )}
+          title="Toggle Terminal Console"
+        >
+          <Icon icon="lucide:terminal" className="text-base" />
+        </button>
       </div>
     </header>
   );
@@ -1409,6 +1443,110 @@ function WorkspaceContent() {
   const [inspectorTab, setInspectorTab] = useState("Parameters");
   const [canvasTool, setCanvasTool] = useState("select");
 
+  const [deployStatus, setDeployStatus] = useState<"IDLE" | "PENDING" | "RUNNING" | "SUCCESS" | "FAILED">("IDLE");
+  const [logs, setLogs] = useState("");
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const terminalEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll terminal when logs change
+  useEffect(() => {
+    if (terminalEndRef.current) {
+      terminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs]);
+
+  // Clean up websocket connection on unmount
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  const handleDeployClick = async () => {
+    if (nodes.length === 0) {
+      alert("⚠️ Cannot deploy: Canvas is empty.");
+      return;
+    }
+
+    setDeployStatus("PENDING");
+    setLogs("[CLIENT] Compiling canvas files and preparing payload...\n");
+    setIsTerminalOpen(true);
+    setActiveRunId(null);
+
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    try {
+      // Compile files on the client side (Approach A)
+      const compiledFiles = generateBundleFiles(nodes, edges);
+
+      // Make post request to Go backend
+      const response = await fetch("http://localhost:8080/api/deploy", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          canvas: { nodes, edges },
+          files: compiledFiles.map(f => ({ path: f.path, content: f.content }))
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to deploy. HTTP status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const runId = data.runId;
+      setActiveRunId(runId);
+      setDeployStatus(data.status);
+      setLogs(prev => prev + `[CLIENT] Deployment registered with runID: ${runId}\n[CLIENT] Establishing log streaming WebSocket connection...\n`);
+
+      // Connect to WebSocket endpoint
+      const wsUrl = `ws://localhost:8080/api/ws/runs/${runId}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setLogs(prev => prev + "[CLIENT] WebSocket connection established. Streaming pipeline runner logs...\n");
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const wsData = JSON.parse(event.data);
+          if (wsData.type === "status_change") {
+            setDeployStatus(wsData.status);
+          } else if (wsData.type === "log") {
+            setLogs(prev => prev + wsData.message);
+          }
+        } catch (e) {
+          // Fallback if message is raw text
+          setLogs(prev => prev + event.data);
+        }
+      };
+
+      ws.onerror = (err) => {
+        setLogs(prev => prev + `\n[CLIENT] WebSocket encountered an error.\n`);
+        console.error("WS error:", err);
+      };
+
+      ws.onclose = (event) => {
+        setLogs(prev => prev + `\n[CLIENT] Log stream closed (code: ${event.code}).\n`);
+      };
+
+    } catch (err: any) {
+      setDeployStatus("FAILED");
+      setLogs(prev => prev + `\n[CLIENT_ERROR] Failed to execute deployment: ${err.message || err}\n`);
+    }
+  };
+
   // Keep zoom level in header synced with React Flow viewport
   useEffect(() => {
     const checkZoom = setInterval(() => {
@@ -1591,6 +1729,10 @@ resource "aws_instance" "${p.instanceName}" {
         onZoomReset={handleZoomResetClick}
         onExport={handleExportClick}
         onExportFormat={handleExportFormat}
+        onDeploy={handleDeployClick}
+        deployStatus={deployStatus}
+        isTerminalOpen={isTerminalOpen}
+        onToggleTerminal={() => setIsTerminalOpen(!isTerminalOpen)}
       />
 
       <div className="flex-1 flex overflow-hidden relative">
@@ -1613,6 +1755,57 @@ resource "aws_instance" "${p.instanceName}" {
             onToolSelect={handleCanvasToolSelect}
             onReset={resetCanvas}
           />
+
+          {/* Terminal Drawer */}
+          {isTerminalOpen && (
+            <div className="absolute bottom-0 left-0 w-full h-72 bg-[#05080E]/95 border-t border-border z-30 flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
+              {/* Terminal Header */}
+              <div className="h-10 px-4 border-b border-border bg-[#0C121D]/90 flex items-center justify-between select-none">
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Icon icon="lucide:terminal" className="text-primary text-xs" />
+                    Runner Output Log
+                  </span>
+                  {deployStatus !== 'IDLE' && (
+                    <span className={clsx(
+                      "px-2 py-0.5 rounded text-[9px] uppercase tracking-wide font-bold border",
+                      deployStatus === 'PENDING' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                      deployStatus === 'RUNNING' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                      deployStatus === 'SUCCESS' && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+                      deployStatus === 'FAILED' && "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                    )}>
+                      {deployStatus}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setLogs("")}
+                    className="text-[10px] text-muted-foreground hover:text-foreground font-semibold flex items-center gap-1 cursor-pointer"
+                    title="Clear Log"
+                  >
+                    <Icon icon="lucide:trash-2" className="text-xs" />
+                    Clear
+                  </button>
+                  <button
+                    onClick={() => setIsTerminalOpen(false)}
+                    className="p-1 text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-all cursor-pointer"
+                    title="Close Panel"
+                  >
+                    <Icon icon="lucide:x" className="text-xs" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Terminal Body */}
+              <div className="flex-1 p-4 font-mono text-[11px] leading-relaxed text-slate-300 overflow-y-auto select-text scrollbar-thin">
+                <pre className="whitespace-pre-wrap break-all pr-4">
+                  {logs || "No active pipeline logs. Press \"Deploy\" to run visual orchestration..."}
+                </pre>
+                <div ref={terminalEndRef} />
+              </div>
+            </div>
+          )}
         </main>
 
         <InspectorPanel

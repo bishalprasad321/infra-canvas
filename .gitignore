@@ -14,7 +14,7 @@
 /coverage
 
 # next.js
-/.next/
+.next/
 /out/
 
 # production
@@ -43,3 +43,6 @@ next-env.d.ts
 # secrets
 /sandbox/id_rsa
 /sandbox/id_rsa.pub
+
+# build
+.turbo
