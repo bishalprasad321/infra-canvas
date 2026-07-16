@@ -3,7 +3,7 @@ version: '3.8'
 services:
   localstack:
     container_name: infra-localstack
-    image: localstack/localstack:latest
+    image: localstack/localstack:3.4.0
     ports:
       - "4566:4566"
     environment:

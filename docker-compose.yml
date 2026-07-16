@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: infracanvas-api
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - IS_DOCKER=true
+    volumes:
+      - ./sandbox:/app/sandbox
+      - api-db-data:/app/data
+    depends_on:
+      - localstack
+      - ubuntu_ssh_1
+      - ubuntu_ssh_2
+
+  localstack:
+    container_name: infra-localstack
+    image: localstack/localstack:3.4.0
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=ec2,s3
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
+  ubuntu_ssh_1:
+    container_name: ubuntu_ssh_1
+    build:
+      context: ./sandbox
+      dockerfile: Dockerfile.ssh
+    ports:
+      - "2222:22"
+
+  ubuntu_ssh_2:
+    container_name: ubuntu_ssh_2
+    build:
+      context: ./sandbox
+      dockerfile: Dockerfile.ssh
+    ports:
+      - "2223:22"
+
+volumes:
+  api-db-data:
