@@ -1,0 +1,25 @@
+FROM ubuntu:22.04
+
+# Avoid prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install SSH, sudo, and python3 (needed for ansible targets)
+RUN apt-get update && apt-get install -y \
+    openssh-server \
+    sudo \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up SSH daemon
+RUN mkdir /var/run/sshd
+
+# Add a user 'ubuntu' with password 'ubuntu' and add to sudoers
+RUN useradd -rm -d /home/ubuntu -s /bin/bash -g root -G sudo -u 1000 ubuntu \
+    && echo 'ubuntu:ubuntu' | chpasswd \
+    && echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+# Set up SSH directory for user 'ubuntu'
+RUN mkdir -p /home/ubuntu/.ssh && chmod 700 /home/ubuntu/.ssh
+
+# Expose SSH port
+EXPOSE 22
