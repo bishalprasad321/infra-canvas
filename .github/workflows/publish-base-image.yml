@@ -1,4 +1,4 @@
-name: Publish DevOps Base Image to GHCR
+name: Publish DevOps Base Images to GHCR
 
 on:
   push:
@@ -6,12 +6,13 @@ on:
       - main
     paths:
       - 'apps/api/Dockerfile.base'
+      - 'sandbox/Dockerfile.ssh.base'
       - '.github/workflows/publish-base-image.yml'
   workflow_dispatch:
 
 jobs:
   publish:
-    name: Build & Publish Base Image
+    name: Build & Publish Base Images
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -31,12 +32,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Base Image
+      - name: Build and Push Runner Base Image
         uses: docker/build-push-action@v7
         with:
           context: ./apps/api
           file: ./apps/api/Dockerfile.base
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/infra-canvas-runner-base:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and Push Sandbox Base Image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./sandbox
+          file: ./sandbox/Dockerfile.ssh.base
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/infra-canvas-sandbox-base:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
