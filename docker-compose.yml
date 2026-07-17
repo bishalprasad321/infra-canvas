@@ -11,6 +11,7 @@ services:
     environment:
       - PORT=8080
       - IS_DOCKER=true
+      - VERBOSE=true
     volumes:
       - ./sandbox:/app/sandbox
       - api-db-data:/app/data

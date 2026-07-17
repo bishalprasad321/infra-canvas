@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type FileItem struct {
@@ -26,11 +27,16 @@ type Canvas struct {
 	Edges interface{} `json:"edges"`
 }
 
-// Spawns a command, scans output line-by-line, and streams it to logChan
-func spawnCommand(name string, args []string, dir string, logChan chan<- string) error {
-	logChan <- fmt.Sprintf("\n[RUNNER] Executing: %s %s\n", name, strings.Join(args, " "))
+// Spawns a command, scans output line-by-line, and streams it with timestamps to logChan
+func spawnCommand(name string, args []string, dir string, env []string, logChan chan<- string) error {
+	ts := time.Now().Format("2006-01-02 15:04:05.000")
+	logChan <- fmt.Sprintf("[%s] [RUNNER] Executing: %s %s\n", ts, name, strings.Join(args, " "))
+
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 
 	// Combine stdout and stderr
 	stdout, err := cmd.StdoutPipe()
@@ -51,7 +57,10 @@ func spawnCommand(name string, args []string, dir string, logChan chan<- string)
 	scan := func(r io.Reader) {
 		scanner := bufio.NewScanner(r)
 		for scanner.Scan() {
-			outputChan <- scanner.Text() + "\n"
+			outputChan <- scanner.Text()
+		}
+		if err := scanner.Err(); err != nil {
+			outputChan <- fmt.Sprintf("[ERROR] failed to scan command output: %v", err)
 		}
 	}
 
@@ -64,9 +73,10 @@ func spawnCommand(name string, args []string, dir string, logChan chan<- string)
 		close(outputChan)
 	}()
 
-	// Read from outputChan and send to logChan
+	// Read from outputChan, prefix with timestamp, and send to logChan
 	for line := range outputChan {
-		logChan <- line
+		tsLine := time.Now().Format("2006-01-02 15:04:05.000")
+		logChan <- fmt.Sprintf("[%s] %s\n", tsLine, line)
 	}
 
 	state := cmd.ProcessState
@@ -83,26 +93,32 @@ func RunPipeline(
 	logChan chan<- string,
 	onComplete func(status string, logs string),
 ) {
-	// We run pipeline steps in `/tmp/run_{runID}` inside the Docker container
 	runDir := fmt.Sprintf("/tmp/run_%s", runID)
 	accumulatedLogs := ""
 
-	// Helper to emit logs
+	// Helper to emit logs with prepended timestamps
 	emit := func(msg string) {
-		accumulatedLogs += msg
-		logChan <- msg
+		lines := strings.Split(msg, "\n")
+		formattedMsg := ""
+		for i, line := range lines {
+			if i == len(lines)-1 && line == "" {
+				break
+			}
+			tsLine := fmt.Sprintf("[%s] %s\n", time.Now().Format("2006-01-02 15:04:05.000"), line)
+			formattedMsg += tsLine
+		}
+		accumulatedLogs += formattedMsg
+		logChan <- formattedMsg
 	}
 
 	defer func() {
 		close(logChan)
-		// Clean up files in runDir
 		_ = os.RemoveAll(runDir)
 	}()
 
-	emit(fmt.Sprintf("[RUNNER] Starting pipeline run %s\n", runID))
-	emit("[RUNNER] Compiling visual canvas into infrastructure code...\n")
+	emit(fmt.Sprintf("[RUNNER] Starting pipeline run %s", runID))
+	emit("[RUNNER] Compiling visual canvas into infrastructure code...")
 
-	// Determine if we are running inside docker container to set endpoints
 	isDocker := os.Getenv("IS_DOCKER") == "true"
 	localstackHost := "localhost"
 	if isDocker {
@@ -115,7 +131,7 @@ func RunPipeline(
 		dirPath := filepath.Dir(fullPath)
 
 		if err := os.MkdirAll(dirPath, 0755); err != nil {
-			emit(fmt.Sprintf("[ERROR] Failed to create dir %s: %v\n", dirPath, err))
+			emit(fmt.Sprintf("[ERROR] Failed to create dir %s: %v", dirPath, err))
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
@@ -123,12 +139,10 @@ func RunPipeline(
 		content := file.Content
 
 		// --- LOCAL SANDBOX OVERRIDES ---
-		// Patch 1: Redirect Terraform AWS provider to LocalStack endpoint
 		if file.Path == "terraform/main.tf" {
 			content = strings.ReplaceAll(content, "http://localhost:4566", fmt.Sprintf("http://%s:4566", localstackHost))
 		}
 
-		// Patch 2: Target local Ubuntu containers for Ansible
 		if file.Path == "ansible/hosts.ini" && isDocker {
 			content = `[webservers]
 ubuntu_ssh_1 ansible_host=ubuntu_ssh_1 ansible_port=22 ansible_user=ubuntu
@@ -139,11 +153,11 @@ ansible_python_interpreter=/usr/bin/python3`
 		}
 
 		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
-			emit(fmt.Sprintf("[ERROR] Failed to write file %s: %v\n", file.Path, err))
+			emit(fmt.Sprintf("[ERROR] Failed to write file %s: %v", file.Path, err))
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
-		emit(fmt.Sprintf("[COMPILER] Created %s\n", file.Path))
+		emit(fmt.Sprintf("[COMPILER] Created %s", file.Path))
 	}
 
 	// Parse canvas to check which phases to execute
@@ -171,64 +185,67 @@ ansible_python_interpreter=/usr/bin/python3`
 			}
 		}
 	} else {
-		emit(fmt.Sprintf("[WARNING] Canvas JSON parsing failed: %v. Running all phases.\n", err))
+		emit(fmt.Sprintf("[WARNING] Canvas JSON parsing failed: %v. Running all phases.", err))
 		hasTfNodes = true
 		hasAnsibleNodes = true
 		hasK8sNodes = true
 	}
 
+	// Read verbosity configurations from environment variables
+	verboseMode := os.Getenv("VERBOSE") == "true"
+	var tfEnv []string
+	if verboseMode {
+		tfEnv = []string{"TF_LOG=INFO"}
+	}
+
 	// Phase 1: Terraform (Provisioning)
 	tfDir := filepath.Join(runDir, "terraform")
 	if hasTfNodes && fileExists(filepath.Join(tfDir, "main.tf")) {
-		emit("\n=========================================\n")
-		emit("[PHASE 01] AWS Provisioning (LocalStack)\n")
+		emit("\n=========================================")
+		emit("[PHASE 01] AWS Provisioning (LocalStack)")
 		emit("=========================================\n")
 
-		if err := spawnCommand("terraform", []string{"init"}, tfDir, logChan); err != nil {
-			emit(fmt.Sprintf("[ERROR] Terraform init failed: %v\n", err))
+		if err := spawnCommand("terraform", []string{"init"}, tfDir, tfEnv, logChan); err != nil {
+			emit(fmt.Sprintf("[ERROR] Terraform init failed: %v", err))
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
-		if err := spawnCommand("terraform", []string{"apply", "-auto-approve"}, tfDir, logChan); err != nil {
-			emit(fmt.Sprintf("[ERROR] Terraform apply failed: %v\n", err))
+		if err := spawnCommand("terraform", []string{"apply", "-auto-approve"}, tfDir, tfEnv, logChan); err != nil {
+			emit(fmt.Sprintf("[ERROR] Terraform apply failed: %v", err))
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
 	} else {
-		emit("\n[PHASE 01] Skipped (No Terraform provisioning nodes present on canvas)\n")
+		emit("\n[PHASE 01] Skipped (No Terraform provisioning nodes present on canvas)")
 	}
 
 	// Phase 2: Ansible (Configuration)
 	ansibleDir := filepath.Join(runDir, "ansible")
 	if hasAnsibleNodes && fileExists(filepath.Join(ansibleDir, "playbook.yml")) {
-		emit("\n=========================================\n")
-		emit("[PHASE 02] Server Configuration (Ansible Sandbox)\n")
+		emit("\n=========================================")
+		emit("[PHASE 02] Server Configuration (Ansible Sandbox)")
 		emit("=========================================\n")
 
-		// Locate private key file
-		// In Docker, the sandbox folder is mapped to /app/sandbox
 		keySourcePath := "/app/sandbox/id_rsa"
 		if !fileExists(keySourcePath) {
-			// Fallback for local testing out of docker
 			keySourcePath = "../../sandbox/id_rsa"
 		}
 
 		if !fileExists(keySourcePath) {
-			emit(fmt.Sprintf("[ERROR] Sandbox private SSH key not found at %s. Ensure sandbox files exist.\n", keySourcePath))
+			emit(fmt.Sprintf("[ERROR] Sandbox private SSH key not found at %s. Ensure sandbox files exist.", keySourcePath))
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
 
-		// Copy SSH key to temp run folder and set permissions
 		tmpKeyPath := fmt.Sprintf("/tmp/id_rsa_%s", runID)
 		keyData, err := os.ReadFile(keySourcePath)
 		if err != nil {
-			emit(fmt.Sprintf("[ERROR] Failed to read private key: %v\n", err))
+			emit(fmt.Sprintf("[ERROR] Failed to read private key: %v", err))
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
 		if err := os.WriteFile(tmpKeyPath, keyData, 0600); err != nil {
-			emit(fmt.Sprintf("[ERROR] Failed to write temp private key: %v\n", err))
+			emit(fmt.Sprintf("[ERROR] Failed to write temp private key: %v", err))
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
@@ -242,33 +259,41 @@ ansible_python_interpreter=/usr/bin/python3`
 			"--private-key=" + tmpKeyPath,
 			"--ssh-common-args=-o StrictHostKeyChecking=no",
 		}
+		if verboseMode {
+			ansibleArgs = append(ansibleArgs, "-vvv")
+		}
 
-		if err := spawnCommand("ansible-playbook", ansibleArgs, ansibleDir, logChan); err != nil {
-			emit(fmt.Sprintf("[ERROR] Ansible playbook execution failed: %v\n", err))
+		if err := spawnCommand("ansible-playbook", ansibleArgs, ansibleDir, nil, logChan); err != nil {
+			emit(fmt.Sprintf("[ERROR] Ansible playbook execution failed: %v", err))
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
 	} else {
-		emit("\n[PHASE 02] Skipped (No Ansible configuration nodes present on canvas)\n")
+		emit("\n[PHASE 02] Skipped (No Ansible configuration nodes present on canvas)")
 	}
 
 	// Phase 3: Kubernetes (Container Deployment)
 	k8sDir := filepath.Join(runDir, "k8s")
 	if hasK8sNodes && fileExists(filepath.Join(k8sDir, "deployment.yaml")) {
-		emit("\n=========================================\n")
-		emit("[PHASE 03] Kubernetes Deployment (kubectl)\n")
+		emit("\n=========================================")
+		emit("[PHASE 03] Kubernetes Deployment (kubectl)")
 		emit("=========================================\n")
 
-		if err := spawnCommand("kubectl", []string{"apply", "-f", "deployment.yaml"}, k8sDir, logChan); err != nil {
-			emit(fmt.Sprintf("[ERROR] kubectl apply failed: %v\n", err))
+		kubectlArgs := []string{"apply", "-f", "deployment.yaml"}
+		if verboseMode {
+			kubectlArgs = append(kubectlArgs, "--v=6")
+		}
+
+		if err := spawnCommand("kubectl", kubectlArgs, k8sDir, nil, logChan); err != nil {
+			emit(fmt.Sprintf("[ERROR] kubectl apply failed: %v", err))
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
 	} else {
-		emit("\n[PHASE 03] Skipped (No Kubernetes deployment nodes present on canvas)\n")
+		emit("\n[PHASE 03] Skipped (No Kubernetes deployment nodes present on canvas)")
 	}
 
-	emit("\n[RUNNER] Pipeline execution completed successfully!\n")
+	emit("\n[RUNNER] Pipeline execution completed successfully!")
 	onComplete("SUCCESS", accumulatedLogs)
 }
 
