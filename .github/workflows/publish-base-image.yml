@@ -1,0 +1,43 @@
+name: Publish DevOps Base Image to GHCR
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'apps/api/Dockerfile.base'
+      - '.github/workflows/publish-base-image.yml'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: Build & Publish Base Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: actions/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Base Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/api
+          file: ./apps/api/Dockerfile.base
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/infra-canvas-runner-base:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
