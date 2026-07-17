@@ -1,17 +1,19 @@
-name: Publish DevOps Base Image to GHCR
+name: Publish DevOps Base Images to GHCR
 
 on:
   push:
     branches:
       - main
+      - master
     paths:
       - 'apps/api/Dockerfile.base'
+      - 'sandbox/Dockerfile.ssh.base'
       - '.github/workflows/publish-base-image.yml'
   workflow_dispatch:
 
 jobs:
   publish:
-    name: Build & Publish Base Image
+    name: Build & Publish Base Images
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -22,21 +24,31 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: actions/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry (GHCR)
-        uses: docker/login-action@v4
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Base Image
-        uses: docker/build-push-action@v7
+      - name: Build and Push Runner Base Image
+        uses: docker/build-push-action@v5
         with:
           context: ./apps/api
           file: ./apps/api/Dockerfile.base
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/infra-canvas-runner-base:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and Push Sandbox Base Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./sandbox
+          file: ./sandbox/Dockerfile.ssh.base
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/infra-canvas-sandbox-base:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
