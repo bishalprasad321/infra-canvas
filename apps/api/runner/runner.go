@@ -196,6 +196,13 @@ ubuntu_ssh_2 ansible_host=ubuntu_ssh_2 ansible_port=22 ansible_user=ubuntu
 ansible_python_interpreter=/usr/bin/python3`
 		}
 
+		if file.Path == "ansible/playbook.yml" {
+			// The "Deploy Node App" task copies the repo cloned in Phase 00 (see below) from
+			// this control node to the remote target; substitute in its real path here.
+			appDir := filepath.Join(runDir, "app")
+			content = strings.ReplaceAll(content, "__APP_SRC_DIR__", appDir)
+		}
+
 		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
 			emit(fmt.Sprintf("[ERROR] Failed to write file %s: %v", file.Path, err))
 			onComplete("FAILED", accumulatedLogs)

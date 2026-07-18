@@ -142,6 +142,36 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         protocol: tcp
         action: allow\n\n`;
     }
+    else if (label.includes('Deploy Node App')) {
+      const startCommand = (node.data.startCommand as string) || 'npm start';
+      const appPort = (node.data.appPort as string) || '3000';
+      const appName = 'app';
+
+      tasksString += `    # Deploy Node.js Application
+    - name: Copy application source code to server
+      ansible.builtin.copy:
+        src: __APP_SRC_DIR__/
+        dest: /home/ubuntu/${appName}
+        owner: ubuntu
+        group: ubuntu\n\n`;
+
+      tasksString += `    # Install npm dependencies
+    - name: Install npm dependencies
+      ansible.builtin.command:
+        cmd: npm install
+        chdir: /home/ubuntu/${appName}\n\n`;
+
+      tasksString += `    # Install pm2 process manager
+    - name: Install pm2 process manager
+      ansible.builtin.command:
+        cmd: npm install -g pm2\n\n`;
+
+      tasksString += `    # Start the application with pm2
+    - name: Start the application with pm2
+      ansible.builtin.shell: pm2 delete ${appName} >/dev/null 2>&1 || true; PORT=${appPort} pm2 start "${startCommand}" --name ${appName}
+      args:
+        chdir: /home/ubuntu/${appName}\n\n`;
+    }
     else if (label.includes('Copy .env')) {
       tasksString += `    # Copy .env file to server
     - name: Copy .env file to server
