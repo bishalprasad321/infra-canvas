@@ -57,7 +57,7 @@ const getInitialNodes = (): Node[] => [
       statusText: 'Validated',
       parameters: {
         instanceName: 'web_server',
-        amiId: 'ami-0c7217cdde317cfec',
+        amiId: 'ami-785db401', // LocalStack's mocked EC2 only recognizes its own seeded AMIs
         instanceType: 't3.medium',
         subnetId: 'subnet-0123456789abcdef0',
         rootVolumeSize: 50,
