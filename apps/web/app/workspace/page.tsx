@@ -985,6 +985,8 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const branchVal = (selectedNode?.data?.branch as string) || '';
   const environmentVal = (selectedNode?.data?.environment as string) || 'localstack';
   const regionVal = (selectedNode?.data?.region as string) || 'us-east-1';
+  const startCommandVal = (selectedNode?.data?.startCommand as string) || '';
+  const appPortVal = (selectedNode?.data?.appPort as string) || '';
 
   return (
     <aside className={clsx(
@@ -1255,7 +1257,35 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                         </>
                       )}
 
-                      {!nodeLabel.includes('Open Port') && !nodeLabel.includes('Postgres') && !nodeLabel.includes('PostgreSQL') && (
+                      {nodeLabel.includes('Deploy Node App') && (
+                        <div className="space-y-4">
+                          <p className="text-[11px] text-muted-foreground">
+                            Requires a Code Repository node connected upstream — this task copies its cloned code onto the server, installs dependencies, and keeps it running with pm2.
+                          </p>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Start Command</label>
+                            <input
+                              type="text"
+                              value={startCommandVal}
+                              onChange={(e) => updateNodeData(selectedNode.id, { startCommand: e.target.value })}
+                              placeholder="npm start"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">App Port</label>
+                            <input
+                              type="text"
+                              value={appPortVal}
+                              onChange={(e) => updateNodeData(selectedNode.id, { appPort: e.target.value })}
+                              placeholder="3000"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {!nodeLabel.includes('Open Port') && !nodeLabel.includes('Postgres') && !nodeLabel.includes('PostgreSQL') && !nodeLabel.includes('Deploy Node App') && (
                         <div className="text-center py-6 text-muted-foreground text-xs select-none">
                           No custom variables to configure for this Ansible block.
                         </div>
@@ -1432,6 +1462,14 @@ const LIBRARY_NODES: LibraryNode[] = [
     icon: 'lucide:file-text',
     title: 'Copy .env File',
     description: 'Synchronizes environment local configurations onto remote hosts.',
+    category: 'Configuration & Setup'
+  },
+  {
+    id: 'deploy-node-app',
+    tech: 'Ansible',
+    icon: 'lucide:rocket',
+    title: 'Deploy Node App',
+    description: 'Copies the connected repo onto the server, runs npm install, and starts it with pm2.',
     category: 'Configuration & Setup'
   },
   {
