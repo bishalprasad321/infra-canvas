@@ -152,8 +152,7 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
       ansible.builtin.copy:
         src: __APP_SRC_DIR__/
         dest: /home/ubuntu/${appName}
-        owner: ubuntu
-        group: ubuntu\n\n`;
+        owner: ubuntu\n\n`;
 
       tasksString += `    # Install npm dependencies
     - name: Install npm dependencies

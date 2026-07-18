@@ -671,7 +671,7 @@ const CodePreview: React.FC<CodePreviewProps> = ({ selectedNode, ansiblePlaybook
     if (selectedNode.id === 'aws_instance.web_server') {
       const p = selectedNode.data.parameters as any || {
         instanceName: 'web_server',
-        amiId: 'ami-0c7217cdde317cfec',
+        amiId: 'ami-785db401', // LocalStack's mocked EC2 only recognizes its own seeded AMIs
         instanceType: 't3.medium',
         subnetId: 'subnet-0123456789abcdef0',
         rootVolumeSize: 50,
@@ -934,7 +934,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
   const p = selectedNode?.data?.parameters as any || {
     instanceName: 'web_server',
-    amiId: 'ami-0c7217cdde317cfec',
+    amiId: 'ami-785db401', // LocalStack's mocked EC2 only recognizes its own seeded AMIs
     instanceType: 't3.medium',
     subnetId: 'subnet-0123456789abcdef0',
     rootVolumeSize: 50,
@@ -1804,7 +1804,7 @@ function WorkspaceContent() {
     if (libNode.id === 'aws_instance.web_server') {
       newNode.data.parameters = {
         instanceName: 'web_server',
-        amiId: 'ami-0c7217cdde317cfec',
+        amiId: 'ami-785db401', // LocalStack's mocked EC2 only recognizes its own seeded AMIs
         instanceType: 't3.medium',
         subnetId: 'subnet-0123456789abcdef0',
         rootVolumeSize: 50,
@@ -1847,7 +1847,7 @@ function WorkspaceContent() {
       const instanceNode = nodes.find(n => n.id === 'aws_instance.web_server');
       const p = instanceNode?.data?.parameters as any || {
         instanceName: 'web_server',
-        amiId: 'ami-0c7217cdde317cfec',
+        amiId: 'ami-785db401', // LocalStack's mocked EC2 only recognizes its own seeded AMIs
         instanceType: 't3.medium',
         subnetId: 'subnet-0123456789abcdef0',
         rootVolumeSize: 50,
