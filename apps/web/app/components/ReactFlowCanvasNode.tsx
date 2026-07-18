@@ -10,7 +10,7 @@ interface ReactFlowCanvasNodeProps {
   id: string;
   data: {
     label: string;
-    tech: 'Terraform' | 'Ansible' | 'Kubernetes' | 'Source';
+    tech: 'Terraform' | 'Ansible' | 'Kubernetes' | 'Source' | 'Target';
     icon: string;
     categoryLabel: string;
     description: string;
@@ -29,6 +29,7 @@ export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCan
     Ansible: 'bg-[#00A4FF]',
     Kubernetes: 'bg-[#326CE5]',
     Source: 'bg-[#D97706]',
+    Target: 'bg-[#0D9488]',
   }[data.tech] || 'bg-[#00A4FF]';
 
   const borderClass = selected
@@ -80,7 +81,7 @@ export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCan
 
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5 pr-6">
-            <Icon icon={data.icon} className={clsx("text-base", data.tech === 'Terraform' ? 'text-primary' : data.tech === 'Ansible' ? 'text-[#00A4FF]' : data.tech === 'Source' ? 'text-[#D97706]' : 'text-[#326CE5]')} />
+            <Icon icon={data.icon} className={clsx("text-base", data.tech === 'Terraform' ? 'text-primary' : data.tech === 'Ansible' ? 'text-[#00A4FF]' : data.tech === 'Source' ? 'text-[#D97706]' : data.tech === 'Target' ? 'text-[#0D9488]' : 'text-[#326CE5]')} />
             <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate max-w-[90px]">{data.categoryLabel}</span>
           </div>
 
