@@ -41,7 +41,7 @@ interface NodeParameters {
 
 interface LibraryNode {
   id: string;
-  tech: 'Terraform' | 'Ansible' | 'Kubernetes';
+  tech: 'Terraform' | 'Ansible' | 'Kubernetes' | 'Source';
   icon: string;
   title: string;
   description: string;
@@ -272,12 +272,14 @@ const NodeCard: React.FC<NodeCardProps> = ({ node, onAddNode }) => {
     Terraform: 'bg-primary/10 text-primary border-primary/20',
     Ansible: 'bg-[#00A4FF]/10 text-[#00A4FF] border-[#00A4FF]/20',
     Kubernetes: 'bg-[#326CE5]/10 text-[#326CE5] border-[#326CE5]/20',
+    Source: 'bg-[#D97706]/10 text-[#D97706] border-[#D97706]/20',
   }[node.tech];
 
   const hoverBorderClass = {
     Terraform: 'hover:border-primary/50 hover:shadow-primary/5',
     Ansible: 'hover:border-[#00A4FF]/50 hover:shadow-[#00A4FF]/5',
     Kubernetes: 'hover:border-[#326CE5]/50 hover:shadow-[#326CE5]/5',
+    Source: 'hover:border-[#D97706]/50 hover:shadow-[#D97706]/5',
   }[node.tech];
 
   const onDragStart = (event: React.DragEvent) => {
@@ -307,7 +309,7 @@ const NodeCard: React.FC<NodeCardProps> = ({ node, onAddNode }) => {
         <Icon icon="lucide:plus" className="text-muted-foreground group-hover:text-foreground text-sm transition-colors" />
       </div>
       <h4 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-1.5">
-        <Icon icon={node.icon} className={clsx("text-sm", node.tech === 'Terraform' ? 'text-primary' : node.tech === 'Ansible' ? 'text-[#00A4FF]' : 'text-[#326CE5]')} />
+        <Icon icon={node.icon} className={clsx("text-sm", node.tech === 'Terraform' ? 'text-primary' : node.tech === 'Ansible' ? 'text-[#00A4FF]' : node.tech === 'Source' ? 'text-[#D97706]' : 'text-[#326CE5]')} />
         {node.title}
       </h4>
       <p className="text-xs text-muted-foreground leading-relaxed">{node.description}</p>
@@ -369,8 +371,8 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({
             </div>
 
             {/* Technology Quick Filters */}
-            <div className="grid grid-cols-4 gap-1">
-              {['All', 'Terraform', 'Ansible', 'Kubernetes'].map((tech) => (
+            <div className="grid grid-cols-5 gap-1">
+              {['All', 'Source', 'Terraform', 'Ansible', 'Kubernetes'].map((tech) => (
                 <button
                   key={tech}
                   onClick={() => onTechFilterSelect(tech)}
@@ -381,7 +383,7 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({
                       : "bg-muted hover:bg-muted/80 text-foreground"
                   )}
                 >
-                  {tech === 'All' ? 'All' : tech === 'Terraform' ? 'TF' : tech === 'Ansible' ? 'Ans' : 'K8s'}
+                  {tech === 'All' ? 'All' : tech === 'Terraform' ? 'TF' : tech === 'Ansible' ? 'Ans' : tech === 'Kubernetes' ? 'K8s' : 'Repo'}
                 </button>
               ))}
             </div>
@@ -760,6 +762,7 @@ const CanvasSummary: React.FC<{
   nodes: Node[];
   onSelectNode: (id: string) => void;
 }> = ({ nodes, onSelectNode }) => {
+  const srcNodes = nodes.filter((n) => n.data?.tech === 'Source');
   const tfNodes = nodes.filter((n) => n.data?.tech === 'Terraform');
   const ansNodes = nodes.filter((n) => n.data?.tech === 'Ansible');
   const k8sNodes = nodes.filter((n) => n.data?.tech === 'Kubernetes');
@@ -774,6 +777,30 @@ const CanvasSummary: React.FC<{
       </div>
 
       <div className="space-y-4">
+        {srcNodes.length > 0 && (
+          <div className="space-y-2">
+            <h5 className="text-[10px] font-bold text-[#D97706] uppercase tracking-wider flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#D97706] animate-pulse"></span>
+              Source ({srcNodes.length})
+            </h5>
+            <div className="grid gap-1.5">
+              {srcNodes.map((node) => (
+                <button
+                  key={node.id}
+                  onClick={() => onSelectNode(node.id)}
+                  className="w-full text-left bg-muted/30 hover:bg-muted/70 border border-border/60 hover:border-[#D97706]/40 rounded-lg p-2.5 flex items-center justify-between text-xs text-foreground transition-all duration-200 group cursor-pointer"
+                >
+                  <span className="font-semibold truncate max-w-[200px] flex items-center gap-2">
+                    <Icon icon={node.data.icon as string} className="text-[#D97706] text-sm flex-shrink-0" />
+                    {node.data.label as string}
+                  </span>
+                  <Icon icon="lucide:chevron-right" className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all text-xs" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {tfNodes.length > 0 && (
           <div className="space-y-2">
             <h5 className="text-[10px] font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
@@ -927,6 +954,8 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const portVal = (selectedNode?.data?.port as string) || '';
   const dbUserVal = (selectedNode?.data?.dbUser as string) || '';
   const dbPassVal = (selectedNode?.data?.dbPass as string) || '';
+  const repoUrlVal = (selectedNode?.data?.repoUrl as string) || '';
+  const branchVal = (selectedNode?.data?.branch as string) || '';
 
   return (
     <aside className={clsx(
@@ -941,9 +970,9 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
           <div className="p-4 border-b border-border flex items-center justify-between select-none">
             <div className="flex items-center gap-2">
               <div className="h-6 w-6 rounded bg-primary/10 border border-primary/20 flex items-center justify-center">
-                <Icon 
-                  icon={(selectedNode?.data?.icon as string) || "lucide:globe"} 
-                  className={clsx("text-sm", (selectedNode?.data?.tech as string) === 'Terraform' ? 'text-primary' : (selectedNode?.data?.tech as string) === 'Ansible' ? 'text-[#00A4FF]' : 'text-[#326CE5]')} 
+                <Icon
+                  icon={(selectedNode?.data?.icon as string) || "lucide:globe"}
+                  className={clsx("text-sm", (selectedNode?.data?.tech as string) === 'Terraform' ? 'text-primary' : (selectedNode?.data?.tech as string) === 'Ansible' ? 'text-[#00A4FF]' : (selectedNode?.data?.tech as string) === 'Source' ? 'text-[#D97706]' : 'text-[#326CE5]')}
                 />
               </div>
               <div>
@@ -1205,8 +1234,37 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     </div>
                   )}
 
+                  {/* 2b. SOURCE / CODE REPOSITORY NODE PARAMETERS */}
+                  {selectedNode.data.tech === 'Source' && (
+                    <div className="space-y-4">
+                      <p className="text-[11px] text-muted-foreground">
+                        The pipeline clones this repository onto the target server before the configuration steps run.
+                      </p>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Repository URL</label>
+                        <input
+                          type="text"
+                          value={repoUrlVal}
+                          onChange={(e) => updateNodeData(selectedNode.id, { repoUrl: e.target.value })}
+                          placeholder="https://github.com/your-org/your-app.git"
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Branch</label>
+                        <input
+                          type="text"
+                          value={branchVal}
+                          onChange={(e) => updateNodeData(selectedNode.id, { branch: e.target.value })}
+                          placeholder="main"
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   {/* 3. STATIC / MOCK NODES */}
-                  {selectedNode.data.tech !== 'Ansible' && selectedNode.id !== 'aws_instance.web_server' && (
+                  {selectedNode.data.tech !== 'Ansible' && selectedNode.data.tech !== 'Source' && selectedNode.id !== 'aws_instance.web_server' && (
                     <div className="text-center py-6 text-muted-foreground text-xs select-none">
                       No custom parameters defined for this mock infrastructure block.
                     </div>
@@ -1234,6 +1292,14 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
 // --- MOCK LIBRARY DATA ---
 const LIBRARY_NODES: LibraryNode[] = [
+  {
+    id: 'code_repository',
+    tech: 'Source',
+    icon: 'lucide:git-branch',
+    title: 'Code Repository',
+    description: "Your app's source code. The pipeline clones this repo onto the target server before deployment.",
+    category: 'Source Code'
+  },
   {
     id: 'aws_instance.web_server',
     tech: 'Terraform',
@@ -1357,7 +1423,7 @@ function WorkspaceCanvas() {
         label: title,
         tech: tech as any,
         icon,
-        categoryLabel: tech === 'Terraform' ? 'AWS Resource' : tech === 'Ansible' ? 'Ansible Task' : 'K8s Resource',
+        categoryLabel: tech === 'Terraform' ? 'AWS Resource' : tech === 'Ansible' ? 'Ansible Task' : tech === 'Source' ? 'Source Code' : 'K8s Resource',
         description,
         status: 'Validated',
         statusText: 'Validated',
@@ -1619,7 +1685,7 @@ function WorkspaceContent() {
         label: libNode.title,
         tech: libNode.tech,
         icon: libNode.icon,
-        categoryLabel: libNode.tech === 'Terraform' ? 'AWS Resource' : libNode.tech === 'Ansible' ? 'Ansible Task' : 'K8s Resource',
+        categoryLabel: libNode.tech === 'Terraform' ? 'AWS Resource' : libNode.tech === 'Ansible' ? 'Ansible Task' : libNode.tech === 'Source' ? 'Source Code' : 'K8s Resource',
         description: libNode.description,
         status: 'Validated',
         statusText: 'Validated',
