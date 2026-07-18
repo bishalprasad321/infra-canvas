@@ -189,6 +189,8 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
 
           if (sourceTech === 'Source') {
             stroke = '#D97706';
+          } else if (sourceTech === 'Target') {
+            stroke = '#0D9488';
           } else if (sourceTech === 'Terraform' && targetTech === 'Terraform') {
             stroke = '#844FBA';
           } else if (sourceTech === 'Terraform' && targetTech === 'Ansible') {
