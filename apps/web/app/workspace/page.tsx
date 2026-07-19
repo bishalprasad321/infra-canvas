@@ -65,6 +65,9 @@ interface HeaderProps {
   deployStatus: string;
   isTerminalOpen: boolean;
   onToggleTerminal: () => void;
+  autoDestroy: boolean;
+  onAutoDestroyChange: (val: boolean) => void;
+  onDestroy: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -81,6 +84,9 @@ const Header: React.FC<HeaderProps> = ({
   deployStatus,
   isTerminalOpen,
   onToggleTerminal,
+  autoDestroy,
+  onAutoDestroyChange,
+  onDestroy,
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -231,7 +237,29 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Deploy Button */}
+      {/* Ephemeral Mode Toggle */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40 select-none">
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+            <Icon icon="lucide:clock" className="text-amber-400 text-xs" />
+            Auto-Cleanup
+          </span>
+          <button
+            onClick={() => onAutoDestroyChange(!autoDestroy)}
+            className={clsx(
+              "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+              autoDestroy ? "bg-amber-500" : "bg-muted"
+            )}
+          >
+            <span
+              className={clsx(
+                "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                autoDestroy ? "translate-x-4" : "translate-x-0"
+              )}
+            />
+          </button>
+        </div>
+
+        {/* Deploy Button */}
         <button
           onClick={onDeploy}
           disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING'}
@@ -243,6 +271,17 @@ const Header: React.FC<HeaderProps> = ({
             <Icon icon="lucide:play" className="text-base" />
           )}
           <span>Deploy</span>
+        </button>
+
+        {/* Destroy Button */}
+        <button
+          onClick={onDestroy}
+          disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING'}
+          className="bg-rose-600 hover:bg-rose-500 disabled:bg-rose-800 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-rose-950/20 cursor-pointer disabled:cursor-not-allowed"
+          title="Tear Down All Canvas Provisioned Resources"
+        >
+          <Icon icon="lucide:trash-2" className="text-base" />
+          <span>Destroy</span>
         </button>
 
         {/* Toggle Terminal Button */}
@@ -647,7 +686,7 @@ const CodePreview: React.FC<CodePreviewProps> = ({ selectedNode, ansiblePlaybook
     }
 
     // TODO: This Terraform security group code output is hardcoded/static. Replace this block with dynamic HCL generation based on the security group's inputs and parameter configuration.
-    if (selectedNode.id === 'aws_security_group.web_sg') {
+    if (selectedNode.id.startsWith('aws_security_group')) {
       return `resource "aws_security_group" "web_sg" {
   name        = "web_sg"
   description = "Allows HTTP/HTTPS inbound & SSH access"
@@ -668,7 +707,7 @@ const CodePreview: React.FC<CodePreviewProps> = ({ selectedNode, ansiblePlaybook
 }`;
     }
 
-    if (selectedNode.id === 'aws_instance.web_server') {
+    if (selectedNode.id.startsWith('aws_instance.web_server')) {
       const p = selectedNode.data.parameters as any || {
         instanceName: 'web_server',
         amiId: 'ami-785db401', // LocalStack's mocked EC2 only recognizes its own seeded AMIs
@@ -1056,7 +1095,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
               ) : (
                 <div className="space-y-3">
                   {/* 1. TERRAFORM INSTANCE NODE PARAMETERS */}
-                  {selectedNode.id === 'aws_instance.web_server' && (
+                  {selectedNode.id.startsWith('aws_instance.web_server') && (
                     <>
                       <div>
                         <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Name</label>
@@ -1356,7 +1395,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   )}
 
                   {/* 3. STATIC / MOCK NODES */}
-                  {selectedNode.data.tech !== 'Ansible' && selectedNode.data.tech !== 'Source' && selectedNode.data.tech !== 'Target' && selectedNode.id !== 'aws_instance.web_server' && (
+                  {selectedNode.data.tech !== 'Ansible' && selectedNode.data.tech !== 'Source' && selectedNode.data.tech !== 'Target' && !selectedNode.id.startsWith('aws_instance.web_server') && (
                     <div className="text-center py-6 text-muted-foreground text-xs select-none">
                       No custom parameters defined for this mock infrastructure block.
                     </div>
@@ -1621,6 +1660,7 @@ function WorkspaceContent() {
   const [logs, setLogs] = useState("");
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [autoDestroy, setAutoDestroy] = useState(true);
 
   const wsRef = useRef<WebSocket | null>(null);
   const terminalEndRef = useRef<HTMLDivElement | null>(null);
@@ -1669,7 +1709,8 @@ function WorkspaceContent() {
         },
         body: JSON.stringify({
           canvas: { nodes, edges },
-          files: compiledFiles.map(f => ({ path: f.path, content: f.content }))
+          files: compiledFiles.map(f => ({ path: f.path, content: f.content })),
+          autoDestroy: autoDestroy
         })
       });
 
@@ -1718,6 +1759,76 @@ function WorkspaceContent() {
     } catch (err: any) {
       setDeployStatus("FAILED");
       setLogs(prev => prev + `\n[CLIENT_ERROR] Failed to execute deployment: ${err.message || err}\n`);
+    }
+  };
+
+  const handleDestroyClick = async () => {
+    setDeployStatus("PENDING");
+    setLogs("[CLIENT] Triggering infrastructure tear-down (terraform destroy)...\n");
+    setIsTerminalOpen(true);
+    setActiveRunId(null);
+
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    try {
+      // Make destroy request to Go backend
+      const response = await fetch("http://localhost:8080/api/destroy", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          canvas: { nodes, edges }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to trigger destroy. HTTP status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const runId = data.runId;
+      setActiveRunId(runId);
+      setDeployStatus(data.status);
+      setLogs(prev => prev + `[CLIENT] Destroy run registered with runID: ${runId}\n[CLIENT] Establishing log streaming WebSocket connection...\n`);
+
+      // Connect to WebSocket endpoint
+      const wsUrl = `ws://localhost:8080/api/ws/runs/${runId}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setLogs(prev => prev + "[CLIENT] WebSocket connection established. Streaming execution logs...\n");
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const wsData = JSON.parse(event.data);
+          if (wsData.type === "status_change") {
+            setDeployStatus(wsData.status);
+          } else if (wsData.type === "log") {
+            setLogs(prev => prev + wsData.message);
+          }
+        } catch (e) {
+          setLogs(prev => prev + event.data);
+        }
+      };
+
+      ws.onerror = (err) => {
+        setLogs(prev => prev + `\n[CLIENT] WebSocket encountered an error.\n`);
+        console.error("WS error:", err);
+      };
+
+      ws.onclose = (event) => {
+        setLogs(prev => prev + `\n[CLIENT] Log stream closed (code: ${event.code}).\n`);
+      };
+
+    } catch (err: any) {
+      setDeployStatus("FAILED");
+      setLogs(prev => prev + `\n[CLIENT_ERROR] Failed to execute destroy: ${err.message || err}\n`);
     }
   };
 
@@ -1907,6 +2018,9 @@ resource "aws_instance" "${p.instanceName}" {
         deployStatus={deployStatus}
         isTerminalOpen={isTerminalOpen}
         onToggleTerminal={() => setIsTerminalOpen(!isTerminalOpen)}
+        autoDestroy={autoDestroy}
+        onAutoDestroyChange={setAutoDestroy}
+        onDestroy={handleDestroyClick}
       />
 
       <div className="flex-1 flex overflow-hidden relative">

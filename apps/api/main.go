@@ -86,10 +86,12 @@ func main() {
 	mux.HandleFunc("GET /api/runs", enableCORS(handleGetRuns))
 	mux.HandleFunc("GET /api/runs/{id}", enableCORS(handleGetRunByID))
 	mux.HandleFunc("POST /api/deploy", enableCORS(handleDeploy))
+	mux.HandleFunc("POST /api/destroy", enableCORS(handleDestroy))
 	mux.HandleFunc("/api/ws/runs/{id}", handleWebSocket)
 
 	// Fallback/options endpoint for preflight requests
 	mux.HandleFunc("OPTIONS /api/deploy", handleOptions)
+	mux.HandleFunc("OPTIONS /api/destroy", handleOptions)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -182,8 +184,9 @@ func handleGetRunByID(w http.ResponseWriter, r *http.Request) {
 }
 
 type DeployPayload struct {
-	Canvas interface{}        `json:"canvas"`
-	Files  []runner.FileItem `json:"files"`
+	Canvas      interface{}       `json:"canvas"`
+	Files       []runner.FileItem `json:"files"`
+	AutoDestroy bool              `json:"autoDestroy"`
 }
 
 func handleDeploy(w http.ResponseWriter, r *http.Request) {
@@ -250,7 +253,7 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 		}()
 
 		// Start executing runner
-		runner.RunPipeline(runID, canvasStr, payload.Files, logChan, func(finalStatus string, logs string) {
+		runner.RunPipeline(runID, canvasStr, payload.Files, "deploy", payload.AutoDestroy, logChan, func(finalStatus string, logs string) {
 			// Complete execution: commit to DB
 			_, err = db.Exec("UPDATE pipeline_runs SET status = ?, logs = ?, updated_at = datetime('now') WHERE id = ?", finalStatus, logs, runID)
 			if err != nil {
@@ -390,4 +393,95 @@ func generateUUID() string {
 		return "run-random-id"
 	}
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
+func handleDestroy(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Canvas interface{} `json:"canvas"`
+	}
+	err := json.NewDecoder(r.Body).Decode(&payload)
+	if err != nil {
+		http.Error(w, "Invalid request payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	canvasBytes, err := json.Marshal(payload.Canvas)
+	if err != nil {
+		http.Error(w, "Invalid canvas format", http.StatusBadRequest)
+		return
+	}
+	canvasStr := string(canvasBytes)
+
+	runID := generateUUID()
+
+	// Insert into DB as PENDING
+	insertQuery := "INSERT INTO pipeline_runs (id, status, logs, canvas, created_at, updated_at) VALUES (?, 'PENDING', '', ?, datetime('now'), datetime('now'))"
+	_, err = db.Exec(insertQuery, runID, canvasStr)
+	if err != nil {
+		log.Printf("[DB] Error inserting destroy run %s: %v\n", runID, err)
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Initialize tracker
+	tracker := &RunTracker{
+		clients: make(map[*websocket.Conn]bool),
+		status:  "PENDING",
+	}
+	trackersMutex.Lock()
+	trackers[runID] = tracker
+	trackersMutex.Unlock()
+
+	// Respond to client
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"runId":  runID,
+		"status": "PENDING",
+	})
+
+	// Run destroy pipeline asynchronously
+	go func() {
+		_, _ = db.Exec("UPDATE pipeline_runs SET status = 'RUNNING', updated_at = datetime('now') WHERE id = ?", runID)
+		tracker.Lock()
+		tracker.status = "RUNNING"
+		tracker.Unlock()
+		broadcastToTracker(runID, "status_change", "RUNNING")
+
+		logChan := make(chan string, 100)
+
+		go func() {
+			for msg := range logChan {
+				tracker.Lock()
+				tracker.logs += msg
+				tracker.Unlock()
+				broadcastToTracker(runID, "log", msg)
+			}
+		}()
+
+		runner.RunPipeline(runID, canvasStr, nil, "destroy", false, logChan, func(finalStatus string, logs string) {
+			_, err = db.Exec("UPDATE pipeline_runs SET status = ?, logs = ?, updated_at = datetime('now') WHERE id = ?", finalStatus, logs, runID)
+			if err != nil {
+				log.Printf("[DB] Error updating destroy run %s: %v\n", runID, err)
+			}
+
+			tracker.Lock()
+			tracker.status = finalStatus
+			tracker.Unlock()
+			broadcastToTracker(runID, "status_change", finalStatus)
+
+			time.AfterFunc(2*time.Second, func() {
+				trackersMutex.Lock()
+				t, exists := trackers[runID]
+				if exists {
+					t.Lock()
+					for client := range t.clients {
+						_ = client.Close()
+					}
+					t.Unlock()
+					delete(trackers, runID)
+				}
+				trackersMutex.Unlock()
+			})
+		})
+	}()
 }
