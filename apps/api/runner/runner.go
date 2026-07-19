@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -140,7 +141,20 @@ func RunPipeline(
 
 		// --- LOCAL SANDBOX OVERRIDES ---
 		if file.Path == "terraform/main.tf" {
-			content = strings.ReplaceAll(content, "http://localhost:4566", fmt.Sprintf("http://%s:4566", localstackHost))
+			re := regexp.MustCompile(`(?s)provider\s+"aws"\s+\{.*?\}`)
+			localstackProvider := fmt.Sprintf(`provider "aws" {
+  access_key                  = "mock"
+  secret_key                  = "mock"
+  region                      = "us-east-1"
+  skip_credentials_validation = true
+  skip_metadata_api_check     = true
+  skip_requesting_account_id  = true
+  endpoints {
+    ec2 = "http://%s:4566"
+    s3  = "http://%s:4566"
+  }
+}`, localstackHost, localstackHost)
+			content = re.ReplaceAllString(content, localstackProvider)
 		}
 
 		if file.Path == "ansible/hosts.ini" && isDocker {
@@ -193,9 +207,13 @@ ansible_python_interpreter=/usr/bin/python3`
 
 	// Read verbosity configurations from environment variables
 	verboseMode := os.Getenv("VERBOSE") == "true"
-	var tfEnv []string
+	tfEnv := []string{
+		"AWS_ACCESS_KEY_ID=mock",
+		"AWS_SECRET_ACCESS_KEY=mock",
+		"AWS_DEFAULT_REGION=us-east-1",
+	}
 	if verboseMode {
-		tfEnv = []string{"TF_LOG=INFO"}
+		tfEnv = append(tfEnv, "TF_LOG=INFO")
 	}
 
 	// Phase 1: Terraform (Provisioning)

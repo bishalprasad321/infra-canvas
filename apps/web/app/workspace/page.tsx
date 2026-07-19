@@ -629,9 +629,10 @@ function highlightYAMLCode(code: string): React.ReactNode[] {
 interface CodePreviewProps {
   selectedNode: Node | null;
   ansiblePlaybook: string;
+  nodes: Node[];
 }
 
-const CodePreview: React.FC<CodePreviewProps> = ({ selectedNode, ansiblePlaybook }) => {
+const CodePreview: React.FC<CodePreviewProps> = ({ selectedNode, ansiblePlaybook, nodes }) => {
   const [copied, setCopied] = useState(false);
 
   const isAnsibleNode = selectedNode?.data?.tech === 'Ansible';
@@ -642,29 +643,40 @@ const CodePreview: React.FC<CodePreviewProps> = ({ selectedNode, ansiblePlaybook
       return ansiblePlaybook;
     }
 
-    // TODO: This Terraform security group code output is hardcoded/static. Replace this block with dynamic HCL generation based on the security group's inputs and parameter configuration.
-    if (selectedNode.id === 'aws_security_group.web_sg') {
-      return `resource "aws_security_group" "web_sg" {
-  name        = "web_sg"
-  description = "Allows HTTP/HTTPS inbound & SSH access"
+    if (selectedNode.id.startsWith('aws_security_group')) {
+      const p = selectedNode.data.parameters as any || {
+        sgName: 'web_sg',
+        sgDescription: 'Allows HTTP/HTTPS inbound & SSH access',
+        ingressPorts: '80, 443'
+      };
+      const sgName = p.sgName || 'web_sg';
+      const sgDescription = p.sgDescription || 'Allows HTTP/HTTPS inbound & SSH access';
+      const ingressPorts = p.ingressPorts || '80, 443';
+      
+      const portsList = (ingressPorts as string || '80, 443')
+        .split(',')
+        .map(pt => pt.trim())
+        .filter(pt => pt !== '' && !isNaN(Number(pt)))
+        .map(pt => Number(pt));
 
-  ingress {
-    from_port   = 80
-    to_port     = 80
+      const ingressBlocks = portsList.length > 0
+        ? portsList.map(port => `  ingress {
+    from_port   = ${port}
+    to_port     = ${port}
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-  }
+  }`).join('\n\n')
+        : `  # No ingress ports configured`;
 
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+      return `resource "aws_security_group" "${sgName}" {
+  name        = "${sgName}"
+  description = "${sgDescription}"
+
+${ingressBlocks}
 }`;
     }
 
-    if (selectedNode.id === 'aws_instance.web_server') {
+    if (selectedNode.id.startsWith('aws_instance.web_server')) {
       const p = selectedNode.data.parameters as any || {
         instanceName: 'web_server',
         amiId: 'ami-0c7217cdde317cfec',
@@ -674,10 +686,16 @@ const CodePreview: React.FC<CodePreviewProps> = ({ selectedNode, ansiblePlaybook
         tags: [{ key: 'Environment', value: 'prod' }, { key: 'Role', value: 'web' }]
       };
 
+      const sgNode = nodes.find(n => n.id.startsWith('aws_security_group'));
+      const sgParams = sgNode?.data?.parameters as any || { sgName: 'web_sg' };
+      const sgName = sgParams.sgName || 'web_sg';
+
       return `resource "aws_instance" "${p.instanceName}" {
   ami           = "${p.amiId}"
   instance_type = "${p.instanceType}"
   subnet_id     = "${p.subnetId}"
+
+  vpc_security_group_ids = [aws_security_group.${sgName}.id]
 
   root_block_device {
     volume_size = ${p.rootVolumeSize}
@@ -878,14 +896,18 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const [newTagVal, setNewTagVal] = useState('');
   const [showAddTag, setShowAddTag] = useState(false);
 
-  const p = selectedNode?.data?.parameters as any || {
+  const p = selectedNode?.data?.parameters as any || (selectedNode?.id?.startsWith('aws_security_group') ? {
+    sgName: 'web_sg',
+    sgDescription: 'Allows HTTP/HTTPS inbound & SSH access',
+    ingressPorts: '80, 443'
+  } : {
     instanceName: 'web_server',
     amiId: 'ami-0c7217cdde317cfec',
     instanceType: 't3.medium',
     subnetId: 'subnet-0123456789abcdef0',
     rootVolumeSize: 50,
     tags: [{ key: 'Environment', value: 'prod' }, { key: 'Role', value: 'web' }]
-  };
+  });
 
   const handleParameterChange = (key: string, value: any) => {
     if (!selectedNode) return;
@@ -996,7 +1018,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
               ) : (
                 <div className="space-y-3">
                   {/* 1. TERRAFORM INSTANCE NODE PARAMETERS */}
-                  {selectedNode.id === 'aws_instance.web_server' && (
+                  {selectedNode.id.startsWith('aws_instance.web_server') && (
                     <>
                       <div>
                         <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Name</label>
@@ -1111,6 +1133,41 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     </>
                   )}
 
+                  {/* 1b. TERRAFORM SECURITY GROUP NODE PARAMETERS */}
+                  {selectedNode.id.startsWith('aws_security_group') && (
+                    <>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Security Group Name</label>
+                        <input
+                          type="text"
+                          value={p.sgName || 'web_sg'}
+                          onChange={(e) => handleParameterChange('sgName', e.target.value)}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Description</label>
+                        <input
+                          type="text"
+                          value={p.sgDescription || 'Allows HTTP/HTTPS inbound & SSH access'}
+                          onChange={(e) => handleParameterChange('sgDescription', e.target.value)}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Allowed Ingress Ports (comma separated)</label>
+                        <input
+                          type="text"
+                          value={p.ingressPorts || '80, 443'}
+                          onChange={(e) => handleParameterChange('ingressPorts', e.target.value)}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+                    </>
+                  )}
+
                   {/* 2. ANSIBLE DYNAMIC NODE PARAMETERS (VARIABLES) */}
                   {selectedNode.data.tech === 'Ansible' && (
                     <div className="space-y-4">
@@ -1206,7 +1263,9 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   )}
 
                   {/* 3. STATIC / MOCK NODES */}
-                  {selectedNode.data.tech !== 'Ansible' && selectedNode.id !== 'aws_instance.web_server' && (
+                  {selectedNode.data.tech !== 'Ansible' && 
+                   !selectedNode.id.startsWith('aws_instance.web_server') && 
+                   !selectedNode.id.startsWith('aws_security_group') && (
                     <div className="text-center py-6 text-muted-foreground text-xs select-none">
                       No custom parameters defined for this mock infrastructure block.
                     </div>
@@ -1214,7 +1273,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 </div>
               )
             ) : (
-              <CodePreview selectedNode={selectedNode} ansiblePlaybook={ansiblePlaybook} />
+              <CodePreview selectedNode={selectedNode} ansiblePlaybook={ansiblePlaybook} nodes={nodes} />
             )}
           </div>
         </div>
@@ -1641,6 +1700,15 @@ function WorkspaceContent() {
       };
     }
 
+    // If it's a Terraform Security Group node, add default parameters
+    if (libNode.id === 'aws_security_group') {
+      newNode.data.parameters = {
+        sgName: 'web_sg',
+        sgDescription: 'Allows HTTP/HTTPS inbound & SSH access',
+        ingressPorts: '80, 443'
+      };
+    }
+
     // Call store action
     useCanvasStore.getState().addNode(newNode);
     useCanvasStore.getState().setSelectedNodeId(newId);
@@ -1670,7 +1738,7 @@ function WorkspaceContent() {
       URL.revokeObjectURL(url);
     } else if (format === 'tf') {
       // Find dynamic parameters
-      const instanceNode = nodes.find(n => n.id === 'aws_instance.web_server');
+      const instanceNode = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
       const p = instanceNode?.data?.parameters as any || {
         instanceName: 'web_server',
         amiId: 'ami-0c7217cdde317cfec',
