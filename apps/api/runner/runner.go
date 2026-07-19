@@ -27,6 +27,50 @@ type Canvas struct {
 	Edges interface{} `json:"edges"`
 }
 
+// RepositoryConfig holds the source repository details pulled from a Code Repository
+// ("Source") node on the canvas, if one is present.
+type RepositoryConfig struct {
+	Present bool
+	URL     string
+	Branch  string
+}
+
+// extractRepositoryConfig scans the canvas JSON for a Code Repository node and returns
+// its repo URL / branch parameters. Present is false if no such node exists on the canvas.
+func extractRepositoryConfig(canvasJSON string) RepositoryConfig {
+	var canvas struct {
+		Nodes []struct {
+			ID   string      `json:"id"`
+			Data interface{} `json:"data"`
+		} `json:"nodes"`
+	}
+
+	cfg := RepositoryConfig{}
+	if err := json.Unmarshal([]byte(canvasJSON), &canvas); err != nil {
+		return cfg
+	}
+
+	for _, node := range canvas.Nodes {
+		dataMap, ok := node.Data.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		tech, _ := dataMap["tech"].(string)
+		if tech != "Source" {
+			continue
+		}
+		cfg.Present = true
+		if v, ok := dataMap["repoUrl"].(string); ok {
+			cfg.URL = strings.TrimSpace(v)
+		}
+		if v, ok := dataMap["branch"].(string); ok {
+			cfg.Branch = strings.TrimSpace(v)
+		}
+	}
+
+	return cfg
+}
+
 // Spawns a command, scans output line-by-line, and streams it with timestamps to logChan
 func spawnCommand(name string, args []string, dir string, env []string, logChan chan<- string) error {
 	ts := time.Now().Format("2006-01-02 15:04:05.000")
@@ -152,6 +196,13 @@ ubuntu_ssh_2 ansible_host=ubuntu_ssh_2 ansible_port=22 ansible_user=ubuntu
 ansible_python_interpreter=/usr/bin/python3`
 		}
 
+		if file.Path == "ansible/playbook.yml" {
+			// The "Deploy Node App" task copies the repo cloned in Phase 00 (see below) from
+			// this control node to the remote target; substitute in its real path here.
+			appDir := filepath.Join(runDir, "app")
+			content = strings.ReplaceAll(content, "__APP_SRC_DIR__", appDir)
+		}
+
 		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
 			emit(fmt.Sprintf("[ERROR] Failed to write file %s: %v", file.Path, err))
 			onComplete("FAILED", accumulatedLogs)
@@ -196,6 +247,30 @@ ansible_python_interpreter=/usr/bin/python3`
 	var tfEnv []string
 	if verboseMode {
 		tfEnv = []string{"TF_LOG=INFO"}
+	}
+
+	// Phase 0: Source Code (Clone Repository)
+	repoConfig := extractRepositoryConfig(canvasJSON)
+	if repoConfig.Present && repoConfig.URL != "" {
+		emit("\n=========================================")
+		emit("[PHASE 00] Fetching Application Source Code")
+		emit("=========================================\n")
+
+		branch := repoConfig.Branch
+		if branch == "" {
+			branch = "main"
+		}
+		appDir := filepath.Join(runDir, "app")
+		cloneArgs := []string{"clone", "--branch", branch, "--depth", "1", repoConfig.URL, appDir}
+		if err := spawnCommand("git", cloneArgs, runDir, nil, logChan); err != nil {
+			emit(fmt.Sprintf("[ERROR] Failed to clone repository %s (branch %s): %v", repoConfig.URL, branch, err))
+			onComplete("FAILED", accumulatedLogs)
+			return
+		}
+	} else if repoConfig.Present {
+		emit("\n[PHASE 00] Skipped (Code Repository node present but no repository URL configured)")
+	} else {
+		emit("\n[PHASE 00] Skipped (No Code Repository node present on canvas)")
 	}
 
 	// Phase 1: Terraform (Provisioning)
