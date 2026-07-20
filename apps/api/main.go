@@ -179,6 +179,16 @@ func handleGetRunByID(w http.ResponseWriter, r *http.Request) {
 	run.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", strings.Replace(createdStr, "T", " ", 1))
 	run.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", strings.Replace(updatedStr, "T", " ", 1))
 
+	trackersMutex.Lock()
+	tracker, active := trackers[id]
+	trackersMutex.Unlock()
+
+	if active {
+		tracker.Lock()
+		run.Logs = tracker.logs
+		tracker.Unlock()
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(run)
 }
@@ -254,8 +264,12 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 
 		// Start executing runner
 		runner.RunPipeline(runID, canvasStr, payload.Files, "deploy", payload.AutoDestroy, logChan, func(finalStatus string, logs string) {
+			tracker.Lock()
+			finalLogs := tracker.logs
+			tracker.Unlock()
+
 			// Complete execution: commit to DB
-			_, err = db.Exec("UPDATE pipeline_runs SET status = ?, logs = ?, updated_at = datetime('now') WHERE id = ?", finalStatus, logs, runID)
+			_, err = db.Exec("UPDATE pipeline_runs SET status = ?, logs = ?, updated_at = datetime('now') WHERE id = ?", finalStatus, finalLogs, runID)
 			if err != nil {
 				log.Printf("[DB] Error updating run %s: %v\n", runID, err)
 			}
@@ -459,7 +473,11 @@ func handleDestroy(w http.ResponseWriter, r *http.Request) {
 		}()
 
 		runner.RunPipeline(runID, canvasStr, nil, "destroy", false, logChan, func(finalStatus string, logs string) {
-			_, err = db.Exec("UPDATE pipeline_runs SET status = ?, logs = ?, updated_at = datetime('now') WHERE id = ?", finalStatus, logs, runID)
+			tracker.Lock()
+			finalLogs := tracker.logs
+			tracker.Unlock()
+
+			_, err = db.Exec("UPDATE pipeline_runs SET status = ?, logs = ?, updated_at = datetime('now') WHERE id = ?", finalStatus, finalLogs, runID)
 			if err != nil {
 				log.Printf("[DB] Error updating destroy run %s: %v\n", runID, err)
 			}

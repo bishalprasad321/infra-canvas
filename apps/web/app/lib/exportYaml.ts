@@ -101,9 +101,11 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
     } 
     else if (label.includes('Install Node.js')) {
       tasksString += `    # Install Node.js
-    - name: Install Node.js
+    - name: Install Node.js and npm
       ansible.builtin.apt:
-        name: nodejs
+        name:
+          - nodejs
+          - npm
         state: present\n\n`;
     }
     else if (label.includes('Create PostgreSQL User')) {

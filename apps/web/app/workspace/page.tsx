@@ -276,9 +276,9 @@ const Header: React.FC<HeaderProps> = ({
         {/* Destroy Button */}
         <button
           onClick={onDestroy}
-          disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING'}
+          disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING' || autoDestroy}
           className="bg-rose-600 hover:bg-rose-500 disabled:bg-rose-800 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-rose-950/20 cursor-pointer disabled:cursor-not-allowed"
-          title="Tear Down All Canvas Provisioned Resources"
+          title={autoDestroy ? "Destroy is disabled when Auto-Cleanup is enabled" : "Tear Down All Canvas Provisioned Resources"}
         >
           <Icon icon="lucide:trash-2" className="text-base" />
           <span>Destroy</span>
