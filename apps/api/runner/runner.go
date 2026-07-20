@@ -75,7 +75,7 @@ func extractRepositoryConfig(canvasJSON string) RepositoryConfig {
 func spawnCommand(name string, args []string, dir string, env []string, logChan chan<- string) error {
 	ts := time.Now().Format("2006-01-02 15:04:05.000")
 	logChan <- fmt.Sprintf("[%s] [RUNNER] Executing: %s %s\n", ts, name, strings.Join(args, " "))
-	
+
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	if len(env) > 0 {
@@ -206,10 +206,16 @@ func RunPipeline(
 		hasK8sNodes = true
 	}
 
+	emit(fmt.Sprintf("[RUNNER_DEBUG] parsed hasTfNodes=%t, hasAnsibleNodes=%t, hasK8sNodes=%t", hasTfNodes, hasAnsibleNodes, hasK8sNodes))
+
 	verboseMode := os.Getenv("VERBOSE") == "true"
-	var tfEnv []string
+	tfEnv := []string{
+		"AWS_ACCESS_KEY_ID=test",
+		"AWS_SECRET_ACCESS_KEY=test",
+		"AWS_DEFAULT_REGION=us-east-1",
+	}
 	if verboseMode {
-		tfEnv = []string{"TF_LOG=INFO"}
+		tfEnv = append(tfEnv, "TF_LOG=INFO")
 	}
 	tfDir := filepath.Join(runDir, "terraform")
 
@@ -306,6 +312,14 @@ ansible_python_interpreter=/usr/bin/python3`
 		emit("\n[PHASE 00] Skipped (No Code Repository node present on canvas)")
 	}
 
+	// Ensure the app directory exists so Ansible's copy module doesn't throw a fatal error
+	// in case the git clone phase was skipped.
+	appDir := filepath.Join(runDir, "app")
+	if !fileExists(appDir) {
+		_ = os.MkdirAll(appDir, 0755)
+		_ = os.WriteFile(filepath.Join(appDir, "placeholder.txt"), []byte("placeholder"), 0644)
+	}
+
 	// Phase 1: Terraform (Provisioning)
 	if hasTfNodes && fileExists(filepath.Join(tfDir, "main.tf")) {
 		emit("\n=========================================")
@@ -315,12 +329,7 @@ ansible_python_interpreter=/usr/bin/python3`
 		// Pre-create S3 state bucket in LocalStack
 		if isDocker {
 			emit("[RUNNER] Ensuring LocalStack S3 state bucket exists...")
-			awsEnv := []string{
-				"AWS_ACCESS_KEY_ID=test",
-				"AWS_SECRET_ACCESS_KEY=test",
-				"AWS_DEFAULT_REGION=us-east-1",
-			}
-			_ = spawnCommand("aws", []string{"--endpoint-url=http://localstack:4566", "s3", "mb", "s3://infracanvas-state-bucket"}, runDir, awsEnv, logChan)
+			_ = spawnCommand("curl", []string{"-X", "PUT", fmt.Sprintf("http://%s:4566/infracanvas-state-bucket", localstackHost)}, runDir, nil, logChan)
 		}
 
 		if err := spawnCommand("terraform", []string{"init"}, tfDir, tfEnv, logChan); err != nil {
@@ -339,6 +348,7 @@ ansible_python_interpreter=/usr/bin/python3`
 
 	// Phase 2: Ansible (Configuration)
 	ansibleDir := filepath.Join(runDir, "ansible")
+	emit(fmt.Sprintf("[RUNNER_DEBUG] ansibleDir=%s, playbook exists=%t", ansibleDir, fileExists(filepath.Join(ansibleDir, "playbook.yml"))))
 	if hasAnsibleNodes && fileExists(filepath.Join(ansibleDir, "playbook.yml")) {
 		emit("\n=========================================")
 		emit("[PHASE 02] Server Configuration (Ansible Sandbox)")
