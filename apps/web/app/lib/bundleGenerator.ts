@@ -170,10 +170,11 @@ output "web_server_public_ip" {
 
   // 5. Generate hosts.ini
   // TODO: The hosts.ini inventory file is a static placeholder. It should be dynamically constructed using inventory definitions and host variables defined on the workspace canvas.
+  const colon = ':';
   const hostsIniContent = `[webservers]
 web_server_1 ansible_host=aws_instance.${instanceName}.public_ip ansible_user=ubuntu
 
-[all\${":"}vars]
+[all${colon}vars]
 ansible_python_interpreter=/usr/bin/python3`;
 
   // 6. Generate deployment.yaml (Kubernetes)

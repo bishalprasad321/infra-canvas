@@ -70,6 +70,36 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
   hosts: all
   become: yes
   tasks:
+
+    # Configure dpkg to use unsafe IO for massive speedup in containers
+    - name: Configure dpkg unsafe IO
+      ansible.builtin.shell: |
+        mkdir -p /etc/dpkg/dpkg.cfg.d
+        echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/force-unsafe-io
+      ignore_errors: yes
+
+    # Clean up any stuck apt/dpkg locks if active
+    - name: Clean up apt locks
+      ansible.builtin.shell: |
+        killall -9 apt apt-get dpkg 2>/dev/null || true
+        rm -f /var/lib/dpkg/lock-frontend
+        rm -f /var/lib/dpkg/lock
+        rm -f /var/lib/apt/lists/lock
+      ignore_errors: yes
+
+    # Check for interrupted dpkg state
+    - name: Check for interrupted dpkg state
+      ansible.builtin.shell: dpkg -l | grep -E '^i[^i]'
+      register: dpkg_check
+      failed_when: false
+      changed_when: false
+
+    # Fix interrupted dpkg states only when needed
+    - name: Fix interrupted dpkg states
+      ansible.builtin.shell: dpkg --configure -a
+      when: dpkg_check.rc == 0
+      ignore_errors: yes
+
 \n`;
 
   let tasksString = '';
@@ -100,19 +130,38 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         state: present\n\n`;
     } 
     else if (label.includes('Install Node.js')) {
-      tasksString += `    # Install Node.js
-    - name: Install Node.js and npm
+      tasksString += `    # Install xz-utils dependency
+    - name: Install xz-utils
       ansible.builtin.apt:
-        name:
-          - nodejs
-          - npm
-        state: present\n\n`;
+        name: xz-utils
+        state: present
+
+    # Download Node.js precompiled package
+    - name: Download Node.js precompiled package
+      ansible.builtin.get_url:
+        url: https://nodejs.org/dist/v18.16.0/node-v18.16.0-linux-x64.tar.xz
+        dest: /tmp/node-v18.16.0-linux-x64.tar.xz
+
+    # Extract Node.tar.xz to /usr/local
+    - name: Extract Node.tar.xz to /usr/local
+      ansible.builtin.unarchive:
+        src: /tmp/node-v18.16.0-linux-x64.tar.xz
+        dest: /usr/local
+        remote_src: yes
+        extra_opts:
+          - --strip-components=1\n\n`;
     }
     else if (label.includes('Create PostgreSQL User')) {
       const dbUser = node.data.dbUser || '{{ db_user }}';
       const dbPass = node.data.dbPass || '{{ db_pass }}';
 
-      tasksString += `    # Create PostgreSQL User
+      tasksString += `    # Install psycopg2 for PostgreSQL management
+    - name: Install python3-psycopg2
+      ansible.builtin.apt:
+        name: python3-psycopg2
+        state: present
+
+    # Create PostgreSQL User
     - name: Create PostgreSQL user
       community.postgresql.postgresql_user:
         name: "${dbUser}"
@@ -120,10 +169,12 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         state: present\n\n`;
     }
     else if (label.includes('PostgreSQL') || label.includes('Postgres') || label.includes('Install PostgreSQL')) {
-      tasksString += `    # Install PostgreSQL Database
-    - name: Install PostgreSQL
+      tasksString += `    # Install PostgreSQL and psycopg2
+    - name: Install PostgreSQL and python3-psycopg2
       ansible.builtin.apt:
-        name: postgresql
+        name:
+          - postgresql
+          - python3-psycopg2
         state: present\n\n`;
 
       const dbUser = node.data.dbUser || '{{ db_user }}';
@@ -137,12 +188,19 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
     }
     else if (label.includes('Open Port')) {
       const port = node.data.port || '{{ port_number }}';
-      tasksString += `    # Open Port 80 in UFW
-    - name: Open Port 80 in UFW
+      tasksString += `    # Ensure UFW is installed
+    - name: Install UFW
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+
+    # Open Port ${port} in UFW
+    - name: Open Port ${port} in UFW
       ansible.builtin.ufw:
+        rule: allow
         port: "${port}"
-        protocol: tcp
-        action: allow\n\n`;
+        proto: tcp
+      ignore_errors: yes\n\n`;
     }
     else if (label.includes('Deploy Node App')) {
       const startCommand = (node.data.startCommand as string) || 'npm start';
@@ -154,24 +212,33 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
       ansible.builtin.copy:
         src: __APP_SRC_DIR__/
         dest: /home/ubuntu/${appName}
-        owner: ubuntu\n\n`;
+        owner: ubuntu
 
-      tasksString += `    # Install npm dependencies
+    # Check if package.json exists in target directory
+    - name: Check if package.json exists
+      ansible.builtin.stat:
+        path: /home/ubuntu/${appName}/package.json
+      register: pkg_json
+
+    # Install npm dependencies if package.json exists
     - name: Install npm dependencies
       ansible.builtin.command:
         cmd: npm install
-        chdir: /home/ubuntu/${appName}\n\n`;
+        chdir: /home/ubuntu/${appName}
+      when: pkg_json.stat.exists
 
-      tasksString += `    # Install pm2 process manager
+    # Install pm2 process manager if package.json exists
     - name: Install pm2 process manager
       ansible.builtin.command:
-        cmd: npm install -g pm2\n\n`;
+        cmd: npm install -g pm2
+      when: pkg_json.stat.exists
 
-      tasksString += `    # Start the application with pm2
+    # Start the application with pm2 if package.json exists
     - name: Start the application with pm2
       ansible.builtin.shell: pm2 delete ${appName} >/dev/null 2>&1 || true; PORT=${appPort} pm2 start "${startCommand}" --name ${appName}
       args:
-        chdir: /home/ubuntu/${appName}\n\n`;
+        chdir: /home/ubuntu/${appName}
+      when: pkg_json.stat.exists\n\n`;
     }
     else if (label.includes('Copy .env')) {
       tasksString += `    # Copy .env file to server
