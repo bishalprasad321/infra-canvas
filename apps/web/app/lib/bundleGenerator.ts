@@ -1,5 +1,6 @@
 import { Node, Edge } from '@xyflow/react';
 import { generateAnsibleYAML } from './exportYaml';
+import { DEFAULT_INSTANCE_PARAMS } from './terraformDefaults';
 
 export interface FileItem {
   path: string;
@@ -64,17 +65,7 @@ provider "aws" {
   // Find Terraform instance node if it exists on canvas to read parameters dynamically
   const instanceNode = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
 
-  const parameters = instanceNode?.data?.parameters as any || {
-    instanceName: "web_server",
-    amiId: "ami-785db401", // LocalStack's mocked EC2 only recognizes its own seeded AMIs
-    instanceType: "t3.medium",
-    subnetId: "subnet-0123456789abcdef0",
-    rootVolumeSize: 50,
-    tags: [
-      { key: "Environment", value: "prod" },
-      { key: "Role", value: "web" }
-    ]
-  };
+  const parameters = (instanceNode?.data?.parameters as any) || DEFAULT_INSTANCE_PARAMS;
 
   const { instanceName, amiId, instanceType, subnetId, rootVolumeSize, tags } = parameters;
 
