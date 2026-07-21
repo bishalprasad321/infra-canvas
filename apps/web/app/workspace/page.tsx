@@ -20,6 +20,7 @@ import useCanvasStore from '../store/useCanvasStore';
 import ReactFlowCanvasNode from '../components/ReactFlowCanvasNode';
 import { generateAnsibleYAML } from '../lib/exportYaml';
 import { downloadZipBundle, generateBundleFiles } from '../lib/bundleGenerator';
+import { DEFAULT_INSTANCE_PARAMS, DEFAULT_SG_PARAMS } from '../lib/terraformDefaults';
 
 // Define layout components inside the workspace directory for encapsulation
 
@@ -971,14 +972,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const [newTagVal, setNewTagVal] = useState('');
   const [showAddTag, setShowAddTag] = useState(false);
 
-  const p = selectedNode?.data?.parameters as any || {
-    instanceName: 'web_server',
-    amiId: 'ami-785db401', // LocalStack's mocked EC2 only recognizes its own seeded AMIs
-    instanceType: 't3.medium',
-    subnetId: 'subnet-0123456789abcdef0',
-    rootVolumeSize: 50,
-    tags: [{ key: 'Environment', value: 'prod' }, { key: 'Role', value: 'web' }]
-  };
+  const p = (selectedNode?.data?.parameters as any) || DEFAULT_INSTANCE_PARAMS;
 
   const handleParameterChange = (key: string, value: any) => {
     if (!selectedNode) return;
@@ -1125,9 +1119,13 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                               onChange={(e) => handleParameterChange('instanceType', e.target.value)}
                               className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
                             >
+                              <option value="t3.micro">t3.micro</option>
+                              <option value="t3.small">t3.small</option>
                               <option value="t3.medium">t3.medium</option>
                               <option value="t3.large">t3.large</option>
                               <option value="m5.large">m5.large</option>
+                              <option value="m5.xlarge">m5.xlarge</option>
+                              <option value="c5.large">c5.large</option>
                             </select>
                             <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
                           </div>
@@ -1577,6 +1575,13 @@ function WorkspaceCanvas() {
       },
     };
 
+    if (id === 'aws_instance.web_server') {
+      newNode.data.parameters = { ...DEFAULT_INSTANCE_PARAMS };
+    }
+    if (id === 'aws_security_group') {
+      newNode.data.parameters = { ...DEFAULT_SG_PARAMS };
+    }
+
     addNode(newNode);
     setSelectedNodeId(newNodeId);
   }, [screenToFlowPosition, addNode, setSelectedNodeId]);
@@ -1911,19 +1916,11 @@ function WorkspaceContent() {
       },
     };
 
-    // If it's a Terraform instance node, add standard parameters
     if (libNode.id === 'aws_instance.web_server') {
-      newNode.data.parameters = {
-        instanceName: 'web_server',
-        amiId: 'ami-785db401', // LocalStack's mocked EC2 only recognizes its own seeded AMIs
-        instanceType: 't3.medium',
-        subnetId: 'subnet-0123456789abcdef0',
-        rootVolumeSize: 50,
-        tags: [
-          { key: 'Environment', value: 'prod' },
-          { key: 'Role', value: 'web' }
-        ]
-      };
+      newNode.data.parameters = { ...DEFAULT_INSTANCE_PARAMS };
+    }
+    if (libNode.id === 'aws_security_group') {
+      newNode.data.parameters = { ...DEFAULT_SG_PARAMS };
     }
 
     // Call store action
