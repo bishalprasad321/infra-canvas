@@ -72,6 +72,27 @@ func extractRepositoryConfig(canvasJSON string) RepositoryConfig {
 	return cfg
 }
 
+// registerLocalStackAMI registers a dummy AMI in LocalStack and returns the assigned AMI ID.
+// LocalStack 3.x does not pre-seed any AMIs, so Terraform fails with "couldn't find resource"
+// unless we register one before running terraform apply.
+func registerLocalStackAMI(localstackHost string) (string, error) {
+	endpoint := fmt.Sprintf("http://%s:4566/", localstackHost)
+	body := "Action=RegisterImage&Name=infracanvas-ami&RootDeviceName=%2Fdev%2Fsda1&Version=2016-11-15"
+	cmd := exec.Command("curl", "-s", "-X", "POST", endpoint,
+		"-H", "Content-Type: application/x-www-form-urlencoded",
+		"-d", body)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("curl failed: %w", err)
+	}
+	re := regexp.MustCompile(`<imageId>(ami-[a-f0-9]+)</imageId>`)
+	m := re.FindSubmatch(out)
+	if len(m) < 2 {
+		return "", fmt.Errorf("could not parse AMI ID from LocalStack response: %s", string(out))
+	}
+	return string(m[1]), nil
+}
+
 // Spawns a command, scans output line-by-line, and streams it with timestamps to logChan
 func spawnCommand(name string, args []string, dir string, env []string, logChan chan<- string) error {
 	ts := time.Now().Format("2006-01-02 15:04:05.000")
@@ -336,6 +357,20 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 		if isDocker {
 			emit("[RUNNER] Ensuring LocalStack S3 state bucket exists...")
 			_ = spawnCommand("curl", []string{"-X", "PUT", fmt.Sprintf("http://%s:4566/infracanvas-state-bucket", localstackHost)}, runDir, nil, logChan)
+
+			// LocalStack 3.x has no pre-seeded AMIs — register a dummy one and patch main.tf
+			emit("[RUNNER] Pre-registering dummy AMI in LocalStack...")
+			if amiID, err := registerLocalStackAMI(localstackHost); err != nil {
+				emit(fmt.Sprintf("[RUNNER] Warning: AMI pre-registration failed: %v", err))
+			} else {
+				emit(fmt.Sprintf("[RUNNER] Registered LocalStack AMI: %s — patching main.tf", amiID))
+				mainTfPath := filepath.Join(tfDir, "main.tf")
+				if content, err := os.ReadFile(mainTfPath); err == nil {
+					re := regexp.MustCompile(`ami\s*=\s*"[^"]*"`)
+					patched := re.ReplaceAllString(string(content), fmt.Sprintf(`ami = "%s"`, amiID))
+					_ = os.WriteFile(mainTfPath, []byte(patched), 0644)
+				}
+			}
 		}
 
 		if err := spawnCommand("terraform", []string{"init"}, tfDir, tfEnv, logChan); err != nil {
