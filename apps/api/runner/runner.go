@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -134,10 +135,16 @@ func RunPipeline(
 	runID string,
 	canvasJSON string,
 	files []FileItem,
+	action string,
+	autoDestroy bool,
 	logChan chan<- string,
 	onComplete func(status string, logs string),
 ) {
-	runDir := fmt.Sprintf("/tmp/run_%s", runID)
+	isDocker := os.Getenv("IS_DOCKER") == "true"
+	runDir := "/app/data/workspace/current"
+	if !isDocker {
+		runDir = "./data/workspace/current"
+	}
 	accumulatedLogs := ""
 
 	// Helper to emit logs with prepended timestamps
@@ -157,18 +164,88 @@ func RunPipeline(
 
 	defer func() {
 		close(logChan)
-		_ = os.RemoveAll(runDir)
+		// We preserve runDir to keep terraform state and cached providers.
+		// No global RemoveAll(runDir) here.
 	}()
 
-	emit(fmt.Sprintf("[RUNNER] Starting pipeline run %s", runID))
-	emit("[RUNNER] Compiling visual canvas into infrastructure code...")
+	emit(fmt.Sprintf("[RUNNER] Starting pipeline run %s (Action: %s, Auto-Cleanup: %t)", runID, action, autoDestroy))
 
-	isDocker := os.Getenv("IS_DOCKER") == "true"
 	localstackHost := "localhost"
 	if isDocker {
 		localstackHost = "localstack"
 	}
 
+	// Parse canvas dynamically to check which phases to execute based on node.data.tech
+	var canvas struct {
+		Nodes []struct {
+			ID   string `json:"id"`
+			Data struct {
+				Tech string `json:"tech"`
+			} `json:"data"`
+		} `json:"nodes"`
+	}
+	hasTfNodes := false
+	hasAnsibleNodes := false
+	hasK8sNodes := false
+
+	if err := json.Unmarshal([]byte(canvasJSON), &canvas); err == nil {
+		for _, node := range canvas.Nodes {
+			if node.Data.Tech == "Terraform" {
+				hasTfNodes = true
+			}
+			if node.Data.Tech == "Ansible" {
+				hasAnsibleNodes = true
+			}
+			if node.Data.Tech == "Kubernetes" {
+				hasK8sNodes = true
+			}
+		}
+	} else {
+		emit(fmt.Sprintf("[WARNING] Canvas JSON parsing failed: %v. Running all phases.", err))
+		hasTfNodes = true
+		hasAnsibleNodes = true
+		hasK8sNodes = true
+	}
+
+	emit(fmt.Sprintf("[RUNNER_DEBUG] parsed hasTfNodes=%t, hasAnsibleNodes=%t, hasK8sNodes=%t", hasTfNodes, hasAnsibleNodes, hasK8sNodes))
+
+	verboseMode := os.Getenv("VERBOSE") == "true"
+	tfEnv := []string{
+		"AWS_ACCESS_KEY_ID=test",
+		"AWS_SECRET_ACCESS_KEY=test",
+		"AWS_DEFAULT_REGION=us-east-1",
+	}
+	if verboseMode {
+		tfEnv = append(tfEnv, "TF_LOG=INFO")
+	}
+	tfDir := filepath.Join(runDir, "terraform")
+
+	// ==========================================
+	// ACTION: DESTROY
+	// ==========================================
+	if action == "destroy" {
+		if hasTfNodes && fileExists(filepath.Join(tfDir, "main.tf")) {
+			emit("\n=========================================")
+			emit("[PHASE DESTROY] AWS Teardown (Terraform)")
+			emit("=========================================\n")
+
+			if err := spawnCommand("terraform", []string{"destroy", "-auto-approve"}, tfDir, tfEnv, logChan); err != nil {
+				emit(fmt.Sprintf("[ERROR] Terraform destroy failed: %v", err))
+				onComplete("FAILED", accumulatedLogs)
+				return
+			}
+		} else {
+			emit("[RUNNER] No active Terraform configurations found. Skip teardown.")
+		}
+
+		emit("\n[RUNNER] Infrastructure tear-down completed successfully!")
+		onComplete("SUCCESS", accumulatedLogs)
+		return
+	}
+
+	// ==========================================
+	// ACTION: DEPLOY (DEFAULT)
+	// ==========================================
 	// 1. Write the code bundle files to disk
 	for _, file := range files {
 		fullPath := filepath.Join(runDir, file.Path)
@@ -188,17 +265,20 @@ func RunPipeline(
 		}
 
 		if file.Path == "ansible/hosts.ini" && isDocker {
-			content = `[webservers]
+			if !hasTfNodes {
+				content = strings.ReplaceAll(`[webservers]
 ubuntu_ssh_1 ansible_host=ubuntu_ssh_1 ansible_port=22 ansible_user=ubuntu
 ubuntu_ssh_2 ansible_host=ubuntu_ssh_2 ansible_port=22 ansible_user=ubuntu
 
-[all:vars]
-ansible_python_interpreter=/usr/bin/python3`
+[all__COLON__vars]
+ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
+			} else {
+				re := regexp.MustCompile(`aws_instance\.[a-zA-Z0-9_-]+\.public_ip`)
+				content = re.ReplaceAllString(content, "ubuntu_ssh_1")
+			}
 		}
 
 		if file.Path == "ansible/playbook.yml" {
-			// The "Deploy Node App" task copies the repo cloned in Phase 00 (see below) from
-			// this control node to the remote target; substitute in its real path here.
 			appDir := filepath.Join(runDir, "app")
 			content = strings.ReplaceAll(content, "__APP_SRC_DIR__", appDir)
 		}
@@ -209,44 +289,6 @@ ansible_python_interpreter=/usr/bin/python3`
 			return
 		}
 		emit(fmt.Sprintf("[COMPILER] Created %s", file.Path))
-	}
-
-	// Parse canvas to check which phases to execute
-	var canvas struct {
-		Nodes []struct {
-			ID   string      `json:"id"`
-			Data interface{} `json:"data"`
-		} `json:"nodes"`
-	}
-	hasTfNodes := false
-	hasAnsibleNodes := false
-	hasK8sNodes := false
-
-	if err := json.Unmarshal([]byte(canvasJSON), &canvas); err == nil {
-		for _, node := range canvas.Nodes {
-			idLower := strings.ToLower(node.ID)
-			if strings.Contains(idLower, "aws_instance") || strings.Contains(idLower, "terraform") {
-				hasTfNodes = true
-			}
-			if strings.Contains(idLower, "ansible") || strings.Contains(idLower, "nginx") || strings.Contains(idLower, "postgresql") || strings.Contains(idLower, "open-port") || strings.Contains(idLower, "update-packages") || strings.Contains(idLower, "copy-env") {
-				hasAnsibleNodes = true
-			}
-			if strings.Contains(idLower, "k8s") || strings.Contains(idLower, "kubernetes") {
-				hasK8sNodes = true
-			}
-		}
-	} else {
-		emit(fmt.Sprintf("[WARNING] Canvas JSON parsing failed: %v. Running all phases.", err))
-		hasTfNodes = true
-		hasAnsibleNodes = true
-		hasK8sNodes = true
-	}
-
-	// Read verbosity configurations from environment variables
-	verboseMode := os.Getenv("VERBOSE") == "true"
-	var tfEnv []string
-	if verboseMode {
-		tfEnv = []string{"TF_LOG=INFO"}
 	}
 
 	// Phase 0: Source Code (Clone Repository)
@@ -261,6 +303,9 @@ ansible_python_interpreter=/usr/bin/python3`
 			branch = "main"
 		}
 		appDir := filepath.Join(runDir, "app")
+		// Clean app dir if it exists to refresh clone
+		_ = os.RemoveAll(appDir)
+
 		cloneArgs := []string{"clone", "--branch", branch, "--depth", "1", repoConfig.URL, appDir}
 		if err := spawnCommand("git", cloneArgs, runDir, nil, logChan); err != nil {
 			emit(fmt.Sprintf("[ERROR] Failed to clone repository %s (branch %s): %v", repoConfig.URL, branch, err))
@@ -273,12 +318,25 @@ ansible_python_interpreter=/usr/bin/python3`
 		emit("\n[PHASE 00] Skipped (No Code Repository node present on canvas)")
 	}
 
+	// Ensure the app directory exists so Ansible's copy module doesn't throw a fatal error
+	// in case the git clone phase was skipped.
+	appDir := filepath.Join(runDir, "app")
+	if !fileExists(appDir) {
+		_ = os.MkdirAll(appDir, 0755)
+		_ = os.WriteFile(filepath.Join(appDir, "placeholder.txt"), []byte("placeholder"), 0644)
+	}
+
 	// Phase 1: Terraform (Provisioning)
-	tfDir := filepath.Join(runDir, "terraform")
 	if hasTfNodes && fileExists(filepath.Join(tfDir, "main.tf")) {
 		emit("\n=========================================")
 		emit("[PHASE 01] AWS Provisioning (LocalStack)")
 		emit("=========================================\n")
+
+		// Pre-create S3 state bucket in LocalStack
+		if isDocker {
+			emit("[RUNNER] Ensuring LocalStack S3 state bucket exists...")
+			_ = spawnCommand("curl", []string{"-X", "PUT", fmt.Sprintf("http://%s:4566/infracanvas-state-bucket", localstackHost)}, runDir, nil, logChan)
+		}
 
 		if err := spawnCommand("terraform", []string{"init"}, tfDir, tfEnv, logChan); err != nil {
 			emit(fmt.Sprintf("[ERROR] Terraform init failed: %v", err))
@@ -290,12 +348,36 @@ ansible_python_interpreter=/usr/bin/python3`
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
+
+		// Resolve public IP in hosts.ini for production mode
+		if !isDocker {
+			hostsPath := filepath.Join(runDir, "ansible", "hosts.ini")
+			if fileExists(hostsPath) {
+				hostsBytes, err := os.ReadFile(hostsPath)
+				if err == nil {
+					hostsContent := string(hostsBytes)
+					cmd := exec.Command("terraform", "output", "-raw", "web_server_public_ip")
+					cmd.Dir = tfDir
+					cmd.Env = append(os.Environ(), tfEnv...)
+					if out, err := cmd.Output(); err == nil {
+						publicIP := strings.TrimSpace(string(out))
+						if publicIP != "" && !strings.Contains(publicIP, "No outputs") {
+							re := regexp.MustCompile(`aws_instance\.[a-zA-Z0-9_-]+\.public_ip`)
+							hostsContent = re.ReplaceAllString(hostsContent, publicIP)
+							_ = os.WriteFile(hostsPath, []byte(hostsContent), 0644)
+							emit(fmt.Sprintf("[RUNNER] Resolved production hosts.ini: replaced placeholder with public IP %s", publicIP))
+						}
+					}
+				}
+			}
+		}
 	} else {
 		emit("\n[PHASE 01] Skipped (No Terraform provisioning nodes present on canvas)")
 	}
 
 	// Phase 2: Ansible (Configuration)
 	ansibleDir := filepath.Join(runDir, "ansible")
+	emit(fmt.Sprintf("[RUNNER_DEBUG] ansibleDir=%s, playbook exists=%t", ansibleDir, fileExists(filepath.Join(ansibleDir, "playbook.yml"))))
 	if hasAnsibleNodes && fileExists(filepath.Join(ansibleDir, "playbook.yml")) {
 		emit("\n=========================================")
 		emit("[PHASE 02] Server Configuration (Ansible Sandbox)")
@@ -366,6 +448,14 @@ ansible_python_interpreter=/usr/bin/python3`
 		}
 	} else {
 		emit("\n[PHASE 03] Skipped (No Kubernetes deployment nodes present on canvas)")
+	}
+
+	// Optional Ephemeral Clean-up
+	if autoDestroy && hasTfNodes && fileExists(filepath.Join(tfDir, "main.tf")) {
+		emit("\n=========================================")
+		emit("[PHASE CLEANUP] Ephemeral Auto-Destruction")
+		emit("=========================================\n")
+		_ = spawnCommand("terraform", []string{"destroy", "-auto-approve"}, tfDir, tfEnv, logChan)
 	}
 
 	emit("\n[RUNNER] Pipeline execution completed successfully!")
