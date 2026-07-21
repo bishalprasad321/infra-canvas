@@ -22,7 +22,20 @@ export function generateBundleFiles(nodes: Node[], edges: Edge[]): FileItem[] {
   // The literal "http://localhost:4566" below is swapped for the in-Docker LocalStack
   // hostname by the Go runner (apps/api/runner/runner.go) when running in a container.
   const providerBlock = environment === 'localstack'
-    ? `provider "aws" {
+    ? `terraform {
+  backend "s3" {
+    bucket                      = "infracanvas-state-bucket"
+    key                         = "terraform.tfstate"
+    region                      = "${awsRegion}"
+    endpoints                   = { s3 = "http://localhost:4566" }
+    use_path_style              = true
+    skip_credentials_validation = true
+    skip_metadata_api_check     = true
+    skip_requesting_account_id  = true
+  }
+}
+
+provider "aws" {
   region                      = "${awsRegion}"
   access_key                  = "test"
   secret_key                  = "test"
@@ -36,12 +49,20 @@ export function generateBundleFiles(nodes: Node[], edges: Edge[]): FileItem[] {
     s3  = "http://localhost:4566"
   }
 }`
-    : `provider "aws" {
+    : `terraform {
+  backend "s3" {
+    bucket = "infracanvas-state-bucket"
+    key    = "terraform.tfstate"
+    region = "${awsRegion}"
+  }
+}
+
+provider "aws" {
   region = "${awsRegion}"
 }`;
 
   // Find Terraform instance node if it exists on canvas to read parameters dynamically
-  const instanceNode = nodes.find(n => n.id === 'aws_instance.web_server');
+  const instanceNode = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
 
   const parameters = instanceNode?.data?.parameters as any || {
     instanceName: "web_server",
@@ -149,10 +170,11 @@ output "web_server_public_ip" {
 
   // 5. Generate hosts.ini
   // TODO: The hosts.ini inventory file is a static placeholder. It should be dynamically constructed using inventory definitions and host variables defined on the workspace canvas.
+  const colon = ':';
   const hostsIniContent = `[webservers]
 web_server_1 ansible_host=aws_instance.${instanceName}.public_ip ansible_user=ubuntu
 
-[all\${":"}vars]
+[all${colon}vars]
 ansible_python_interpreter=/usr/bin/python3`;
 
   // 6. Generate deployment.yaml (Kubernetes)
