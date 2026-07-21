@@ -179,28 +179,42 @@ export async function downloadTerraformZip(nodes: Node[]): Promise<void> {
 }
 
 export function generateBundleFiles(nodes: Node[], edges: Edge[]): FileItem[] {
-  // Reuse the extracted Terraform generator — single source of truth
-  const { mainTf: mainTfContent, variablesTf: variablesTfContent, outputsTf: outputsTfContent } = generateTerraformFiles(nodes);
+  const hasTerraform = nodes.some(n => n.data?.tech === 'Terraform');
+  const hasAnsible = nodes.some(n => n.data?.tech === 'Ansible');
+  const hasKubernetes = nodes.some(n => n.data?.tech === 'Kubernetes');
 
-  // Read instanceName for hosts.ini (fallback to default)
-  const instanceNode = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
-  const instanceName = ((instanceNode?.data?.parameters as any) || DEFAULT_INSTANCE_PARAMS).instanceName;
+  const countLines = (str: string) => str.split('\n').length;
+  const getSizeKb = (str: string) => `${(str.length / 1024).toFixed(1)} KB`;
 
-  // 4. Generate playbook.yml (dynamic Ansible playbook)
-  const playbookYmlContent = generateAnsibleYAML(nodes, edges);
+  const files: FileItem[] = [];
 
-  // 5. Generate hosts.ini
-  // TODO: The hosts.ini inventory file is a static placeholder. It should be dynamically constructed using inventory definitions and host variables defined on the workspace canvas.
-  const colon = ':';
-  const hostsIniContent = `[webservers]
+  if (hasTerraform) {
+    const { mainTf, variablesTf, outputsTf } = generateTerraformFiles(nodes);
+    files.push(
+      { path: 'terraform/main.tf', name: 'main.tf', language: 'HCL', icon: 'lucide:file', iconColor: 'text-primary', lines: countLines(mainTf), size: getSizeKb(mainTf), content: mainTf },
+      { path: 'terraform/variables.tf', name: 'variables.tf', language: 'HCL', icon: 'lucide:file', iconColor: 'text-muted-foreground', lines: countLines(variablesTf), size: getSizeKb(variablesTf), content: variablesTf },
+      { path: 'terraform/outputs.tf', name: 'outputs.tf', language: 'HCL', icon: 'lucide:file', iconColor: 'text-muted-foreground', lines: countLines(outputsTf), size: getSizeKb(outputsTf), content: outputsTf },
+    );
+  }
+
+  if (hasAnsible) {
+    const instanceNode = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
+    const instanceName = ((instanceNode?.data?.parameters as any) || DEFAULT_INSTANCE_PARAMS).instanceName;
+    const playbookYml = generateAnsibleYAML(nodes, edges);
+    const colon = ':';
+    const hostsIni = `[webservers]
 web_server_1 ansible_host=aws_instance.${instanceName}.public_ip ansible_user=ubuntu
 
 [all${colon}vars]
 ansible_python_interpreter=/usr/bin/python3`;
+    files.push(
+      { path: 'ansible/playbook.yml', name: 'playbook.yml', language: 'YAML', icon: 'lucide:clipboard', iconColor: 'text-[#00A4FF]', lines: countLines(playbookYml), size: getSizeKb(playbookYml), content: playbookYml },
+      { path: 'ansible/hosts.ini', name: 'hosts.ini', language: 'INI', icon: 'lucide:settings', iconColor: 'text-muted-foreground', lines: countLines(hostsIni), size: getSizeKb(hostsIni), content: hostsIni },
+    );
+  }
 
-  // 6. Generate deployment.yaml (Kubernetes)
-  // TODO: The deployment.yaml Kubernetes manifest is entirely static. Implement a dynamic Kubernetes YAML compiler that reads specs (e.g. replicas, containers, labels) from the visual Kubernetes nodes on the canvas.
-  const deploymentYamlContent = `apiVersion: apps/v1
+  if (hasKubernetes) {
+    const deploymentYaml = `apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: web-server-deployment
@@ -221,96 +235,27 @@ spec:
         image: nginx:1.21
         ports:
         - containerPort: 80`;
+    files.push(
+      { path: 'k8s/deployment.yaml', name: 'deployment.yaml', language: 'YAML', icon: 'lucide:layers', iconColor: 'text-[#326CE5]', lines: countLines(deploymentYaml), size: getSizeKb(deploymentYaml), content: deploymentYaml },
+    );
+  }
 
-  // 7. Generate README.md
+  const techList = [hasTerraform && 'Terraform', hasAnsible && 'Ansible', hasKubernetes && 'Kubernetes'].filter(Boolean).join(', ');
   const readmeContent = `# InfraFlow Generated Bundle
 
 This bundle contains the generated infrastructure code for **Project Alpha - Web-Server-Orchestration**.
 
-## Structure
-- \`terraform/\`: Infrastructure provisioning scripts
-- \`ansible/\`: Configuration management playbooks
-- \`k8s/\`: Kubernetes deployment manifests
+## Technologies
+${techList || 'No technologies configured on canvas yet.'}
 
 ## Usage
-1. Initialize and apply Terraform: \`cd terraform && terraform init && terraform apply\`
-2. Run Ansible playbook: \`cd ansible && ansible-playbook -i hosts.ini playbook.yml\``;
+${hasTerraform ? '1. Initialize and apply Terraform: `cd terraform && terraform init && terraform apply`\n' : ''}${hasAnsible ? '2. Run Ansible playbook: `cd ansible && ansible-playbook -i hosts.ini playbook.yml`\n' : ''}${hasKubernetes ? '3. Apply Kubernetes manifests: `kubectl apply -f k8s/`\n' : ''}`;
 
-  const countLines = (str: string) => str.split('\n').length;
-  const getSizeKb = (str: string) => `${(str.length / 1024).toFixed(1)} KB`;
+  files.push(
+    { path: 'README.md', name: 'README.md', language: 'Markdown', icon: 'lucide:file', iconColor: 'text-muted-foreground', lines: countLines(readmeContent), size: getSizeKb(readmeContent), content: readmeContent },
+  );
 
-  return [
-    {
-      path: 'terraform/main.tf',
-      name: 'main.tf',
-      language: 'HCL',
-      icon: 'lucide:file',
-      iconColor: 'text-primary',
-      lines: countLines(mainTfContent),
-      size: getSizeKb(mainTfContent),
-      content: mainTfContent
-    },
-    {
-      path: 'terraform/variables.tf',
-      name: 'variables.tf',
-      language: 'HCL',
-      icon: 'lucide:file',
-      iconColor: 'text-muted-foreground',
-      lines: countLines(variablesTfContent),
-      size: getSizeKb(variablesTfContent),
-      content: variablesTfContent
-    },
-    {
-      path: 'terraform/outputs.tf',
-      name: 'outputs.tf',
-      language: 'HCL',
-      icon: 'lucide:file',
-      iconColor: 'text-muted-foreground',
-      lines: countLines(outputsTfContent),
-      size: getSizeKb(outputsTfContent),
-      content: outputsTfContent
-    },
-    {
-      path: 'ansible/playbook.yml',
-      name: 'playbook.yml',
-      language: 'YAML',
-      icon: 'lucide:clipboard',
-      iconColor: 'text-[#00A4FF]',
-      lines: countLines(playbookYmlContent),
-      size: getSizeKb(playbookYmlContent),
-      content: playbookYmlContent
-    },
-    {
-      path: 'ansible/hosts.ini',
-      name: 'hosts.ini',
-      language: 'INI',
-      icon: 'lucide:settings',
-      iconColor: 'text-muted-foreground',
-      lines: countLines(hostsIniContent),
-      size: getSizeKb(hostsIniContent),
-      content: hostsIniContent
-    },
-    {
-      path: 'k8s/deployment.yaml',
-      name: 'deployment.yaml',
-      language: 'YAML',
-      icon: 'lucide:layers',
-      iconColor: 'text-[#326CE5]',
-      lines: countLines(deploymentYamlContent),
-      size: getSizeKb(deploymentYamlContent),
-      content: deploymentYamlContent
-    },
-    {
-      path: 'README.md',
-      name: 'README.md',
-      language: 'Markdown',
-      icon: 'lucide:file',
-      iconColor: 'text-muted-foreground',
-      lines: countLines(readmeContent),
-      size: getSizeKb(readmeContent),
-      content: readmeContent
-    }
-  ];
+  return files;
 }
 
 export async function downloadZipBundle(nodes: Node[], edges: Edge[]): Promise<void> {
