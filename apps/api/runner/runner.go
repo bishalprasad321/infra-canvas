@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -264,12 +265,17 @@ func RunPipeline(
 		}
 
 		if file.Path == "ansible/hosts.ini" && isDocker {
-			content = `[webservers]
+			if !hasTfNodes {
+				content = strings.ReplaceAll(`[webservers]
 ubuntu_ssh_1 ansible_host=ubuntu_ssh_1 ansible_port=22 ansible_user=ubuntu
 ubuntu_ssh_2 ansible_host=ubuntu_ssh_2 ansible_port=22 ansible_user=ubuntu
 
-[all:vars]
-ansible_python_interpreter=/usr/bin/python3`
+[all__COLON__vars]
+ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
+			} else {
+				re := regexp.MustCompile(`aws_instance\.[a-zA-Z0-9_-]+\.public_ip`)
+				content = re.ReplaceAllString(content, "ubuntu_ssh_1")
+			}
 		}
 
 		if file.Path == "ansible/playbook.yml" {
@@ -341,6 +347,29 @@ ansible_python_interpreter=/usr/bin/python3`
 			emit(fmt.Sprintf("[ERROR] Terraform apply failed: %v", err))
 			onComplete("FAILED", accumulatedLogs)
 			return
+		}
+
+		// Resolve public IP in hosts.ini for production mode
+		if !isDocker {
+			hostsPath := filepath.Join(runDir, "ansible", "hosts.ini")
+			if fileExists(hostsPath) {
+				hostsBytes, err := os.ReadFile(hostsPath)
+				if err == nil {
+					hostsContent := string(hostsBytes)
+					cmd := exec.Command("terraform", "output", "-raw", "web_server_public_ip")
+					cmd.Dir = tfDir
+					cmd.Env = append(os.Environ(), tfEnv...)
+					if out, err := cmd.Output(); err == nil {
+						publicIP := strings.TrimSpace(string(out))
+						if publicIP != "" && !strings.Contains(publicIP, "No outputs") {
+							re := regexp.MustCompile(`aws_instance\.[a-zA-Z0-9_-]+\.public_ip`)
+							hostsContent = re.ReplaceAllString(hostsContent, publicIP)
+							_ = os.WriteFile(hostsPath, []byte(hostsContent), 0644)
+							emit(fmt.Sprintf("[RUNNER] Resolved production hosts.ini: replaced placeholder with public IP %s", publicIP))
+						}
+					}
+				}
+			}
 		}
 	} else {
 		emit("\n[PHASE 01] Skipped (No Terraform provisioning nodes present on canvas)")
