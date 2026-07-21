@@ -19,7 +19,7 @@ import { clsx } from 'clsx';
 import useCanvasStore from '../store/useCanvasStore';
 import ReactFlowCanvasNode from '../components/ReactFlowCanvasNode';
 import { generateAnsibleYAML } from '../lib/exportYaml';
-import { downloadZipBundle, generateBundleFiles } from '../lib/bundleGenerator';
+import { downloadZipBundle, downloadTerraformZip, generateBundleFiles } from '../lib/bundleGenerator';
 import { DEFAULT_INSTANCE_PARAMS, DEFAULT_SG_PARAMS } from '../lib/terraformDefaults';
 
 // Define layout components inside the workspace directory for encapsulation
@@ -2021,32 +2021,7 @@ function WorkspaceContent() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } else if (format === 'tf') {
-      // Find dynamic parameters
-      const instanceNode = nodes.find(n => n.id === 'aws_instance.web_server');
-      const p = instanceNode?.data?.parameters as any || {
-        instanceName: 'web_server',
-        amiId: 'ami-785db401', // LocalStack's mocked EC2 only recognizes its own seeded AMIs
-        instanceType: 't3.medium',
-        subnetId: 'subnet-0123456789abcdef0',
-        rootVolumeSize: 50,
-        tags: [{ key: 'Environment', value: 'prod' }, { key: 'Role', value: 'web' }]
-      };
-      
-      const tfContent = `# Generated Terraform file
-resource "aws_instance" "${p.instanceName}" {
-  ami           = "${p.amiId}"
-  instance_type = "${p.instanceType}"
-  subnet_id     = "${p.subnetId}"
-}`;
-      const blob = new Blob([tfContent], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'main.tf';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      await downloadTerraformZip(nodes);
     } else if (format === 'json') {
       const k8sContent = {
         apiVersion: "apps/v1",
