@@ -1,6 +1,6 @@
 import { Node, Edge } from '@xyflow/react';
 import { generateAnsibleYAML } from './exportYaml';
-import { DEFAULT_INSTANCE_PARAMS } from './terraformDefaults';
+import { DEFAULT_INSTANCE_PARAMS, DEFAULT_SG_PARAMS } from './terraformDefaults';
 
 export interface FileItem {
   path: string;
@@ -67,6 +67,10 @@ provider "aws" {
 
   const parameters = (instanceNode?.data?.parameters as any) || DEFAULT_INSTANCE_PARAMS;
 
+  const sgNode = nodes.find(n => n.id.startsWith('aws_security_group'));
+  const sgParams = (sgNode?.data?.parameters as any) || DEFAULT_SG_PARAMS;
+  const { sgName, httpPort, httpsPort, sshEnabled, allowedCidr } = sgParams;
+
   const { instanceName, amiId, instanceType, subnetId, rootVolumeSize, tags } = parameters;
 
   // LocalStack's default VPC/subnet IDs are randomly regenerated every time the container
@@ -96,23 +100,30 @@ ${providerBlock}
 
 ${subnetBlock}
 
-resource "aws_security_group" "web_sg" {
-  name        = "web_sg"
+resource "aws_security_group" "${sgName}" {
+  name        = "${sgName}"
   description = "Allows HTTP/HTTPS inbound & SSH access"
 
   ingress {
-    from_port   = 80
-    to_port     = 80
+    from_port   = ${httpPort}
+    to_port     = ${httpPort}
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["${allowedCidr}"]
   }
 
   ingress {
-    from_port   = 443
-    to_port     = 443
+    from_port   = ${httpsPort}
+    to_port     = ${httpsPort}
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+    cidr_blocks = ["${allowedCidr}"]
+  }${sshEnabled ? `
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["${allowedCidr}"]
+  }` : ''}
 }
 
 resource "aws_instance" "${instanceName}" {
@@ -120,7 +131,7 @@ resource "aws_instance" "${instanceName}" {
   instance_type = "${instanceType}"
   subnet_id     = ${subnetIdExpr}
 
-  vpc_security_group_ids = [aws_security_group.web_sg.id]
+  vpc_security_group_ids = [aws_security_group.${sgName}.id]
 
   root_block_device {
     volume_size = ${rootVolumeSize}

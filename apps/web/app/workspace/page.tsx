@@ -973,14 +973,19 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const [showAddTag, setShowAddTag] = useState(false);
 
   const p = (selectedNode?.data?.parameters as any) || DEFAULT_INSTANCE_PARAMS;
+  const sg = (selectedNode?.data?.parameters as any) || DEFAULT_SG_PARAMS;
 
   const handleParameterChange = (key: string, value: any) => {
     if (!selectedNode) return;
     updateNodeData(selectedNode.id, {
-      parameters: {
-        ...p,
-        [key]: value
-      }
+      parameters: { ...p, [key]: value }
+    });
+  };
+
+  const handleSgChange = (key: string, value: any) => {
+    if (!selectedNode) return;
+    updateNodeData(selectedNode.id, {
+      parameters: { ...sg, [key]: value }
     });
   };
 
@@ -1392,8 +1397,73 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     </div>
                   )}
 
-                  {/* 3. STATIC / MOCK NODES */}
-                  {selectedNode.data.tech !== 'Ansible' && selectedNode.data.tech !== 'Source' && selectedNode.data.tech !== 'Target' && !selectedNode.id.startsWith('aws_instance.web_server') && (
+                  {/* 3. SECURITY GROUP NODE PARAMETERS */}
+                  {selectedNode.id.startsWith('aws_security_group') && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Security Group Name</label>
+                        <input
+                          type="text"
+                          value={sg.sgName}
+                          onChange={(e) => handleSgChange('sgName', e.target.value)}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">HTTP Port</label>
+                          <input
+                            type="number"
+                            value={sg.httpPort}
+                            onChange={(e) => handleSgChange('httpPort', parseInt(e.target.value))}
+                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">HTTPS Port</label>
+                          <input
+                            type="number"
+                            value={sg.httpsPort}
+                            onChange={(e) => handleSgChange('httpsPort', parseInt(e.target.value))}
+                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Allowed CIDR</label>
+                        <input
+                          type="text"
+                          value={sg.allowedCidr}
+                          onChange={(e) => handleSgChange('allowedCidr', e.target.value)}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between bg-muted border border-border rounded-lg px-3 py-2.5">
+                        <div>
+                          <p className="text-xs font-semibold text-foreground">Enable SSH Access</p>
+                          <p className="text-[10px] text-muted-foreground">Opens port 22 (TCP)</p>
+                        </div>
+                        <button
+                          onClick={() => handleSgChange('sshEnabled', !sg.sshEnabled)}
+                          className={clsx(
+                            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none",
+                            sg.sshEnabled ? "bg-primary" : "bg-muted-foreground/30"
+                          )}
+                        >
+                          <span className={clsx(
+                            "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200",
+                            sg.sshEnabled ? "translate-x-4" : "translate-x-0"
+                          )} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4. STATIC / MOCK NODES */}
+                  {selectedNode.data.tech !== 'Ansible' && selectedNode.data.tech !== 'Source' && selectedNode.data.tech !== 'Target' && !selectedNode.id.startsWith('aws_instance.web_server') && !selectedNode.id.startsWith('aws_security_group') && (
                     <div className="text-center py-6 text-muted-foreground text-xs select-none">
                       No custom parameters defined for this mock infrastructure block.
                     </div>
