@@ -116,7 +116,7 @@ data "aws_subnets" "default" {
       // Check if a custom security group exists to link it, else default to aws_security_group.web_sg.id
       const hasSg = tfNodes.some(n => n.id.startsWith('aws_security_group'));
       const sgLink = hasSg
-        ? `aws_security_group.${tfNodes.find(n => n.id.startsWith('aws_security_group'))?.data?.parameters?.sgName || 'web_sg'}.id`
+        ? `aws_security_group.${((tfNodes.find(n => n.id.startsWith('aws_security_group'))?.data) as any)?.parameters?.sgName || 'web_sg'}.id`
         : 'aws_security_group.web_sg.id';
 
       tfResourcesBlock += `resource "aws_instance" "${name}" {
