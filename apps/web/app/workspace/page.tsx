@@ -10,7 +10,9 @@ import {
   useReactFlow,
   Connection,
   Edge,
-  Node
+  Node,
+  NodeChange,
+  EdgeChange
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Icon } from '@iconify/react';
@@ -2553,6 +2555,31 @@ function WorkspaceCanvas({ deployStatus }: { deployStatus: string }) {
   
   const { screenToFlowPosition, fitView } = useReactFlow();
 
+  const isReadOnly = deployStatus === 'PENDING' || deployStatus === 'RUNNING';
+
+  const handleNodesChange = useCallback((changes: NodeChange[]) => {
+    if (isReadOnly) {
+      const filtered = changes.filter(c => c.type !== 'remove');
+      onNodesChange(filtered);
+    } else {
+      onNodesChange(changes);
+    }
+  }, [onNodesChange, isReadOnly]);
+
+  const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
+    if (isReadOnly) {
+      const filtered = changes.filter(c => c.type !== 'remove');
+      onEdgesChange(filtered);
+    } else {
+      onEdgesChange(changes);
+    }
+  }, [onEdgesChange, isReadOnly]);
+
+  const handleConnect = useCallback((params: Connection) => {
+    if (isReadOnly) return;
+    onConnect(params);
+  }, [onConnect, isReadOnly]);
+
   const nodeTypes = useMemo(() => ({ customNode: ReactFlowCanvasNode }), []);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -2613,8 +2640,6 @@ function WorkspaceCanvas({ deployStatus }: { deployStatus: string }) {
     setSelectedNodeId(newNodeId);
   }, [screenToFlowPosition, addNode, setSelectedNodeId, deployStatus]);
 
-  const isReadOnly = deployStatus === 'PENDING' || deployStatus === 'RUNNING';
-
   return (
     <div 
       className="flex-grow h-full relative" 
@@ -2624,9 +2649,9 @@ function WorkspaceCanvas({ deployStatus }: { deployStatus: string }) {
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
+        onNodesChange={handleNodesChange}
+        onEdgesChange={handleEdgesChange}
+        onConnect={handleConnect}
         nodeTypes={nodeTypes}
         onNodeClick={(_, node) => setSelectedNodeId(node.id)}
         onPaneClick={() => setSelectedNodeId(null)}
@@ -2717,6 +2742,12 @@ function WorkspaceContent() {
       }
     };
   }, []);
+
+  // Sync execution status to the canvas store
+  useEffect(() => {
+    const isExecuting = deployStatus === 'PENDING' || deployStatus === 'RUNNING';
+    useCanvasStore.getState().setIsExecuting(isExecuting);
+  }, [deployStatus]);
 
   const handleDeployClick = async () => {
     if (nodes.length === 0) {
