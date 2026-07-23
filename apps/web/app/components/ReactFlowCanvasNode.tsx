@@ -23,6 +23,7 @@ interface ReactFlowCanvasNodeProps {
 
 export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCanvasNodeProps) {
   const { setSelectedNodeId, deleteNode } = useCanvasStore();
+  const isExecuting = useCanvasStore((state) => state.isExecuting);
 
   const techColorClass = {
     Terraform: 'bg-primary',
@@ -38,6 +39,7 @@ export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCan
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isExecuting) return;
     deleteNode(id);
   };
 
@@ -62,13 +64,15 @@ export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCan
       )}
 
       {/* Hover Delete Button */}
-      <button
-        onClick={handleDelete}
-        className="absolute top-2 right-2 p-1 rounded-md bg-muted/80 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all z-20 border border-border"
-        title="Delete Node"
-      >
-        <Icon icon="lucide:trash-2" className="text-xs" />
-      </button>
+      {!isExecuting && (
+        <button
+          onClick={handleDelete}
+          className="absolute top-2 right-2 p-1 rounded-md bg-muted/80 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all z-20 border border-border"
+          title="Delete Node"
+        >
+          <Icon icon="lucide:trash-2" className="text-xs" />
+        </button>
+      )}
 
       <div className="p-4 relative">
         {/* Left Input Port */}

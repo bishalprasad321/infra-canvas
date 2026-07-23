@@ -25,6 +25,8 @@ type CanvasState = {
     setSelectedNodeId: (id: string | null) => void;
     updateNodeData: (nodeId: string, newData: any) => void;
     resetCanvas: () => void;
+    isExecuting: boolean;
+    setIsExecuting: (executing: boolean) => void;
 };
 
 // Initial nodes reflecting the 4 pre-populated nodes from design-idea
@@ -130,6 +132,9 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
     nodes: [],
     edges: [],
     selectedNodeId: null,
+    isExecuting: false,
+
+    setIsExecuting: (executing) => set({ isExecuting: executing }),
 
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
     
@@ -151,10 +156,12 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
     },
 
     addNode: (node) => {
+        if (get().isExecuting) return;
         set({ nodes: [...get().nodes, node] });
     },
 
     deleteNode: (nodeId) => {
+        if (get().isExecuting) return;
         set((state) => ({
             nodes: state.nodes.filter((node) => node.id !== nodeId),
             edges: state.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
