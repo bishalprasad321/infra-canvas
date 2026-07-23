@@ -19,7 +19,8 @@ import { clsx } from 'clsx';
 import useCanvasStore from '../store/useCanvasStore';
 import ReactFlowCanvasNode from '../components/ReactFlowCanvasNode';
 import { generateAnsibleYAML } from '../lib/exportYaml';
-import { downloadZipBundle, generateBundleFiles } from '../lib/bundleGenerator';
+import { downloadZipBundle, downloadTerraformZip, generateBundleFiles, generateTerraformFiles } from '../lib/bundleGenerator';
+import { DEFAULT_INSTANCE_PARAMS, DEFAULT_SG_PARAMS } from '../lib/terraformDefaults';
 
 // Define layout components inside the workspace directory for encapsulation
 
@@ -668,89 +669,23 @@ function highlightYAMLCode(code: string): React.ReactNode[] {
   });
 }
 
-// CodePreview (HCL/YAML) Component
-interface CodePreviewProps {
-  selectedNode: Node | null;
-  ansiblePlaybook: string;
+// --- LIVE CODE PREVIEW ---
+
+type FileLanguage = 'hcl' | 'yaml' | 'ini' | 'text';
+
+interface PreviewFile {
+  name: string;
+  content: string;
+  language: FileLanguage;
 }
 
-const CodePreview: React.FC<CodePreviewProps> = ({ selectedNode, ansiblePlaybook }) => {
-  const [copied, setCopied] = useState(false);
-
-  const isAnsibleNode = selectedNode?.data?.tech === 'Ansible';
-  const isTerraformNode = selectedNode?.data?.tech === 'Terraform';
-
-  const codeString = useMemo(() => {
-    if (!selectedNode || isAnsibleNode) {
-      return ansiblePlaybook;
-    }
-
-    // TODO: This Terraform security group code output is hardcoded/static. Replace this block with dynamic HCL generation based on the security group's inputs and parameter configuration.
-    if (selectedNode.id.startsWith('aws_security_group')) {
-      return `resource "aws_security_group" "web_sg" {
-  name        = "web_sg"
-  description = "Allows HTTP/HTTPS inbound & SSH access"
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}`;
-    }
-
-    if (selectedNode.id.startsWith('aws_instance.web_server')) {
-      const p = selectedNode.data.parameters as any || {
-        instanceName: 'web_server',
-        amiId: 'ami-785db401', // LocalStack's mocked EC2 only recognizes its own seeded AMIs
-        instanceType: 't3.medium',
-        subnetId: 'subnet-0123456789abcdef0',
-        rootVolumeSize: 50,
-        tags: [{ key: 'Environment', value: 'prod' }, { key: 'Role', value: 'web' }]
-      };
-
-      return `resource "aws_instance" "${p.instanceName}" {
-  ami           = "${p.amiId}"
-  instance_type = "${p.instanceType}"
-  subnet_id     = "${p.subnetId}"
-
-  root_block_device {
-    volume_size = ${p.rootVolumeSize}
-  }
-
-  tags = {
-    ${p.tags.map((t: any) => `${t.key} = "${t.value}"`).join('\n    ')}
-  }
-}`;
-    }
-
-    // TODO: Fallback configuration output for other unmapped Terraform/Kubernetes nodes is static. Implement dedicated HCL/YAML generator templates for these nodes.
-    return `# Configuration for ${selectedNode.id}`;
-  }, [selectedNode, isAnsibleNode, ansiblePlaybook]);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(codeString);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const highlightedBlock = useMemo(() => {
-    if (!selectedNode || isAnsibleNode) {
-      return highlightYAMLCode(codeString);
-    }
-    
-    // Simulate Terraform syntax highlighting
-    const lines = codeString.split('\n');
-    return lines.map((line, idx) => {
-      let rendered: React.ReactNode = line;
+function highlightCode(content: string, language: FileLanguage): React.ReactNode[] {
+  const lines = content.split('\n');
+  return lines.map((line, idx) => {
+    let rendered: React.ReactNode = line;
+    if (language === 'yaml' || language === 'ini') {
+      rendered = highlightYAMLCode(line).length > 0 ? highlightYAMLCode(line) : line;
+    } else {
       if (line.trim().startsWith('#') || line.trim().startsWith('//')) {
         rendered = <span className="text-emerald-500">{line}</span>;
       } else {
@@ -759,41 +694,221 @@ const CodePreview: React.FC<CodePreviewProps> = ({ selectedNode, ansiblePlaybook
           if (part.startsWith('"') && part.endsWith('"')) {
             return <span key={pIdx} className="text-orange-400">{part}</span>;
           }
-          if (part.includes('resource ') || part.includes('provider ') || part.includes('ingress ') || part.includes('tags ')) {
-            const sub = part.split(/(resource|provider|ingress|tags)/g);
-            return sub.map((s, sIdx) => {
-              if (['resource', 'provider', 'ingress', 'tags'].includes(s)) {
-                return <span key={sIdx} className="text-purple-400">{s}</span>;
-              }
-              return s;
-            });
+          const keywords = ['resource', 'provider', 'terraform', 'variable', 'output', 'data', 'ingress', 'egress', 'tags', 'backend'];
+          const kwRe = new RegExp(`(${keywords.join('|')})`, 'g');
+          if (kwRe.test(part)) {
+            const sub = part.split(new RegExp(`(${keywords.join('|')})`, 'g'));
+            return sub.map((s, sIdx) =>
+              keywords.includes(s)
+                ? <span key={sIdx} className="text-purple-400">{s}</span>
+                : s
+            );
           }
           return part;
         });
       }
-      return <div key={idx} className="min-h-[1.25rem]">{rendered}</div>;
-    });
-  }, [codeString, selectedNode, isAnsibleNode]);
+    }
+    return <div key={idx} className="min-h-[1.25rem]">{rendered}</div>;
+  });
+}
+
+function getNodeFiles(node: Node, allNodes: Node[], allEdges: Edge[]): PreviewFile[] {
+  const tech = node.data?.tech as string;
+
+  if (node.id.startsWith('aws_instance.web_server') || node.id.startsWith('aws_security_group')) {
+    const { mainTf, variablesTf, outputsTf } = generateTerraformFiles(allNodes);
+    if (node.id.startsWith('aws_security_group')) {
+      return [{ name: 'main.tf', content: mainTf, language: 'hcl' }];
+    }
+    return [
+      { name: 'main.tf', content: mainTf, language: 'hcl' },
+      { name: 'variables.tf', content: variablesTf, language: 'hcl' },
+      { name: 'outputs.tf', content: outputsTf, language: 'hcl' },
+    ];
+  }
+
+  if (tech === 'Ansible') {
+    const files = generateBundleFiles(allNodes, allEdges);
+    const playbook = files.find(f => f.name === 'playbook.yml');
+    const hosts = files.find(f => f.name === 'hosts.ini');
+    return [
+      { name: 'playbook.yml', content: playbook?.content ?? '', language: 'yaml' },
+      { name: 'hosts.ini', content: hosts?.content ?? '', language: 'ini' },
+    ];
+  }
+
+  if (tech === 'Kubernetes') {
+    const files = generateBundleFiles(allNodes, allEdges);
+    const dep = files.find(f => f.name === 'deployment.yaml');
+    return [{ name: 'deployment.yaml', content: dep?.content ?? '', language: 'yaml' }];
+  }
+
+  return [{ name: `${node.id}.txt`, content: `# ${node.id}\n# No code preview available for this node type.`, language: 'text' }];
+}
+
+// CodeBlock: renders syntax-highlighted code with a copy button
+const CodeBlock: React.FC<{ file: PreviewFile }> = ({ file }) => {
+  const [copied, setCopied] = useState(false);
+  const highlighted = useMemo(() => highlightCode(file.content, file.language), [file.content, file.language]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex items-center justify-between mb-2 select-none">
-        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-          {!selectedNode || isAnsibleNode ? 'Live Playbook Playbook' : 'Live HCL Output'}
-        </span>
+      <div className="flex items-center justify-between mb-2 shrink-0 select-none">
+        <span className="text-[10px] font-mono text-muted-foreground">{file.name}</span>
         <button
-          onClick={handleCopy}
+          onClick={() => { navigator.clipboard.writeText(file.content); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
           className="text-[10px] text-primary hover:text-primary/90 font-semibold flex items-center gap-1 cursor-pointer"
         >
-          <Icon icon={copied ? "lucide:check" : "lucide:copy"} className="text-xs" />
+          <Icon icon={copied ? 'lucide:check' : 'lucide:copy'} className="text-xs" />
           {copied ? 'Copied!' : 'Copy'}
         </button>
       </div>
-      <div className="flex-1 bg-[#080B11] border border-border rounded-lg p-3 overflow-auto font-mono text-[11px] text-muted-foreground leading-relaxed h-[calc(100%-24px)]">
-        <pre className="whitespace-pre-wrap break-all">
-          <code>{highlightedBlock}</code>
-        </pre>
+      <div className="flex-1 bg-[#080B11] border border-border rounded-lg p-3 overflow-auto font-mono text-[11px] text-muted-foreground leading-relaxed">
+        <pre className="whitespace-pre-wrap break-all"><code>{highlighted}</code></pre>
       </div>
+    </div>
+  );
+};
+
+interface LiveCodePreviewProps {
+  selectedNode: Node | null;
+  nodes: Node[];
+  edges: Edge[];
+}
+
+const LiveCodePreview: React.FC<LiveCodePreviewProps> = ({ selectedNode, nodes, edges }) => {
+  const [activeFile, setActiveFile] = useState(0);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ Terraform: true, Ansible: true, Kubernetes: true });
+  const [overviewFile, setOverviewFile] = useState<PreviewFile | null>(null);
+
+  const files = useMemo(
+    () => selectedNode ? getNodeFiles(selectedNode, nodes, edges) : [],
+    [selectedNode, nodes, edges]
+  );
+
+  // Reset to first tab when node changes
+  React.useEffect(() => { setActiveFile(0); setOverviewFile(null); }, [selectedNode?.id]);
+
+  // --- NODE SELECTED: file tab view ---
+  if (selectedNode) {
+    if (files.length === 0) {
+      return (
+        <div className="flex items-center justify-center h-full text-xs text-muted-foreground select-none">
+          No code preview for this node type.
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        {/* File tabs */}
+        <div className="flex gap-1 mb-3 flex-wrap shrink-0">
+          {files.map((f, i) => (
+            <button
+              key={f.name}
+              onClick={() => setActiveFile(i)}
+              className={clsx(
+                'px-2.5 py-1 rounded text-[10px] font-mono font-semibold border transition-all cursor-pointer',
+                activeFile === i
+                  ? 'bg-primary/10 border-primary/40 text-primary'
+                  : 'bg-muted border-border text-muted-foreground hover:text-foreground hover:border-border/80'
+              )}
+            >
+              {f.name}
+            </button>
+          ))}
+        </div>
+        {/* Active file content */}
+        <div className="flex-1 overflow-hidden">
+          <CodeBlock file={files[activeFile]} />
+        </div>
+      </div>
+    );
+  }
+
+  // --- NO NODE SELECTED: canvas overview ---
+  const allFiles = useMemo(() => generateBundleFiles(nodes, edges), [nodes, edges]);
+  const sections: { label: string; color: string; paths: string[] }[] = [
+    { label: 'Terraform', color: 'text-primary', paths: ['terraform/'] },
+    { label: 'Ansible', color: 'text-[#00A4FF]', paths: ['ansible/'] },
+    { label: 'Kubernetes', color: 'text-[#326CE5]', paths: ['k8s/'] },
+  ];
+
+  const hasTech = (paths: string[]) =>
+    nodes.some(n => {
+      const t = n.data?.tech as string;
+      if (paths[0].startsWith('terraform')) return t === 'Terraform';
+      if (paths[0].startsWith('ansible')) return t === 'Ansible';
+      if (paths[0].startsWith('k8s')) return t === 'Kubernetes';
+      return false;
+    });
+
+  if (nodes.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-xs text-muted-foreground select-none">
+        Add nodes to the canvas to see the compiled code preview.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {overviewFile ? (
+        // Expanded file view within overview
+        <div className="flex flex-col h-full overflow-hidden">
+          <button
+            onClick={() => setOverviewFile(null)}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground mb-2 shrink-0 cursor-pointer"
+          >
+            <Icon icon="lucide:arrow-left" className="text-xs" /> Back to overview
+          </button>
+          <div className="flex-1 overflow-hidden">
+            <CodeBlock file={overviewFile} />
+          </div>
+        </div>
+      ) : (
+        // Overview: collapsible technology sections
+        <div className="flex-1 overflow-y-auto space-y-3">
+          <p className="text-[10px] text-muted-foreground select-none">
+            Select a node to view its files, or browse the full compiled output below.
+          </p>
+          {sections.map(({ label, color, paths }) => {
+            if (!hasTech(paths)) return null;
+            const sectionFiles = allFiles.filter(f => paths.some(p => f.path.startsWith(p)));
+            const isOpen = expandedSections[label] ?? true;
+            return (
+              <div key={label} className="border border-border rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setExpandedSections(s => ({ ...s, [label]: !s[label] }))}
+                  className="w-full flex items-center justify-between px-3 py-2 bg-muted/50 hover:bg-muted transition-colors cursor-pointer select-none"
+                >
+                  <span className={clsx('text-[11px] font-bold uppercase tracking-wider', color)}>{label}</span>
+                  <Icon icon={isOpen ? 'lucide:chevron-down' : 'lucide:chevron-right'} className="text-muted-foreground text-xs" />
+                </button>
+                {isOpen && (
+                  <div className="divide-y divide-border/50">
+                    {sectionFiles.map(f => (
+                      <button
+                        key={f.path}
+                        onClick={() => setOverviewFile({ name: f.name, content: f.content, language: f.language.toLowerCase() as FileLanguage })}
+                        className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/30 transition-colors cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Icon icon="lucide:file-code" className="text-muted-foreground text-xs shrink-0" />
+                          <span className="text-[11px] font-mono text-foreground">{f.name}</span>
+                          <span className="text-[10px] text-muted-foreground">{f.lines} lines</span>
+                        </div>
+                        <span className="text-[10px] text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                          view <Icon icon="lucide:chevron-right" className="text-[10px]" />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
@@ -953,6 +1068,7 @@ interface InspectorPanelProps {
   updateNodeData: (nodeId: string, newData: any) => void;
   ansiblePlaybook: string;
   nodes: Node[];
+  edges: Edge[];
   setSelectedNodeId: (id: string | null) => void;
 }
 
@@ -965,28 +1081,27 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   updateNodeData,
   ansiblePlaybook,
   nodes,
+  edges,
   setSelectedNodeId,
 }) => {
   const [newTagKey, setNewTagKey] = useState('');
   const [newTagVal, setNewTagVal] = useState('');
   const [showAddTag, setShowAddTag] = useState(false);
 
-  const p = selectedNode?.data?.parameters as any || {
-    instanceName: 'web_server',
-    amiId: 'ami-785db401', // LocalStack's mocked EC2 only recognizes its own seeded AMIs
-    instanceType: 't3.medium',
-    subnetId: 'subnet-0123456789abcdef0',
-    rootVolumeSize: 50,
-    tags: [{ key: 'Environment', value: 'prod' }, { key: 'Role', value: 'web' }]
-  };
+  const p = (selectedNode?.data?.parameters as any) || DEFAULT_INSTANCE_PARAMS;
+  const sg = (selectedNode?.data?.parameters as any) || DEFAULT_SG_PARAMS;
 
   const handleParameterChange = (key: string, value: any) => {
     if (!selectedNode) return;
     updateNodeData(selectedNode.id, {
-      parameters: {
-        ...p,
-        [key]: value
-      }
+      parameters: { ...p, [key]: value }
+    });
+  };
+
+  const handleSgChange = (key: string, value: any) => {
+    if (!selectedNode) return;
+    updateNodeData(selectedNode.id, {
+      parameters: { ...sg, [key]: value }
     });
   };
 
@@ -1114,7 +1229,8 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                             type="text"
                             value={p.amiId}
                             onChange={(e) => handleParameterChange('amiId', e.target.value)}
-                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            placeholder="e.g. ami-0abcdef1234567890"
+                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
                           />
                         </div>
                         <div>
@@ -1125,9 +1241,13 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                               onChange={(e) => handleParameterChange('instanceType', e.target.value)}
                               className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
                             >
+                              <option value="t3.micro">t3.micro</option>
+                              <option value="t3.small">t3.small</option>
                               <option value="t3.medium">t3.medium</option>
                               <option value="t3.large">t3.large</option>
                               <option value="m5.large">m5.large</option>
+                              <option value="m5.xlarge">m5.xlarge</option>
+                              <option value="c5.large">c5.large</option>
                             </select>
                             <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
                           </div>
@@ -1394,8 +1514,73 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     </div>
                   )}
 
-                  {/* 3. STATIC / MOCK NODES */}
-                  {selectedNode.data.tech !== 'Ansible' && selectedNode.data.tech !== 'Source' && selectedNode.data.tech !== 'Target' && !selectedNode.id.startsWith('aws_instance.web_server') && (
+                  {/* 3. SECURITY GROUP NODE PARAMETERS */}
+                  {selectedNode.id.startsWith('aws_security_group') && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Security Group Name</label>
+                        <input
+                          type="text"
+                          value={sg.sgName}
+                          onChange={(e) => handleSgChange('sgName', e.target.value)}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">HTTP Port</label>
+                          <input
+                            type="number"
+                            value={sg.httpPort}
+                            onChange={(e) => handleSgChange('httpPort', parseInt(e.target.value))}
+                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">HTTPS Port</label>
+                          <input
+                            type="number"
+                            value={sg.httpsPort}
+                            onChange={(e) => handleSgChange('httpsPort', parseInt(e.target.value))}
+                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Allowed CIDR</label>
+                        <input
+                          type="text"
+                          value={sg.allowedCidr}
+                          onChange={(e) => handleSgChange('allowedCidr', e.target.value)}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between bg-muted border border-border rounded-lg px-3 py-2.5">
+                        <div>
+                          <p className="text-xs font-semibold text-foreground">Enable SSH Access</p>
+                          <p className="text-[10px] text-muted-foreground">Opens port 22 (TCP)</p>
+                        </div>
+                        <button
+                          onClick={() => handleSgChange('sshEnabled', !sg.sshEnabled)}
+                          className={clsx(
+                            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none",
+                            sg.sshEnabled ? "bg-primary" : "bg-muted-foreground/30"
+                          )}
+                        >
+                          <span className={clsx(
+                            "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200",
+                            sg.sshEnabled ? "translate-x-4" : "translate-x-0"
+                          )} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4. STATIC / MOCK NODES */}
+                  {selectedNode.data.tech !== 'Ansible' && selectedNode.data.tech !== 'Source' && selectedNode.data.tech !== 'Target' && !selectedNode.id.startsWith('aws_instance.web_server') && !selectedNode.id.startsWith('aws_security_group') && (
                     <div className="text-center py-6 text-muted-foreground text-xs select-none">
                       No custom parameters defined for this mock infrastructure block.
                     </div>
@@ -1403,7 +1588,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 </div>
               )
             ) : (
-              <CodePreview selectedNode={selectedNode} ansiblePlaybook={ansiblePlaybook} />
+              <LiveCodePreview selectedNode={selectedNode} nodes={nodes} edges={edges} />
             )}
           </div>
         </div>
@@ -1576,6 +1761,13 @@ function WorkspaceCanvas() {
         statusText: 'Validated',
       },
     };
+
+    if (id === 'aws_instance.web_server') {
+      newNode.data.parameters = { ...DEFAULT_INSTANCE_PARAMS };
+    }
+    if (id === 'aws_security_group') {
+      newNode.data.parameters = { ...DEFAULT_SG_PARAMS };
+    }
 
     addNode(newNode);
     setSelectedNodeId(newNodeId);
@@ -1911,19 +2103,11 @@ function WorkspaceContent() {
       },
     };
 
-    // If it's a Terraform instance node, add standard parameters
     if (libNode.id === 'aws_instance.web_server') {
-      newNode.data.parameters = {
-        instanceName: 'web_server',
-        amiId: 'ami-785db401', // LocalStack's mocked EC2 only recognizes its own seeded AMIs
-        instanceType: 't3.medium',
-        subnetId: 'subnet-0123456789abcdef0',
-        rootVolumeSize: 50,
-        tags: [
-          { key: 'Environment', value: 'prod' },
-          { key: 'Role', value: 'web' }
-        ]
-      };
+      newNode.data.parameters = { ...DEFAULT_INSTANCE_PARAMS };
+    }
+    if (libNode.id === 'aws_security_group') {
+      newNode.data.parameters = { ...DEFAULT_SG_PARAMS };
     }
 
     // Call store action
@@ -1954,32 +2138,7 @@ function WorkspaceContent() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } else if (format === 'tf') {
-      // Find dynamic parameters
-      const instanceNode = nodes.find(n => n.id === 'aws_instance.web_server');
-      const p = instanceNode?.data?.parameters as any || {
-        instanceName: 'web_server',
-        amiId: 'ami-785db401', // LocalStack's mocked EC2 only recognizes its own seeded AMIs
-        instanceType: 't3.medium',
-        subnetId: 'subnet-0123456789abcdef0',
-        rootVolumeSize: 50,
-        tags: [{ key: 'Environment', value: 'prod' }, { key: 'Role', value: 'web' }]
-      };
-      
-      const tfContent = `# Generated Terraform file
-resource "aws_instance" "${p.instanceName}" {
-  ami           = "${p.amiId}"
-  instance_type = "${p.instanceType}"
-  subnet_id     = "${p.subnetId}"
-}`;
-      const blob = new Blob([tfContent], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'main.tf';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      await downloadTerraformZip(nodes);
     } else if (format === 'json') {
       const k8sContent = {
         apiVersion: "apps/v1",
@@ -2105,6 +2264,7 @@ resource "aws_instance" "${p.instanceName}" {
           updateNodeData={updateNodeData}
           ansiblePlaybook={ansiblePlaybook}
           nodes={nodes}
+          edges={edges}
           setSelectedNodeId={setSelectedNodeId}
         />
       </div>
