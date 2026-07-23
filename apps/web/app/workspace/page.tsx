@@ -1229,7 +1229,8 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                             type="text"
                             value={p.amiId}
                             onChange={(e) => handleParameterChange('amiId', e.target.value)}
-                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            placeholder="e.g. ami-0abcdef1234567890"
+                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
                           />
                         </div>
                         <div>
