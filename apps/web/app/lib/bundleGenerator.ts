@@ -26,6 +26,13 @@ export function generateTerraformFiles(nodes: Node[]): TerraformFiles {
 
   const providerBlock = environment === 'localstack'
     ? `terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+
   backend "s3" {
     bucket                      = "infracanvas-state-bucket"
     key                         = "terraform.tfstate"
@@ -53,6 +60,13 @@ provider "aws" {
   }
 }`
     : `terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+
   backend "s3" {
     bucket = "infracanvas-state-bucket"
     key    = "terraform.tfstate"
