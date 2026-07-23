@@ -22,8 +22,13 @@ interface ReactFlowCanvasNodeProps {
 }
 
 export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCanvasNodeProps) {
-  const { setSelectedNodeId, deleteNode } = useCanvasStore();
+  const { setSelectedNodeId, deleteNode, selectedNodeId } = useCanvasStore();
   const isExecuting = useCanvasStore((state) => state.isExecuting);
+
+  // Zustand selectedNodeId is the single source of truth for the active marker.
+  // React Flow's `selected` prop is intentionally ignored here — it reflects internal
+  // drag/box-select state and causes double-active badges when dragging new nodes.
+  const isActive = selectedNodeId === id;
 
   const techColorClass = {
     Terraform: 'bg-primary',
@@ -33,7 +38,7 @@ export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCan
     Target: 'bg-[#0D9488]',
   }[data.tech] || 'bg-[#00A4FF]';
 
-  const borderClass = selected
+  const borderClass = isActive
     ? 'border-2 border-primary shadow-2xl shadow-primary/10'
     : 'border border-border hover:border-primary/50 shadow-xl';
 
@@ -57,7 +62,7 @@ export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCan
       {/* Top tech indicator bar */}
       <div className={clsx("h-1 w-full rounded-t-xl", techColorClass)}></div>
 
-      {selected && (
+      {isActive && (
         <div className="absolute -top-3.5 left-4 bg-primary text-primary-foreground text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shadow z-20">
           Active Node
         </div>
