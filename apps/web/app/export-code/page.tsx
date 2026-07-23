@@ -16,24 +16,39 @@ interface DirectoryTreeProps {
   files: FileItem[];
 }
 
-const DirectoryTree: React.FC<DirectoryTreeProps> = ({ selectedFile, onFileSelect, files }) => {
-  // TODO: The directory structure listed below is hardcoded in the UI template. Future engineers should generate this tree dynamically from the array of files returned by the bundle compiler.
-  const renderFileButton = (filePath: string) => {
-    const file = files.find(f => f.path === filePath);
-    if (!file) return null;
+const FOLDER_META: Record<string, { label: string; color: string; icon: string }> = {
+  terraform: { label: 'terraform/', color: 'text-primary', icon: 'lucide:folder' },
+  ansible:   { label: 'ansible/',   color: 'text-[#00A4FF]', icon: 'lucide:folder' },
+  k8s:       { label: 'k8s/',       color: 'text-[#326CE5]', icon: 'lucide:folder' },
+};
 
-    const isSelected = selectedFile === filePath;
+const DirectoryTree: React.FC<DirectoryTreeProps> = ({ selectedFile, onFileSelect, files }) => {
+  // Group files by their top-level directory (or root for README.md)
+  const folders = useMemo(() => {
+    const map: Record<string, FileItem[]> = {};
+    for (const f of files) {
+      const slash = f.path.indexOf('/');
+      const dir = slash === -1 ? '__root__' : f.path.slice(0, slash);
+      if (!map[dir]) map[dir] = [];
+      map[dir].push(f);
+    }
+    return map;
+  }, [files]);
+
+  const renderFileBtn = (file: FileItem) => {
+    const isSelected = selectedFile === file.path;
     return (
       <button
-        onClick={() => onFileSelect(filePath)}
+        key={file.path}
+        onClick={() => onFileSelect(file.path)}
         className={clsx(
-          "w-full flex items-center gap-2 py-1 px-2 rounded text-left transition-all cursor-pointer",
+          'w-full flex items-center gap-2 py-1 px-2 rounded text-left transition-all cursor-pointer',
           isSelected
             ? 'text-primary font-semibold bg-primary/10 border border-primary/20'
             : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
         )}
       >
-        <Icon icon={file.icon} className={clsx(isSelected ? 'text-primary' : file.iconColor || 'text-muted-foreground', "text-xs")} />
+        <Icon icon={file.icon} className={clsx(isSelected ? 'text-primary' : file.iconColor || 'text-muted-foreground', 'text-xs')} />
         <span>{file.name}</span>
       </button>
     );
@@ -42,54 +57,32 @@ const DirectoryTree: React.FC<DirectoryTreeProps> = ({ selectedFile, onFileSelec
   return (
     <div className="w-full md:w-1/3 border-r border-border bg-muted/30 p-4 flex flex-col overflow-y-auto select-none">
       <h3 className="text-xs font-heading font-bold text-muted-foreground uppercase tracking-wider mb-3">Generated Directory</h3>
-      
       <div className="space-y-1.5 text-xs font-mono">
-        {/* Root Folder */}
         <div className="flex items-center gap-2 text-foreground font-semibold py-1">
           <Icon icon="lucide:folder" className="text-emerald-400 text-sm" />
           <span>infraflow-bundle/</span>
         </div>
-
-        {/* Subfolder: Terraform */}
-        <div className="pl-4 space-y-1">
-          <div className="flex items-center gap-2 text-foreground font-medium py-1">
-            <Icon icon="lucide:folder" className="text-primary text-sm" />
-            <span>terraform/</span>
-          </div>
-          <div className="pl-4 space-y-1">
-            {renderFileButton('terraform/main.tf')}
-            {renderFileButton('terraform/variables.tf')}
-            {renderFileButton('terraform/outputs.tf')}
-          </div>
-        </div>
-
-        {/* Subfolder: Ansible */}
-        <div className="pl-4 space-y-1 mt-2">
-          <div className="flex items-center gap-2 text-foreground font-medium py-1">
-            <Icon icon="lucide:folder" className="text-[#00A4FF] text-sm" />
-            <span>ansible/</span>
-          </div>
-          <div className="pl-4 space-y-1">
-            {renderFileButton('ansible/playbook.yml')}
-            {renderFileButton('ansible/hosts.ini')}
-          </div>
-        </div>
-
-        {/* Subfolder: Kubernetes */}
-        <div className="pl-4 space-y-1 mt-2">
-          <div className="flex items-center gap-2 text-foreground font-medium py-1">
-            <Icon icon="lucide:folder" className="text-[#326CE5] text-sm" />
-            <span>k8s/</span>
-          </div>
-          <div className="pl-4 space-y-1">
-            {renderFileButton('k8s/deployment.yaml')}
-          </div>
-        </div>
-
-        {/* Root Readme */}
-        <div className="pl-4 py-1">
-          {renderFileButton('README.md')}
-        </div>
+        {Object.entries(folders).map(([dir, dirFiles]) => {
+          if (dir === '__root__') {
+            return (
+              <div key="root" className="pl-4 space-y-1 mt-1">
+                {dirFiles.map(renderFileBtn)}
+              </div>
+            );
+          }
+          const meta = FOLDER_META[dir] || { label: `${dir}/`, color: 'text-foreground', icon: 'lucide:folder' };
+          return (
+            <div key={dir} className="pl-4 space-y-1 mt-1">
+              <div className="flex items-center gap-2 font-medium py-1">
+                <Icon icon={meta.icon} className={clsx(meta.color, 'text-sm')} />
+                <span className={meta.color}>{meta.label}</span>
+              </div>
+              <div className="pl-4 space-y-1">
+                {dirFiles.map(renderFileBtn)}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -177,7 +170,7 @@ export default function ExportCodeModalOverlay() {
   const router = useRouter();
   const { nodes, edges } = useCanvasStore();
 
-  const [selectedFilePath, setSelectedFilePath] = useState<string>('terraform/main.tf');
+  const [selectedFilePath, setSelectedFilePath] = useState<string>('');
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(true);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
@@ -185,9 +178,17 @@ export default function ExportCodeModalOverlay() {
   // Compile files dynamically from canvas Zustand store
   const bundleFiles = useMemo(() => generateBundleFiles(nodes, edges), [nodes, edges]);
 
-  const activeFile = useMemo(() => {
-    return bundleFiles.find(f => f.path === selectedFilePath) || bundleFiles[0];
-  }, [bundleFiles, selectedFilePath]);
+  // Auto-select first file whenever the file list changes
+  useEffect(() => {
+    if (bundleFiles.length > 0 && (!selectedFilePath || !bundleFiles.find(f => f.path === selectedFilePath))) {
+      setSelectedFilePath(bundleFiles[0].path);
+    }
+  }, [bundleFiles]);
+
+  const activeFile = useMemo(
+    () => bundleFiles.find(f => f.path === selectedFilePath) ?? bundleFiles[0],
+    [bundleFiles, selectedFilePath]
+  );
 
   const handleFileSelect = (path: string) => {
     setSelectedFilePath(path);
@@ -195,6 +196,7 @@ export default function ExportCodeModalOverlay() {
   };
 
   const handleCopyCode = () => {
+    if (!activeFile) return;
     navigator.clipboard.writeText(activeFile.content);
     setIsCopied(true);
     setTimeout(() => {
@@ -304,19 +306,31 @@ export default function ExportCodeModalOverlay() {
 
               {/* Modal Body (Side-by-Side View) */}
               <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-                {/* Left Pane: Directory Structure & File Tree */}
-                <DirectoryTree 
-                  selectedFile={selectedFilePath} 
-                  onFileSelect={handleFileSelect} 
-                  files={bundleFiles} 
-                />
-
-                {/* Right Pane: Tabbed Code Viewer & Preview */}
-                <CodeViewer 
-                  selectedFile={activeFile} 
-                  isCopied={isCopied} 
-                  onCopy={handleCopyCode} 
-                />
+                {bundleFiles.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground p-8">
+                    <Icon icon="lucide:layout-template" className="text-4xl opacity-30" />
+                    <p className="text-sm font-medium">Canvas is empty</p>
+                    <p className="text-xs text-center max-w-xs">Add Terraform, Ansible, or Kubernetes nodes to the canvas and come back to export the generated code.</p>
+                    <button onClick={handleCloseModal} className="mt-2 text-xs text-primary hover:underline cursor-pointer">Go to canvas</button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Left Pane: Directory Structure & File Tree */}
+                    <DirectoryTree
+                      selectedFile={selectedFilePath}
+                      onFileSelect={handleFileSelect}
+                      files={bundleFiles}
+                    />
+                    {/* Right Pane: Tabbed Code Viewer & Preview */}
+                    {activeFile && (
+                      <CodeViewer
+                        selectedFile={activeFile}
+                        isCopied={isCopied}
+                        onCopy={handleCopyCode}
+                      />
+                    )}
+                  </>
+                )}
               </div>
 
               {/* Modal Footer */}
