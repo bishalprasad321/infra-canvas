@@ -108,28 +108,30 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
   const sortedNodes = getSortedNodes(nodes, edges);
 
   sortedNodes.forEach((node) => {
-    if (!node || !node.data || !node.data.label) {
+    if (!node || !node.data) {
       return;
     }
 
-    const label = node.data.label as string;
+    const label = (node.data.label as string) || '';
+    const id = node.id;
+    const p = node.data.parameters as any || {};
 
     // Map each visual node to its corresponding Ansible YAML block
-    if (label.includes('Update Packages')) {
+    if (id.startsWith('update-packages') || label.includes('Update Packages')) {
       tasksString += `    # Update apt cache and upgrade packages
     - name: Update apt cache and upgrade packages
       ansible.builtin.apt:
         update_cache: yes
         upgrade: dist\n\n`;
     } 
-    else if (label.includes('Install Nginx')) {
+    else if (id.startsWith('nginx') || label.includes('Install Nginx')) {
       tasksString += `    # Install Nginx Web Server
     - name: Install Nginx Web Server
       ansible.builtin.apt:
         name: nginx
         state: present\n\n`;
     } 
-    else if (label.includes('Install Node.js')) {
+    else if (id.startsWith('nodejs') || label.includes('Install Node.js')) {
       tasksString += `    # Install xz-utils dependency
     - name: Install xz-utils
       ansible.builtin.apt:
@@ -151,24 +153,7 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         extra_opts:
           - --strip-components=1\n\n`;
     }
-    else if (label.includes('Create PostgreSQL User')) {
-      const dbUser = node.data.dbUser || '{{ db_user }}';
-      const dbPass = node.data.dbPass || '{{ db_pass }}';
-
-      tasksString += `    # Install psycopg2 for PostgreSQL management
-    - name: Install python3-psycopg2
-      ansible.builtin.apt:
-        name: python3-psycopg2
-        state: present
-
-    # Create PostgreSQL User
-    - name: Create PostgreSQL user
-      community.postgresql.postgresql_user:
-        name: "${dbUser}"
-        password: "${dbPass}"
-        state: present\n\n`;
-    }
-    else if (label.includes('PostgreSQL') || label.includes('Postgres') || label.includes('Install PostgreSQL')) {
+    else if (id.startsWith('postgresql') || label.includes('Postgres') || label.includes('PostgreSQL')) {
       tasksString += `    # Install PostgreSQL and psycopg2
     - name: Install PostgreSQL and python3-psycopg2
       ansible.builtin.apt:
@@ -177,8 +162,8 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
           - python3-psycopg2
         state: present\n\n`;
 
-      const dbUser = node.data.dbUser || '{{ db_user }}';
-      const dbPass = node.data.dbPass || '{{ db_pass }}';
+      const dbUser = (node.data as any).dbUser || p.dbUser || '{{ db_user }}';
+      const dbPass = (node.data as any).dbPass || p.dbPass || '{{ db_pass }}';
       tasksString += `    # Create PostgreSQL User
     - name: Create PostgreSQL user
       community.postgresql.postgresql_user:
@@ -186,8 +171,8 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         password: "${dbPass}"
         state: present\n\n`;
     }
-    else if (label.includes('Open Port')) {
-      const port = node.data.port || '{{ port_number }}';
+    else if (id.startsWith('open-port') || label.includes('Open Port')) {
+      const port = (node.data as any).port || p.port || '{{ port_number }}';
       tasksString += `    # Ensure UFW is installed
     - name: Install UFW
       ansible.builtin.apt:
@@ -202,9 +187,9 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         proto: tcp
       ignore_errors: yes\n\n`;
     }
-    else if (label.includes('Deploy Node App')) {
-      const startCommand = (node.data.startCommand as string) || 'npm start';
-      const appPort = (node.data.appPort as string) || '3000';
+    else if (id.startsWith('deploy-node-app') || label.includes('Deploy Node App')) {
+      const startCommand = (node.data as any).startCommand || p.startCommand || 'npm start';
+      const appPort = (node.data as any).appPort || p.appPort || '3000';
       const appName = 'app';
 
       tasksString += `    # Deploy Node.js Application
@@ -240,7 +225,7 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         chdir: /home/ubuntu/${appName}
       when: pkg_json.stat.exists\n\n`;
     }
-    else if (label.includes('Copy .env')) {
+    else if (id.startsWith('copy-env') || label.includes('Copy .env')) {
       tasksString += `    # Copy .env file to server
     - name: Copy .env file to server
       ansible.builtin.copy:
@@ -249,6 +234,80 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         owner: ubuntu
         group: ubuntu
         mode: '0600'\n\n`;
+    }
+    else if (id.startsWith('apt_install')) {
+      const packagesStr = p.packages || 'curl, git, jq';
+      const state = p.state || 'present';
+      const packagesList = packagesStr.split(',').map((item: string) => `          - ${item.trim()}`).join('\n');
+      
+      tasksString += `    # Install apt packages
+    - name: Install specified system packages
+      ansible.builtin.apt:
+        name:
+\n${packagesList}
+        state: ${state}\n\n`;
+    }
+    else if (id.startsWith('create_user')) {
+      const username = p.username || 'deployer';
+      const shell = p.shell || '/bin/bash';
+      const createHome = p.createHome !== false ? 'yes' : 'no';
+
+      tasksString += `    # Create system user
+    - name: Create system user ${username}
+      ansible.builtin.user:
+        name: "${username}"
+        shell: "${shell}"
+        create_home: ${createHome}\n\n`;
+    }
+    else if (id.startsWith('systemd_service')) {
+      const serviceName = p.serviceName || 'nginx';
+      const state = p.state || 'started';
+      const enabled = p.enabled !== false ? 'yes' : 'no';
+
+      tasksString += `    # Manage Systemd service
+    - name: Manage service ${serviceName}
+      ansible.builtin.systemd:
+        name: "${serviceName}"
+        state: "${state}"
+        enabled: ${enabled}\n\n`;
+    }
+    else if (id.startsWith('git_clone')) {
+      const repoUrl = p.repoUrl || '';
+      const destPath = p.destPath || '/var/www/app';
+      const branch = p.branch || 'main';
+
+      tasksString += `    # Git Clone Repository
+    - name: Clone codebase from git repository
+      ansible.builtin.git:
+        repo: "${repoUrl}"
+        dest: "${destPath}"
+        version: "${branch}"
+        clone: yes
+        update: yes\n\n`;
+    }
+    else if (id.startsWith('shell_command')) {
+      const command = p.command || 'echo "hello"';
+      const chdir = p.chdir || '/tmp';
+
+      tasksString += `    # Run shell command
+    - name: Run arbitrary CLI shell command
+      ansible.builtin.shell:
+        cmd: "${command}"
+        chdir: "${chdir}"\n\n`;
+    }
+    else if (id.startsWith('file_copy')) {
+      const srcPath = p.srcPath || '';
+      const destPath = p.destPath || '';
+      const owner = p.owner || 'www-data';
+      const mode = p.mode || '0644';
+
+      tasksString += `    # Copy custom file
+    - name: Copy local file to target path
+      ansible.builtin.copy:
+        src: "${srcPath}"
+        dest: "${destPath}"
+        owner: "${owner}"
+        mode: "${mode}"\n\n`;
     }
   });
 
