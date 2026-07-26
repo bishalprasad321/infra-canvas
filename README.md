@@ -73,8 +73,9 @@ Future engineers picking up the codebase should note the following features are 
      - `aws_subnet` (linked dynamically to the VPC with AZ selection and public IP settings).
      - `aws_s3_bucket` (with force-destroy and bucket versioning configurations).
      - `aws_db_instance` (allocated storage, database credentials, engine version, and instance classes).
-     - `aws_security_group` (statefully configures inbound ports, descriptions, and allowed CIDR ranges).
+     - `aws_security_group` (statefully configures inbound ports, descriptions, allowed CIDR ranges, HTTP/HTTPS ports, and SSH access).
      - `aws_instance.web_server` (EC2 instance parameters with custom volume size, tags, and dynamic security group bindings).
+   - Generates fully dynamic `terraform/variables.tf` and `terraform/outputs.tf` files mapping all active resource instances and parameters configured on the viewport canvas.
    - Resources on the canvas are mapped dynamically (e.g., EC2 instances automatically reference custom security groups in their configuration).
 
 3. **Kubernetes Multi-Resource Manifests Compiler**:
@@ -104,6 +105,19 @@ Future engineers picking up the codebase should note the following features are 
    - Compiles a complete workspace directory including `terraform/`, `ansible/`, `k8s/`, and project documentation on-the-fly.
    - Packs file items using `jszip` and downloads them directly as a `.zip` archive on the user's local machine.
 
+9. **Functional Canvas Interaction Modes (CanvasControls)**:
+   - Integrates Select, Pan, and Link tools that actively configure ReactFlow behaviors:
+     - **Select Mode**: Allows node dragging, click selection, and background left-click dragging to draw selection bounding boxes for multi-select.
+     - **Pan Mode**: Disables node dragging, element selection, and connection handle creation. Locks dragging anywhere on the canvas background or nodes to pan the canvas viewport (showing grab/grabbing mouse cursors).
+     - **Link Mode**: Disables node dragging to enable uninterrupted connection drawing. Highlights target connection handles with an enlarged, violet pulsing glow, changing mouse cursor to crosshair and changing to cyan on hover.
+
+10. **Canvas Execution Safety Locking**:
+    - Secures visual workflows during active pipeline runs (deploying or destroying):
+      - Intercepts and filters ReactFlow changes to prevent deletion of nodes or edges.
+      - Protects Zustand store actions (`addNode`, `deleteNode`) from concurrent modifications.
+      - Disables side Library Panel dragging, parameter inspector input fields, canvas resets, and the CanvasControls toolbar.
+      - Fades out visual delete buttons and toolbar controls to indicate read-only lock state.
+
 ---
 
 ## Non-Implemented & Mocked Features (Roadmap)
@@ -115,12 +129,6 @@ To help engineers target their efforts, the following UI and logic blocks in the
 
 2. **Collaboration Stack & Live Sync (Header)**:
    - Status: Mocked. The user avatars and "Live Syncing" status spinner are static visual elements. Future developers should integrate a signaling framework or WebSockets (e.g., Y.js) to enable real-time collaborative workspace synchronization.
-
-3. **Canvas Interaction Modes (CanvasControls)**:
-   - Status: Mocked. The Select, Pan, and Link buttons modify UI selection states but do not configure ReactFlow behaviors (e.g., locking/unlocking panning, editing connection handles).
-
-4. **Static File Configurations**:
-   - Status: Mocked. The files `terraform/variables.tf` and `terraform/outputs.tf` generate static templates that do not fully map all resources and connections on the canvas.
 
 ---
 
