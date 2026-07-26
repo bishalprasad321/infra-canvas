@@ -486,14 +486,18 @@ interface CanvasControlsProps {
   activeTool: string;
   onToolSelect: (tool: string) => void;
   onReset: () => void;
+  isReadOnly?: boolean;
 }
 
-const CanvasControls: React.FC<CanvasControlsProps> = ({ activeTool, onToolSelect, onReset }) => {
-  // TODO: Canvas pointer tools (select, pan, link) are currently visual-only toggles. Clicking them updates the local activeTool state, but does not alter the ReactFlow interaction modes. Future engineers should connect this state to ReactFlow controls (e.g. panOnDrag, selectNodesOnDrag).
+const CanvasControls: React.FC<CanvasControlsProps> = ({ activeTool, onToolSelect, onReset, isReadOnly = false }) => {
   return (
-    <div className="absolute bottom-6 left-6 z-20 flex items-center gap-2 bg-card/90 backdrop-blur border border-border p-2 rounded-xl shadow-2xl select-none">
+    <div className={clsx(
+      "absolute bottom-6 left-6 z-20 flex items-center gap-2 bg-card/90 backdrop-blur border border-border p-2 rounded-xl shadow-2xl select-none transition-all duration-200",
+      isReadOnly && "opacity-40 pointer-events-none cursor-not-allowed"
+    )}>
       <button
         onClick={() => onToolSelect('select')}
+        disabled={isReadOnly}
         className={clsx(
           "p-2 rounded-lg transition-all cursor-pointer",
           activeTool === 'select' ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -504,6 +508,7 @@ const CanvasControls: React.FC<CanvasControlsProps> = ({ activeTool, onToolSelec
       </button>
       <button
         onClick={() => onToolSelect('pan')}
+        disabled={isReadOnly}
         className={clsx(
           "p-2 rounded-lg transition-all cursor-pointer",
           activeTool === 'pan' ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -514,6 +519,7 @@ const CanvasControls: React.FC<CanvasControlsProps> = ({ activeTool, onToolSelec
       </button>
       <button
         onClick={() => onToolSelect('link')}
+        disabled={isReadOnly}
         className={clsx(
           "p-2 rounded-lg transition-all cursor-pointer",
           activeTool === 'link' ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -525,6 +531,7 @@ const CanvasControls: React.FC<CanvasControlsProps> = ({ activeTool, onToolSelec
       <div className="w-[1px] h-6 bg-border"></div>
       <button
         onClick={onReset}
+        disabled={isReadOnly}
         className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-all cursor-pointer"
         title="Reset View"
       >
@@ -2728,7 +2735,8 @@ function WorkspaceCanvas({ deployStatus }: { deployStatus: string }) {
     onConnect, 
     addNode, 
     selectedNodeId, 
-    setSelectedNodeId 
+    setSelectedNodeId,
+    activeTool
   } = useCanvasStore();
   
   const { screenToFlowPosition, fitView } = useReactFlow();
@@ -2827,7 +2835,12 @@ function WorkspaceCanvas({ deployStatus }: { deployStatus: string }) {
 
   return (
     <div 
-      className="flex-grow h-full relative" 
+      className={clsx(
+        "flex-grow h-full relative",
+        activeTool === 'select' && "flow-tool-select",
+        activeTool === 'pan' && "flow-tool-pan",
+        activeTool === 'link' && "flow-tool-link"
+      )}
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
@@ -2841,8 +2854,11 @@ function WorkspaceCanvas({ deployStatus }: { deployStatus: string }) {
         onNodeClick={(_, node) => setSelectedNodeId(node.id)}
         onPaneClick={() => setSelectedNodeId(null)}
         fitView
-        nodesDraggable={!isReadOnly}
-        nodesConnectable={!isReadOnly}
+        nodesDraggable={!isReadOnly && activeTool === 'select'}
+        nodesConnectable={!isReadOnly && activeTool !== 'pan'}
+        elementsSelectable={!isReadOnly && activeTool !== 'pan'}
+        panOnDrag={activeTool === 'pan' ? true : [1, 2]}
+        selectionOnDrag={activeTool === 'select'}
         deleteKeyCode={isReadOnly ? null : ['Backspace', 'Delete']}
       >
         <Background color="#242F41" gap={24} size={1} />
@@ -2890,7 +2906,7 @@ function WorkspaceCanvas({ deployStatus }: { deployStatus: string }) {
 // --- WORKSPACE LAYOUT WRAPPER ---
 function WorkspaceContent() {
   const router = useRouter();
-  const { nodes, edges, selectedNodeId, updateNodeData, resetCanvas, setSelectedNodeId } = useCanvasStore();
+  const { nodes, edges, selectedNodeId, updateNodeData, resetCanvas, setSelectedNodeId, activeTool, setActiveTool } = useCanvasStore();
   const { zoomIn, zoomOut, setViewport, getZoom } = useReactFlow();
 
   const [selectedProject] = useState("Web-Server-Orchestration");
@@ -2901,7 +2917,6 @@ function WorkspaceContent() {
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [inspectorTab, setInspectorTab] = useState("Parameters");
-  const [canvasTool, setCanvasTool] = useState("select");
 
   const [deployStatus, setDeployStatus] = useState<"IDLE" | "PENDING" | "RUNNING" | "SUCCESS" | "FAILED">("IDLE");
   const [logs, setLogs] = useState("");
@@ -3137,7 +3152,8 @@ function WorkspaceContent() {
   };
 
   const handleCanvasToolSelect = (tool: string) => {
-    setCanvasTool(tool);
+    if (deployStatus === 'PENDING' || deployStatus === 'RUNNING') return;
+    setActiveTool(tool as any);
   };
 
   const handleAddNodeToCanvas = (libNode: LibraryNode) => {
@@ -3278,9 +3294,10 @@ function WorkspaceContent() {
           <WorkspaceCanvas deployStatus={deployStatus} />
 
           <CanvasControls
-            activeTool={canvasTool}
+            activeTool={activeTool}
             onToolSelect={handleCanvasToolSelect}
             onReset={handleResetClick}
+            isReadOnly={deployStatus === 'PENDING' || deployStatus === 'RUNNING'}
           />
 
           {/* Terminal Drawer */}

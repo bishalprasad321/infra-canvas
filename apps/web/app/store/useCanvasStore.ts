@@ -27,6 +27,8 @@ type CanvasState = {
     resetCanvas: () => void;
     isExecuting: boolean;
     setIsExecuting: (executing: boolean) => void;
+    activeTool: 'select' | 'pan' | 'link';
+    setActiveTool: (tool: 'select' | 'pan' | 'link') => void;
 };
 
 // Initial nodes reflecting the 4 pre-populated nodes from design-idea
@@ -133,8 +135,10 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
     edges: [],
     selectedNodeId: null,
     isExecuting: false,
+    activeTool: 'select',
 
     setIsExecuting: (executing) => set({ isExecuting: executing }),
+    setActiveTool: (tool) => set({ activeTool: tool }),
 
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
     
@@ -232,7 +236,8 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
       set({
         nodes: [],
         edges: [],
-        selectedNodeId: null
+        selectedNodeId: null,
+        activeTool: 'select'
       });
     }
 }));
