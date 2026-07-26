@@ -32,10 +32,10 @@ const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, onToggleMobileMenu }) =
           </nav>
         </div>
         <div className="hidden items-center gap-3 md:flex">
-          <Link href="/workspace" className="rounded-lg border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-md hover:bg-secondary transition">
+          <Link href="/login" className="rounded-lg border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-md hover:bg-secondary transition">
             Sign In
           </Link>
-          <Link href="/workspace" className="rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg hover:opacity-90 transition">
+          <Link href="/login?mode=signup" className="rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg hover:opacity-90 transition">
             Start Free Trial
           </Link>
         </div>
@@ -55,10 +55,10 @@ const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, onToggleMobileMenu }) =
           <a href="#pricing" onClick={onToggleMobileMenu} className="text-base text-muted-foreground hover:text-foreground py-2">Pricing</a>
           <a href="#docs" onClick={onToggleMobileMenu} className="text-base text-muted-foreground hover:text-foreground py-2">Docs</a>
           <hr className="border-border my-2" />
-          <Link href="/workspace" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg border border-border bg-card py-3 text-sm font-medium text-foreground shadow-md">
+          <Link href="/login" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg border border-border bg-card py-3 text-sm font-medium text-foreground shadow-md">
             Sign In
           </Link>
-          <Link href="/workspace" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-lg">
+          <Link href="/login?mode=signup" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-lg">
             Start Free Trial
           </Link>
         </div>
@@ -118,7 +118,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ heroEmail, onEmailChange, onS
                 )}
               </button>
             </form>
-            <Link href="/workspace" className="group flex min-h-11 items-center gap-3 rounded-xl border border-border bg-secondary px-5 py-3 text-sm font-medium text-foreground shadow-md hover:bg-secondary/80 transition">
+            <Link href="/login" className="group flex min-h-11 items-center gap-3 rounded-xl border border-border bg-secondary px-5 py-3 text-sm font-medium text-foreground shadow-md hover:bg-secondary/80 transition">
               <span>Book a Demo</span>
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-card">
                 <Icon icon="lucide:play" className="text-sm text-cyan-500" />
@@ -525,7 +525,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({ isAnnualBilling, onTogg
                 </div>
               </div>
             </div>
-            <Link href="/workspace" className="mt-8 w-full text-center rounded-lg border border-border bg-secondary px-4 py-3 text-sm font-semibold text-foreground hover:bg-secondary/80 transition">
+            <Link href="/login?mode=signup" className="mt-8 w-full text-center rounded-lg border border-border bg-secondary px-4 py-3 text-sm font-semibold text-foreground hover:bg-secondary/80 transition">
               Start Free Trial
             </Link>
           </div>
@@ -561,7 +561,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({ isAnnualBilling, onTogg
                 </div>
               </div>
             </div>
-            <Link href="/workspace" className="mt-8 w-full text-center rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90 transition">
+            <Link href="/login" className="mt-8 w-full text-center rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90 transition">
               Talk to Sales
             </Link>
           </div>
@@ -587,7 +587,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({ isAnnualBilling, onTogg
                 </div>
               </div>
             </div>
-            <Link href="/workspace" className="mt-8 w-full text-center rounded-lg border border-border bg-secondary px-4 py-3 text-sm font-semibold text-foreground hover:bg-secondary/80 transition">
+            <Link href="/login" className="mt-8 w-full text-center rounded-lg border border-border bg-secondary px-4 py-3 text-sm font-semibold text-foreground hover:bg-secondary/80 transition">
               Contact Us
             </Link>
           </div>

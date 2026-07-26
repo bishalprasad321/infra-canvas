@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuthStore } from '../store/useAuthStore';
 import { 
   ReactFlow, 
   Background, 
@@ -18,7 +19,7 @@ import '@xyflow/react/dist/style.css';
 import { Icon } from '@iconify/react';
 import { clsx } from 'clsx';
 
-import useCanvasStore from '../store/useCanvasStore';
+import useCanvasStore, { getInitialNodes, getInitialEdges } from '../store/useCanvasStore';
 import ReactFlowCanvasNode from '../components/ReactFlowCanvasNode';
 import { generateAnsibleYAML } from '../lib/exportYaml';
 import { downloadZipBundle, downloadTerraformZip, generateBundleFiles, generateTerraformFiles } from '../lib/bundleGenerator';
@@ -71,6 +72,8 @@ interface HeaderProps {
   autoDestroy: boolean;
   onAutoDestroyChange: (val: boolean) => void;
   onDestroy: () => void;
+  collaborators?: { id: string; name: string; color: string }[];
+  isSyncConnected?: boolean;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -90,6 +93,8 @@ const Header: React.FC<HeaderProps> = ({
   autoDestroy,
   onAutoDestroyChange,
   onDestroy,
+  collaborators = [],
+  isSyncConnected = false,
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -140,29 +145,32 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* TODO: Collaboration Stack & Live Syncing status is currently a static UI mock. There is no actual real-time multi-user editing backend. Implement WebSockets or CRDTs (e.g., Y.js) here to enable real-time collaboration. */}
       {/* Center: Collaboration Stack & Live Sync */}
       <div className="hidden lg:flex items-center gap-4">
-        <div className="flex items-center -space-x-2">
-          <div className="h-8 w-8 rounded-full border-2 border-primary overflow-hidden relative group cursor-pointer" title="Sarah (Terraform Architect)">
-            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=80&h=80&q=80" alt="Sarah" className="h-full w-full object-cover" />
-            <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-emerald-500 border border-card"></span>
-          </div>
-          <div className="h-8 w-8 rounded-full border-2 border-[#00A4FF] overflow-hidden relative group cursor-pointer" title="Alex (Ansible Specialist)">
-            <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&h=80&q=80" alt="Alex" className="h-full w-full object-cover" />
-            <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-emerald-500 border border-card"></span>
-          </div>
-          <div className="h-8 w-8 rounded-full border-2 border-[#326CE5] overflow-hidden relative group cursor-pointer" title="Dave (K8s Lead)">
-            <img src="https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=80&h=80&q=80" alt="Dave" className="h-full w-full object-cover" />
-            <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-emerald-500 border border-card"></span>
-          </div>
-          <div className="h-8 w-8 rounded-full bg-muted border border-border flex items-center justify-center text-xs font-semibold text-muted-foreground cursor-pointer hover:bg-border transition-colors">
-            +2
-          </div>
+        <div className="flex items-center -space-x-1.5">
+          {collaborators.map((c, idx) => (
+            <div 
+              key={`${c.id}-${idx}`} 
+              className="h-8 w-8 rounded-full border-2 overflow-hidden relative flex items-center justify-center text-[10px] font-bold text-white uppercase select-none cursor-pointer"
+              style={{ backgroundColor: c.color, borderColor: '#0A0F1D' }}
+              title={`${c.name} (Collaborator)`}
+            >
+              {c.name.slice(0, 2)}
+              <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-emerald-500 border border-slate-900"></span>
+            </div>
+          ))}
+          {collaborators.length === 0 && (
+            <span className="text-xs text-muted-foreground italic select-none">Solo Workspace</span>
+          )}
         </div>
-        <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400 text-xs font-medium">
-          <Icon icon="lucide:refresh-cw" className="animate-spin text-xs" />
-          <span>Live Syncing</span>
+        <div className={clsx(
+          "flex items-center gap-2 px-3 py-1 border rounded-full text-xs font-medium transition-all duration-305",
+          isSyncConnected 
+            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+            : "bg-red-500/10 border-red-500/20 text-red-400"
+        )}>
+          <Icon icon="lucide:refresh-cw" className={clsx("text-xs", isSyncConnected && "animate-spin")} />
+          <span>{isSyncConnected ? "Live Synchronized" : "Sync Offline"}</span>
         </div>
       </div>
 
@@ -1090,6 +1098,8 @@ interface InspectorPanelProps {
   edges: Edge[];
   setSelectedNodeId: (id: string | null) => void;
   isReadOnly?: boolean;
+  onStartEditing?: (nodeId: string) => void;
+  onEndEditing?: (nodeId: string) => void;
 }
 
 const InspectorPanel: React.FC<InspectorPanelProps> = ({
@@ -1104,6 +1114,8 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   edges,
   setSelectedNodeId,
   isReadOnly = false,
+  onStartEditing,
+  onEndEditing,
 }) => {
   const [newTagKey, setNewTagKey] = useState('');
   const [newTagVal, setNewTagVal] = useState('');
@@ -1215,7 +1227,11 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
           </div>
 
           {/* Tab Content */}
-          <div className={clsx("flex-1 p-4", activeTab === 'Parameters' ? "overflow-y-auto space-y-4" : "flex flex-col overflow-hidden")}>
+          <div 
+            className={clsx("flex-1 p-4", activeTab === 'Parameters' ? "overflow-y-auto space-y-4" : "flex flex-col overflow-hidden")}
+            onFocusCapture={() => selectedNode && onStartEditing?.(selectedNode.id)}
+            onBlurCapture={() => selectedNode && onEndEditing?.(selectedNode.id)}
+          >
             {activeTab === 'Parameters' ? (
               !selectedNode ? (
                 nodes.length === 0 ? (
@@ -2726,7 +2742,13 @@ const LIBRARY_NODES: LibraryNode[] = [
 ];
 
 // --- FLOW EDITOR AREA CANVAS ---
-function WorkspaceCanvas({ deployStatus }: { deployStatus: string }) {
+interface WorkspaceCanvasProps {
+  deployStatus: string;
+  peerCursors: Record<string, { x: number; y: number; name: string; color: string }>;
+  handleMouseMove: (e: React.MouseEvent) => void;
+}
+
+function WorkspaceCanvas({ deployStatus, peerCursors = {}, handleMouseMove }: WorkspaceCanvasProps) {
   const { 
     nodes, 
     edges, 
@@ -2836,14 +2858,35 @@ function WorkspaceCanvas({ deployStatus }: { deployStatus: string }) {
   return (
     <div 
       className={clsx(
-        "flex-grow h-full relative",
+        "flex-grow h-full relative overflow-hidden",
         activeTool === 'select' && "flow-tool-select",
         activeTool === 'pan' && "flow-tool-pan",
         activeTool === 'link' && "flow-tool-link"
       )}
       onDragOver={onDragOver}
       onDrop={onDrop}
+      onMouseMove={handleMouseMove}
     >
+      {/* Floating Peer Cursors Overlay */}
+      {Object.entries(peerCursors).map(([id, cursor]) => (
+        <div
+          key={id}
+          className="absolute pointer-events-none z-50 transition-all duration-75 ease-out"
+          style={{ left: cursor.x, top: cursor.y }}
+        >
+          <Icon 
+            icon="lucide:mouse-pointer-2" 
+            className="text-lg rotate-[270deg]" 
+            style={{ color: cursor.color }} 
+          />
+          <div 
+            className="absolute left-4 top-4 rounded px-2 py-0.5 text-[10px] font-bold text-white whitespace-nowrap shadow-md select-none"
+            style={{ backgroundColor: cursor.color }}
+          >
+            {cursor.name}
+          </div>
+        </div>
+      ))}
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -2909,7 +2952,21 @@ function WorkspaceContent() {
   const { nodes, edges, selectedNodeId, updateNodeData, resetCanvas, setSelectedNodeId, activeTool, setActiveTool } = useCanvasStore();
   const { zoomIn, zoomOut, setViewport, getZoom } = useReactFlow();
 
-  const [selectedProject] = useState("Web-Server-Orchestration");
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get('project') || 'Web-Server-Orchestration';
+  const selectedProject = projectId; // compatibility alias
+
+  const { token, user, loadSession } = useAuthStore();
+
+  const syncWsRef = useRef<WebSocket | null>(null);
+  const isIncomingSyncRef = useRef<boolean>(false);
+  const lastStateRef = useRef<{ nodes: any[], edges: any[] }>({ nodes: [], edges: [] });
+
+  const [collaborators, setCollaborators] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [isSyncConnected, setIsSyncConnected] = useState(false);
+  const [peerCursors, setPeerCursors] = useState<Record<string, { x: number; y: number; name: string; color: string }>>({});
+  const [peerEdits, setPeerEdits] = useState<Record<string, string>>({}); // maps nodeId -> userName editing it
+
   const [selectedOS, setSelectedOS] = useState("Linux");
   const [zoomLevel, setZoomLevel] = useState(100);
   const [searchQuery, setSearchQuery] = useState("");
@@ -2926,6 +2983,177 @@ function WorkspaceContent() {
 
   const wsRef = useRef<WebSocket | null>(null);
   const terminalEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Authenticate session and protect workspace routes
+  useEffect(() => {
+    loadSession();
+  }, [loadSession]);
+
+  useEffect(() => {
+    const checkedToken = localStorage.getItem('infracanvas_token');
+    if (!checkedToken) {
+      router.push('/login');
+    }
+  }, [token, router]);
+
+  // Connect to WebSocket Room Syncing
+  useEffect(() => {
+    const activeToken = localStorage.getItem('infracanvas_token');
+    if (!activeToken || !projectId || !user) return;
+
+    const apiHost = process.env.NEXT_PUBLIC_API_URL 
+      ? process.env.NEXT_PUBLIC_API_URL.replace(/^http/, 'ws') 
+      : 'ws://localhost:8080';
+    const wsUrl = `${apiHost}/api/workspace/${projectId}/sync?token=${activeToken}`;
+
+    const ws = new WebSocket(wsUrl);
+    syncWsRef.current = ws;
+
+    ws.onopen = () => {
+      setIsSyncConnected(true);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        const { type, senderId, senderName, color, payload } = msg;
+
+        if (type === 'init' || type === 'join' || type === 'leave') {
+          const members = payload ? JSON.parse(JSON.stringify(payload)) : [];
+          if (Array.isArray(members)) {
+            const activePeers = members.filter(m => m.id !== user.id);
+            // Deduplicate by user ID to show each peer only once
+            const uniquePeers = activePeers.filter((value, index, self) =>
+              self.findIndex(m => m.id === value.id) === index
+            );
+            setCollaborators(uniquePeers);
+          }
+          if (type === 'leave') {
+            setPeerCursors(prev => {
+              const copy = { ...prev };
+              delete copy[senderId];
+              return copy;
+            });
+          }
+
+          if (type === 'init' && Array.isArray(members)) {
+            const activePeers = members.filter(m => m.id !== user.id);
+            if (activePeers.length === 0 && useCanvasStore.getState().nodes.length === 0) {
+              isIncomingSyncRef.current = true;
+              useCanvasStore.getState().setNodes(getInitialNodes());
+              useCanvasStore.getState().setEdges(getInitialEdges());
+            } else if (activePeers.length > 0) {
+              ws.send(JSON.stringify({ type: 'request_sync' }));
+            }
+          }
+        } else if (type === 'request_sync') {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'change',
+              payload: {
+                nodes: useCanvasStore.getState().nodes,
+                edges: useCanvasStore.getState().edges
+              }
+            }));
+          }
+        } else if (type === 'cursor') {
+          setPeerCursors(prev => ({
+            ...prev,
+            [senderId]: { x: payload.x, y: payload.y, name: senderName, color }
+          }));
+        } else if (type === 'edit') {
+          const { nodeId, isEditing } = payload;
+          setPeerEdits(prev => {
+            const copy = { ...prev };
+            if (isEditing) {
+              copy[nodeId] = senderName;
+            } else {
+              delete copy[nodeId];
+            }
+            return copy;
+          });
+        } else if (type === 'change') {
+          const { nodes: peerNodes, edges: peerEdges } = payload;
+          isIncomingSyncRef.current = true;
+          if (peerNodes) useCanvasStore.getState().setNodes(peerNodes);
+          if (peerEdges) useCanvasStore.getState().setEdges(peerEdges);
+        }
+      } catch (err) {
+        console.error('Error handling WebSocket sync message', err);
+      }
+    };
+
+    ws.onclose = () => {
+      setIsSyncConnected(false);
+      setCollaborators([]);
+      setPeerCursors({});
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [projectId, user]);
+
+  // Broadcast local canvas state changes to room peers
+  useEffect(() => {
+    if (isIncomingSyncRef.current) {
+      isIncomingSyncRef.current = false;
+      lastStateRef.current = { nodes, edges };
+      return;
+    }
+
+    if (JSON.stringify(nodes) === JSON.stringify(lastStateRef.current.nodes) &&
+        JSON.stringify(edges) === JSON.stringify(lastStateRef.current.edges)) {
+      return;
+    }
+
+    if (syncWsRef.current && syncWsRef.current.readyState === WebSocket.OPEN) {
+      syncWsRef.current.send(JSON.stringify({
+        type: 'change',
+        payload: { nodes, edges }
+      }));
+    }
+
+    lastStateRef.current = { nodes, edges };
+  }, [nodes, edges]);
+
+  // Track cursor positions on mousemove (throttled)
+  const lastCursorTimeRef = useRef<number>(0);
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!syncWsRef.current || syncWsRef.current.readyState !== WebSocket.OPEN) return;
+    const now = Date.now();
+    if (now - lastCursorTimeRef.current < 60) return; // 60ms throttle
+    lastCursorTimeRef.current = now;
+
+    const container = document.querySelector('.react-flow__pane');
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    syncWsRef.current.send(JSON.stringify({
+      type: 'cursor',
+      payload: { x, y }
+    }));
+  }, []);
+
+  const handleStartEditing = useCallback((nodeId: string) => {
+    if (syncWsRef.current && syncWsRef.current.readyState === WebSocket.OPEN) {
+      syncWsRef.current.send(JSON.stringify({
+        type: 'edit',
+        payload: { nodeId, isEditing: true }
+      }));
+    }
+  }, []);
+
+  const handleEndEditing = useCallback((nodeId: string) => {
+    if (syncWsRef.current && syncWsRef.current.readyState === WebSocket.OPEN) {
+      syncWsRef.current.send(JSON.stringify({
+        type: 'edit',
+        payload: { nodeId, isEditing: false }
+      }));
+    }
+  }, []);
 
   // Auto-scroll terminal when logs change
   useEffect(() => {
@@ -3275,6 +3503,8 @@ function WorkspaceContent() {
         autoDestroy={autoDestroy}
         onAutoDestroyChange={setAutoDestroy}
         onDestroy={handleDestroyClick}
+        collaborators={collaborators}
+        isSyncConnected={isSyncConnected}
       />
 
       <div className="flex-1 flex overflow-hidden relative">
@@ -3291,7 +3521,11 @@ function WorkspaceContent() {
         />
 
         <main className="flex-1 bg-background relative overflow-hidden flex flex-col">
-          <WorkspaceCanvas deployStatus={deployStatus} />
+          <WorkspaceCanvas 
+            deployStatus={deployStatus} 
+            peerCursors={peerCursors}
+            handleMouseMove={handleMouseMove}
+          />
 
           <CanvasControls
             activeTool={activeTool}
@@ -3364,6 +3598,8 @@ function WorkspaceContent() {
           edges={edges}
           setSelectedNodeId={setSelectedNodeId}
           isReadOnly={deployStatus === 'PENDING' || deployStatus === 'RUNNING'}
+          onStartEditing={handleStartEditing}
+          onEndEditing={handleEndEditing}
         />
       </div>
     </div>
@@ -3374,7 +3610,13 @@ export default function WorkspacePage() {
   return (
     <div className="h-screen w-full bg-background text-foreground flex flex-col relative font-sans overflow-hidden">
       <ReactFlowProvider>
-        <WorkspaceContent />
+        <Suspense fallback={
+          <div className="min-h-screen w-full bg-[#0A0F1D] flex items-center justify-center text-slate-400">
+            <Icon icon="lucide:loader-2" className="animate-spin text-2xl text-primary" />
+          </div>
+        }>
+          <WorkspaceContent />
+        </Suspense>
       </ReactFlowProvider>
     </div>
   );
