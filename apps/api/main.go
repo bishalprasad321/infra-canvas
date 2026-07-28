@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -16,6 +19,7 @@ import (
 	"api/runner"
 
 	"github.com/gorilla/websocket"
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 )
 
@@ -73,6 +77,13 @@ func main() {
 		canvas TEXT NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE IF NOT EXISTS users (
+		id TEXT PRIMARY KEY,
+		email TEXT UNIQUE NOT NULL,
+		password_hash TEXT NOT NULL,
+		name TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 	if _, err := db.Exec(schemaQuery); err != nil {
 		log.Fatalf("[DB] Failed to initialize schema: %v\n", err)
@@ -89,9 +100,16 @@ func main() {
 	mux.HandleFunc("POST /api/destroy", enableCORS(handleDestroy))
 	mux.HandleFunc("/api/ws/runs/{id}", handleWebSocket)
 
+	// Auth & Workspace Sync Routes
+	mux.HandleFunc("POST /api/auth/signup", enableCORS(handleSignup))
+	mux.HandleFunc("POST /api/auth/login", enableCORS(handleLogin))
+	mux.HandleFunc("GET /api/workspace/{projectId}/sync", handleWorkspaceWebSocketSync)
+
 	// Fallback/options endpoint for preflight requests
 	mux.HandleFunc("OPTIONS /api/deploy", handleOptions)
 	mux.HandleFunc("OPTIONS /api/destroy", handleOptions)
+	mux.HandleFunc("OPTIONS /api/auth/signup", handleOptions)
+	mux.HandleFunc("OPTIONS /api/auth/login", handleOptions)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -502,4 +520,393 @@ func handleDestroy(w http.ResponseWriter, r *http.Request) {
 			})
 		})
 	}()
+}
+
+// --- AUTHENTICATION & COLLABORATION STACK IMPLEMENTATION ---
+
+var jwtSecret = []byte("infracanvas_workspace_orchestration_secret_key_98765!")
+
+type TokenHeader struct {
+	Alg string `json:"alg"`
+	Typ string `json:"typ"`
+}
+
+type TokenClaims struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
+	Exp   int64  `json:"exp"`
+}
+
+func GenerateToken(userID, email, name string) (string, error) {
+	header := TokenHeader{Alg: "HS256", Typ: "JWT"}
+	headerJSON, _ := json.Marshal(header)
+	headerB64 := base64.RawURLEncoding.EncodeToString(headerJSON)
+
+	claims := TokenClaims{
+		ID:    userID,
+		Email: email,
+		Name:  name,
+		Exp:   time.Now().Add(24 * time.Hour).Unix(),
+	}
+	claimsJSON, _ := json.Marshal(claims)
+	claimsB64 := base64.RawURLEncoding.EncodeToString(claimsJSON)
+
+	unsignedToken := headerB64 + "." + claimsB64
+
+	mac := hmac.New(sha256.New, jwtSecret)
+	mac.Write([]byte(unsignedToken))
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+	return unsignedToken + "." + signature, nil
+}
+
+func VerifyToken(tokenStr string) (*TokenClaims, error) {
+	parts := strings.Split(tokenStr, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("invalid token format")
+	}
+
+	unsignedToken := parts[0] + "." + parts[1]
+	signatureB64 := parts[2]
+
+	mac := hmac.New(sha256.New, jwtSecret)
+	mac.Write([]byte(unsignedToken))
+	expectedSignature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+	if signatureB64 != expectedSignature {
+		return nil, fmt.Errorf("signature verification failed")
+	}
+
+	claimsJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode claims: %v", err)
+	}
+
+	var claims TokenClaims
+	if err := json.Unmarshal(claimsJSON, &claims); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal claims: %v", err)
+	}
+
+	if time.Now().Unix() > claims.Exp {
+		return nil, fmt.Errorf("token has expired")
+	}
+
+	return &claims, nil
+}
+
+func hashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	return string(bytes), err
+}
+
+func checkPasswordHash(password, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
+}
+
+func handleSignup(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Name     string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	email := strings.TrimSpace(strings.ToLower(payload.Email))
+	name := strings.TrimSpace(payload.Name)
+	if email == "" || payload.Password == "" || name == "" {
+		http.Error(w, "Email, password, and name are required", http.StatusBadRequest)
+		return
+	}
+
+	hash, err := hashPassword(payload.Password)
+	if err != nil {
+		http.Error(w, "Failed to secure password: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	userID := fmt.Sprintf("usr_%d", time.Now().UnixNano())
+
+	insertQuery := "INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)"
+	_, err = db.Exec(insertQuery, userID, email, hash, name)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			http.Error(w, "Email already exists", http.StatusConflict)
+		} else {
+			http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":    userID,
+		"email": email,
+		"name":  name,
+	})
+}
+
+func handleLogin(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	email := strings.TrimSpace(strings.ToLower(payload.Email))
+	if email == "" || payload.Password == "" {
+		http.Error(w, "Email and password are required", http.StatusBadRequest)
+		return
+	}
+
+	var userID, name, hash string
+	err := db.QueryRow("SELECT id, name, password_hash FROM users WHERE email = ?", email).Scan(&userID, &name, &hash)
+	if err == sql.ErrNoRows {
+		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		return
+	} else if err != nil {
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if !checkPasswordHash(payload.Password, hash) {
+		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		return
+	}
+
+	token, err := GenerateToken(userID, email, name)
+	if err != nil {
+		http.Error(w, "Failed to sign token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"token": token,
+		"user": map[string]string{
+			"id":    userID,
+			"email": email,
+			"name":  name,
+		},
+	})
+}
+
+// --- WebSocket Workspace Sync Server ---
+
+type SyncMessage struct {
+	Type       string          `json:"type"` // "cursor", "change", "edit", "join", "leave", "init"
+	ProjectID  string          `json:"projectId,omitempty"`
+	SenderID   string          `json:"senderId,omitempty"`
+	SenderName string          `json:"senderName,omitempty"`
+	Color      string          `json:"color,omitempty"`
+	Payload    json.RawMessage `json:"payload,omitempty"`
+}
+
+type SyncClient struct {
+	conn     *websocket.Conn
+	roomID   string
+	userID   string
+	userName string
+	color    string
+}
+
+type WorkspaceRoom struct {
+	sync.RWMutex
+	clients map[*websocket.Conn]*SyncClient
+}
+
+var (
+	rooms      = make(map[string]*WorkspaceRoom)
+	roomsMutex sync.Mutex
+)
+
+var tailwindColors = []string{
+	"#F43F5E", // rose-500
+	"#EC4899", // pink-500
+	"#D946EF", // fuchsia-500
+	"#A855F7", // purple-500
+	"#6366F1", // indigo-500
+	"#3B82F6", // blue-500
+	"#0EA5E9", // sky-500
+	"#06B6D4", // cyan-500
+	"#14B8A6", // teal-500
+	"#10B981", // emerald-500
+	"#22C55E", // green-500
+	"#84CC16", // lime-500
+	"#EAB308", // yellow-500
+	"#F97316", // orange-500
+}
+
+func getRandomColor(seed string) string {
+	sum := 0
+	for _, char := range seed {
+		sum += int(char)
+	}
+	return tailwindColors[sum%len(tailwindColors)]
+}
+
+func handleWorkspaceWebSocketSync(w http.ResponseWriter, r *http.Request) {
+	// Parse projectId from URL path wildcards
+	projectId := r.PathValue("projectId")
+	if projectId == "" {
+		http.Error(w, "ProjectId is required", http.StatusBadRequest)
+		return
+	}
+
+	// Authenticate via token query parameter
+	tokenStr := r.URL.Query().Get("token")
+	if tokenStr == "" {
+		http.Error(w, "Authorization token is required", http.StatusUnauthorized)
+		return
+	}
+
+	claims, err := VerifyToken(tokenStr)
+	if err != nil {
+		http.Error(w, "Unauthorized token: "+err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	// Upgrade the connection
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("[SYNC] Failed to upgrade WebSocket connection: %v\n", err)
+		return
+	}
+	defer conn.Close()
+
+	// Register the client in the room
+	roomsMutex.Lock()
+	room, exists := rooms[projectId]
+	if !exists {
+		room = &WorkspaceRoom{
+			clients: make(map[*websocket.Conn]*SyncClient),
+		}
+		rooms[projectId] = room
+	}
+	roomsMutex.Unlock()
+
+	clientColor := getRandomColor(claims.ID)
+	client := &SyncClient{
+		conn:     conn,
+		roomID:   projectId,
+		userID:   claims.ID,
+		userName: claims.Name,
+		color:    clientColor,
+	}
+
+	room.Lock()
+	room.clients[conn] = client
+	
+	// Create active users user list to send back as an initialization
+	activeUsersList := make([]map[string]string, 0)
+	for _, c := range room.clients {
+		activeUsersList = append(activeUsersList, map[string]string{
+			"id":   c.userID,
+			"name": c.userName,
+			"color": c.color,
+		})
+	}
+	room.Unlock()
+
+	log.Printf("[SYNC] User %s joined workspace %s\n", claims.Name, projectId)
+
+	// Send initial list of active users to the new client
+	initPayload, _ := json.Marshal(activeUsersList)
+	_ = conn.WriteJSON(SyncMessage{
+		Type:       "init",
+		ProjectID:  projectId,
+		SenderID:   client.userID,
+		SenderName: client.userName,
+		Color:      client.color,
+		Payload:    initPayload,
+	})
+
+	// Broadcast JOIN to all other clients in the room
+	joinMsg := SyncMessage{
+		Type:       "join",
+		ProjectID:  projectId,
+		SenderID:   client.userID,
+		SenderName: client.userName,
+		Color:      client.color,
+		Payload:    initPayload, // send current list of members
+	}
+	broadcastToRoom(projectId, joinMsg, conn)
+
+	// Read loop
+	for {
+		_, msgBytes, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+
+		var msg SyncMessage
+		if err := json.Unmarshal(msgBytes, &msg); err != nil {
+			continue
+		}
+
+		// Fill system metadata details
+		msg.SenderID = client.userID
+		msg.SenderName = client.userName
+		msg.Color = client.color
+		msg.ProjectID = projectId
+
+		// Relay message to all other clients in the room
+		broadcastToRoom(projectId, msg, conn)
+	}
+
+	// Unregister client
+	room.Lock()
+	delete(room.clients, conn)
+	
+	// Re-compile active users user list post-exit
+	remainingUsers := make([]map[string]string, 0)
+	for _, c := range room.clients {
+		remainingUsers = append(remainingUsers, map[string]string{
+			"id":   c.userID,
+			"name": c.userName,
+			"color": c.color,
+		})
+	}
+	room.Unlock()
+
+	log.Printf("[SYNC] User %s left workspace %s\n", claims.Name, projectId)
+
+	// Broadcast LEAVE to all other clients in the room
+	leavePayload, _ := json.Marshal(remainingUsers)
+	leaveMsg := SyncMessage{
+		Type:       "leave",
+		ProjectID:  projectId,
+		SenderID:   client.userID,
+		SenderName: client.userName,
+		Payload:    leavePayload,
+	}
+	broadcastToRoom(projectId, leaveMsg, nil)
+}
+
+func broadcastToRoom(roomID string, msg SyncMessage, senderConn *websocket.Conn) {
+	roomsMutex.Lock()
+	room, exists := rooms[roomID]
+	roomsMutex.Unlock()
+
+	if !exists {
+		return
+	}
+
+	room.RLock()
+	defer room.RUnlock()
+
+	for conn := range room.clients {
+		if conn == senderConn {
+			// Do not loopback message to the sender
+			continue
+		}
+		_ = conn.WriteJSON(msg)
+	}
 }
