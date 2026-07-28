@@ -34,6 +34,8 @@ type CanvasState = {
     executionStatuses: Record<string, NodeExecutionStatus>;
     setNodeExecutionStatus: (nodeId: string, status: NodeExecutionStatus) => void;
     resetExecutionStatuses: () => void;
+    pipelineAction: 'deploy' | 'destroy' | null;
+    setPipelineAction: (action: 'deploy' | 'destroy' | null) => void;
 };
 
 // Initial nodes reflecting the 4 pre-populated nodes from design-idea
@@ -142,6 +144,7 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
     isExecuting: false,
     activeTool: 'select',
     executionStatuses: {},
+    pipelineAction: null,
 
     setIsExecuting: (executing) => set({ isExecuting: executing }),
     setActiveTool: (tool) => set({ activeTool: tool }),
@@ -149,6 +152,7 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
         executionStatuses: { ...state.executionStatuses, [nodeId]: status }
     })),
     resetExecutionStatuses: () => set({ executionStatuses: {} }),
+    setPipelineAction: (action) => set({ pipelineAction: action }),
 
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
     

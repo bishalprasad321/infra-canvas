@@ -271,18 +271,49 @@ func RunPipeline(
 	// ACTION: DESTROY
 	// ==========================================
 	if action == "destroy" {
+		// Emit all nodes pending; non-TF nodes have no destroy phase, resolve immediately
+		emitSliceStatus(allNodeIDs, "pending")
+		emitSliceStatus(targetNodeIDs, "completed")
+		emitSliceStatus(sourceNodeIDs, "completed")
+		emitSliceStatus(ansibleNodeIDs, "completed")
+		emitSliceStatus(k8sNodeIDs, "completed")
+
 		if hasTfNodes && fileExists(filepath.Join(tfDir, "main.tf")) {
 			emit("\n=========================================")
 			emit("[PHASE DESTROY] AWS Teardown (Terraform)")
 			emit("=========================================\n")
 
-			if err := spawnCommand("terraform", []string{"destroy", "-auto-approve"}, tfDir, tfEnv, logChan); err != nil {
-				emit(fmt.Sprintf("[ERROR] Terraform destroy failed: %v", err))
+			// Wrap logChan so destroy output drives individual node running→completed transitions
+			var tfDestroyWg sync.WaitGroup
+			tfDestroyWg.Add(1)
+			tfDestroyWrapped := make(chan string, 200)
+			go func() {
+				defer tfDestroyWg.Done()
+				for msg := range tfDestroyWrapped {
+					logChan <- msg
+					for _, id := range tfNodeIDs {
+						if strings.Contains(msg, id+": Destroying") || strings.Contains(msg, id+": Still destroying") {
+							emitNodeStatus(id, "running")
+						} else if strings.Contains(msg, id+": Destruction complete") {
+							emitNodeStatus(id, "completed")
+						}
+					}
+				}
+			}()
+			destroyErr := spawnCommand("terraform", []string{"destroy", "-auto-approve"}, tfDir, tfEnv, tfDestroyWrapped)
+			close(tfDestroyWrapped)
+			tfDestroyWg.Wait()
+
+			if destroyErr != nil {
+				emit(fmt.Sprintf("[ERROR] Terraform destroy failed: %v", destroyErr))
+				emitSliceStatus(tfNodeIDs, "failed")
 				onComplete("FAILED", accumulatedLogs)
 				return
 			}
+			emitSliceStatus(tfNodeIDs, "completed")
 		} else {
 			emit("[RUNNER] No active Terraform configurations found. Skip teardown.")
+			emitSliceStatus(tfNodeIDs, "completed")
 		}
 
 		emit("\n[RUNNER] Infrastructure tear-down completed successfully!")

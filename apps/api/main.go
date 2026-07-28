@@ -529,7 +529,9 @@ func handleDestroy(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 
-		runner.RunPipeline(runID, canvasStr, nil, "destroy", false, logChan, nil, nil, func(finalStatus string, logs string) {
+		runner.RunPipeline(runID, canvasStr, nil, "destroy", false, logChan, func(nodeId, status string) {
+			broadcastNodeStatus(runID, nodeId, status)
+		}, nil, func(finalStatus string, logs string) {
 			tracker.Lock()
 			finalLogs := tracker.logs
 			tracker.Unlock()
