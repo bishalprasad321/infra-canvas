@@ -32,7 +32,7 @@ type CanvasState = {
 };
 
 // Initial nodes reflecting the 4 pre-populated nodes from design-idea
-const getInitialNodes = (): Node[] => [
+export const getInitialNodes = (): Node[] => [
   {
     id: 'aws_security_group.web_sg',
     type: 'customNode',
@@ -104,7 +104,7 @@ const getInitialNodes = (): Node[] => [
 ];
 
 // Initial edges matching the design-idea connection layouts and styling
-const getInitialEdges = (): Edge[] => [
+export const getInitialEdges = (): Edge[] => [
   {
     id: 'e_sg_instance',
     source: 'aws_security_group.web_sg',
