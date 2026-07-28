@@ -273,10 +273,10 @@ const Header: React.FC<HeaderProps> = ({
         {/* Deploy Button */}
         <button
           onClick={onDeploy}
-          disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING'}
+          disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP'}
           className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-emerald-950/20 cursor-pointer disabled:cursor-not-allowed"
         >
-          {deployStatus === 'RUNNING' || deployStatus === 'PENDING' ? (
+          {deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP' ? (
             <Icon icon="lucide:loader-2" className="text-base animate-spin" />
           ) : (
             <Icon icon="lucide:play" className="text-base" />
@@ -287,7 +287,7 @@ const Header: React.FC<HeaderProps> = ({
         {/* Destroy Button */}
         <button
           onClick={onDestroy}
-          disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING' || autoDestroy}
+          disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP' || autoDestroy}
           className="bg-rose-600 hover:bg-rose-500 disabled:bg-rose-800 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-rose-950/20 cursor-pointer disabled:cursor-not-allowed"
           title={autoDestroy ? "Destroy is disabled when Auto-Cleanup is enabled" : "Tear Down All Canvas Provisioned Resources"}
         >
@@ -2975,7 +2975,7 @@ function WorkspaceContent() {
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [inspectorTab, setInspectorTab] = useState("Parameters");
 
-  const [deployStatus, setDeployStatus] = useState<"IDLE" | "PENDING" | "RUNNING" | "SUCCESS" | "FAILED">("IDLE");
+  const [deployStatus, setDeployStatus] = useState<"IDLE" | "PENDING" | "RUNNING" | "CLEANUP" | "SUCCESS" | "FAILED">("IDLE");
   const [logs, setLogs] = useState("");
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -3187,6 +3187,7 @@ function WorkspaceContent() {
     setLogs("[CLIENT] Compiling canvas files and preparing payload...\n");
     setIsTerminalOpen(true);
     setActiveRunId(null);
+    useCanvasStore.getState().resetExecutionStatuses();
 
     if (wsRef.current) {
       wsRef.current.close();
@@ -3236,6 +3237,8 @@ function WorkspaceContent() {
             setDeployStatus(wsData.status);
           } else if (wsData.type === "log") {
             setLogs(prev => prev + wsData.message);
+          } else if (wsData.type === "node_status") {
+            useCanvasStore.getState().setNodeExecutionStatus(wsData.nodeId, wsData.status);
           }
         } catch (e) {
           // Fallback if message is raw text
@@ -3549,10 +3552,11 @@ function WorkspaceContent() {
                       "px-2 py-0.5 rounded text-[9px] uppercase tracking-wide font-bold border",
                       deployStatus === 'PENDING' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
                       deployStatus === 'RUNNING' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                      deployStatus === 'CLEANUP' && "bg-purple-500/10 text-purple-400 border-purple-500/20",
                       deployStatus === 'SUCCESS' && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
                       deployStatus === 'FAILED' && "bg-rose-500/10 text-rose-400 border-rose-500/20"
                     )}>
-                      {deployStatus}
+                      {deployStatus === 'CLEANUP' ? 'CLEANING UP' : deployStatus}
                     </span>
                   )}
                 </div>

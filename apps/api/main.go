@@ -34,9 +34,10 @@ type PipelineRun struct {
 
 type RunTracker struct {
 	sync.Mutex
-	clients map[*websocket.Conn]bool
-	logs    string
-	status  string
+	clients      map[*websocket.Conn]bool
+	logs         string
+	status       string
+	nodeStatuses map[string]string // nodeId → latest status; replayed to late-connecting WS clients
 }
 
 var (
@@ -245,8 +246,9 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 
 	// Initialize tracker
 	tracker := &RunTracker{
-		clients: make(map[*websocket.Conn]bool),
-		status:  "PENDING",
+		clients:      make(map[*websocket.Conn]bool),
+		status:       "PENDING",
+		nodeStatuses: make(map[string]string),
 	}
 	trackersMutex.Lock()
 	trackers[runID] = tracker
@@ -281,7 +283,11 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 		}()
 
 		// Start executing runner
-		runner.RunPipeline(runID, canvasStr, payload.Files, "deploy", payload.AutoDestroy, logChan, func(finalStatus string, logs string) {
+		runner.RunPipeline(runID, canvasStr, payload.Files, "deploy", payload.AutoDestroy, logChan, func(nodeId, status string) {
+			broadcastNodeStatus(runID, nodeId, status)
+		}, func(status string) {
+			broadcastToTracker(runID, "status_change", status)
+		}, func(finalStatus string, logs string) {
 			tracker.Lock()
 			finalLogs := tracker.logs
 			tracker.Unlock()
@@ -353,6 +359,14 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			"type":   "status_change",
 			"status": tracker.status,
 		})
+		// Replay all node statuses so late-connecting clients get current per-node state
+		for nodeId, nodeStatus := range tracker.nodeStatuses {
+			_ = conn.WriteJSON(map[string]string{
+				"type":   "node_status",
+				"nodeId": nodeId,
+				"status": nodeStatus,
+			})
+		}
 		tracker.Unlock()
 
 		// Read loop to detect disconnects
@@ -384,6 +398,30 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		_ = conn.Close()
+	}
+}
+
+func broadcastNodeStatus(runID, nodeId, status string) {
+	trackersMutex.Lock()
+	tracker, exists := trackers[runID]
+	trackersMutex.Unlock()
+	if !exists {
+		return
+	}
+	tracker.Lock()
+	defer tracker.Unlock()
+	tracker.nodeStatuses[nodeId] = status // persist so late-connecting WS clients can catch up
+	payload := map[string]string{
+		"type":   "node_status",
+		"nodeId": nodeId,
+		"status": status,
+	}
+	for client := range tracker.clients {
+		if err := client.WriteJSON(payload); err != nil {
+			log.Printf("[WS] Node status broadcast error: %v\n", err)
+			_ = client.Close()
+			delete(tracker.clients, client)
+		}
 	}
 }
 
@@ -457,8 +495,9 @@ func handleDestroy(w http.ResponseWriter, r *http.Request) {
 
 	// Initialize tracker
 	tracker := &RunTracker{
-		clients: make(map[*websocket.Conn]bool),
-		status:  "PENDING",
+		clients:      make(map[*websocket.Conn]bool),
+		status:       "PENDING",
+		nodeStatuses: make(map[string]string),
 	}
 	trackersMutex.Lock()
 	trackers[runID] = tracker
@@ -490,7 +529,7 @@ func handleDestroy(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 
-		runner.RunPipeline(runID, canvasStr, nil, "destroy", false, logChan, func(finalStatus string, logs string) {
+		runner.RunPipeline(runID, canvasStr, nil, "destroy", false, logChan, nil, nil, func(finalStatus string, logs string) {
 			tracker.Lock()
 			finalLogs := tracker.logs
 			tracker.Unlock()

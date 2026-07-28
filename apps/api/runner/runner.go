@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -159,6 +160,8 @@ func RunPipeline(
 	action string,
 	autoDestroy bool,
 	logChan chan<- string,
+	onNodeStatus func(nodeId, status string),
+	onStatusChange func(status string),
 	onComplete func(status string, logs string),
 ) {
 	isDocker := os.Getenv("IS_DOCKER") == "true"
@@ -209,16 +212,25 @@ func RunPipeline(
 	hasAnsibleNodes := false
 	hasK8sNodes := false
 
+	var tfNodeIDs, ansibleNodeIDs, k8sNodeIDs, sourceNodeIDs, targetNodeIDs, allNodeIDs []string
+
 	if err := json.Unmarshal([]byte(canvasJSON), &canvas); err == nil {
 		for _, node := range canvas.Nodes {
-			if node.Data.Tech == "Terraform" {
+			allNodeIDs = append(allNodeIDs, node.ID)
+			switch node.Data.Tech {
+			case "Terraform":
 				hasTfNodes = true
-			}
-			if node.Data.Tech == "Ansible" {
+				tfNodeIDs = append(tfNodeIDs, node.ID)
+			case "Ansible":
 				hasAnsibleNodes = true
-			}
-			if node.Data.Tech == "Kubernetes" {
+				ansibleNodeIDs = append(ansibleNodeIDs, node.ID)
+			case "Kubernetes":
 				hasK8sNodes = true
+				k8sNodeIDs = append(k8sNodeIDs, node.ID)
+			case "Source":
+				sourceNodeIDs = append(sourceNodeIDs, node.ID)
+			case "Target":
+				targetNodeIDs = append(targetNodeIDs, node.ID)
 			}
 		}
 	} else {
@@ -226,6 +238,20 @@ func RunPipeline(
 		hasTfNodes = true
 		hasAnsibleNodes = true
 		hasK8sNodes = true
+	}
+
+	// Safe wrapper so nil onNodeStatus doesn't panic
+	emitNodeStatus := func(nodeId, status string) {
+		if onNodeStatus != nil {
+			onNodeStatus(nodeId, status)
+		}
+	}
+
+	// Emit statuses for a slice of node IDs
+	emitSliceStatus := func(ids []string, status string) {
+		for _, id := range ids {
+			emitNodeStatus(id, status)
+		}
 	}
 
 	emit(fmt.Sprintf("[RUNNER_DEBUG] parsed hasTfNodes=%t, hasAnsibleNodes=%t, hasK8sNodes=%t", hasTfNodes, hasAnsibleNodes, hasK8sNodes))
@@ -267,6 +293,10 @@ func RunPipeline(
 	// ==========================================
 	// ACTION: DEPLOY (DEFAULT)
 	// ==========================================
+	// Mark all nodes pending; target nodes have no execution phase so they complete immediately
+	emitSliceStatus(allNodeIDs, "pending")
+	emitSliceStatus(targetNodeIDs, "completed")
+
 	// 1. Write the code bundle files to disk
 	for _, file := range files {
 		fullPath := filepath.Join(runDir, file.Path)
@@ -319,6 +349,8 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 		emit("[PHASE 00] Fetching Application Source Code")
 		emit("=========================================\n")
 
+		emitSliceStatus(sourceNodeIDs, "running")
+
 		branch := repoConfig.Branch
 		if branch == "" {
 			branch = "main"
@@ -330,11 +362,14 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 		cloneArgs := []string{"clone", "--branch", branch, "--depth", "1", repoConfig.URL, appDir}
 		if err := spawnCommand("git", cloneArgs, runDir, nil, logChan); err != nil {
 			emit(fmt.Sprintf("[ERROR] Failed to clone repository %s (branch %s): %v", repoConfig.URL, branch, err))
+			emitSliceStatus(sourceNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
+		emitSliceStatus(sourceNodeIDs, "completed")
 	} else if repoConfig.Present {
 		emit("\n[PHASE 00] Skipped (Code Repository node present but no repository URL configured)")
+		emitSliceStatus(sourceNodeIDs, "completed")
 	} else {
 		emit("\n[PHASE 00] Skipped (No Code Repository node present on canvas)")
 	}
@@ -373,13 +408,37 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 			}
 		}
 
+		// Nodes stay "pending" during init; per-resource status is driven by apply log output
 		if err := spawnCommand("terraform", []string{"init"}, tfDir, tfEnv, logChan); err != nil {
 			emit(fmt.Sprintf("[ERROR] Terraform init failed: %v", err))
+			emitSliceStatus(tfNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
-		if err := spawnCommand("terraform", []string{"apply", "-auto-approve"}, tfDir, tfEnv, logChan); err != nil {
-			emit(fmt.Sprintf("[ERROR] Terraform apply failed: %v", err))
+
+		// Wrap logChan so apply output drives individual node running→completed transitions
+		var tfWg sync.WaitGroup
+		tfWg.Add(1)
+		tfWrapped := make(chan string, 200)
+		go func() {
+			defer tfWg.Done()
+			for msg := range tfWrapped {
+				logChan <- msg
+				for _, id := range tfNodeIDs {
+					if strings.Contains(msg, id+": Creating") || strings.Contains(msg, id+": Modifying") || strings.Contains(msg, id+": Still creating") {
+						emitNodeStatus(id, "running")
+					} else if strings.Contains(msg, id+": Creation complete") || strings.Contains(msg, id+": Modifications complete") {
+						emitNodeStatus(id, "completed")
+					}
+				}
+			}
+		}()
+		applyErr := spawnCommand("terraform", []string{"apply", "-auto-approve"}, tfDir, tfEnv, tfWrapped)
+		close(tfWrapped)
+		tfWg.Wait()
+		if applyErr != nil {
+			emit(fmt.Sprintf("[ERROR] Terraform apply failed: %v", applyErr))
+			emitSliceStatus(tfNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
@@ -406,8 +465,11 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 				}
 			}
 		}
+
+		emitSliceStatus(tfNodeIDs, "completed")
 	} else {
 		emit("\n[PHASE 01] Skipped (No Terraform provisioning nodes present on canvas)")
+		emitSliceStatus(tfNodeIDs, "completed")
 	}
 
 	// Phase 2: Ansible (Configuration)
@@ -425,6 +487,7 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 
 		if !fileExists(keySourcePath) {
 			emit(fmt.Sprintf("[ERROR] Sandbox private SSH key not found at %s. Ensure sandbox files exist.", keySourcePath))
+			emitSliceStatus(ansibleNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
@@ -433,11 +496,13 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 		keyData, err := os.ReadFile(keySourcePath)
 		if err != nil {
 			emit(fmt.Sprintf("[ERROR] Failed to read private key: %v", err))
+			emitSliceStatus(ansibleNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
 		if err := os.WriteFile(tmpKeyPath, keyData, 0600); err != nil {
 			emit(fmt.Sprintf("[ERROR] Failed to write temp private key: %v", err))
+			emitSliceStatus(ansibleNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
@@ -455,13 +520,39 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 			ansibleArgs = append(ansibleArgs, "-vvv")
 		}
 
-		if err := spawnCommand("ansible-playbook", ansibleArgs, ansibleDir, nil, logChan); err != nil {
-			emit(fmt.Sprintf("[ERROR] Ansible playbook execution failed: %v", err))
+		// Wrap logChan: each "TASK [" marker advances to the next ansible node
+		ansibleIdx := 0
+		var ansibleWg sync.WaitGroup
+		ansibleWg.Add(1)
+		ansibleWrapped := make(chan string, 200)
+		go func() {
+			defer ansibleWg.Done()
+			for msg := range ansibleWrapped {
+				logChan <- msg
+				if strings.Contains(msg, "TASK [") {
+					if ansibleIdx > 0 && ansibleIdx-1 < len(ansibleNodeIDs) {
+						emitNodeStatus(ansibleNodeIDs[ansibleIdx-1], "completed")
+					}
+					if ansibleIdx < len(ansibleNodeIDs) {
+						emitNodeStatus(ansibleNodeIDs[ansibleIdx], "running")
+					}
+					ansibleIdx++
+				}
+			}
+		}()
+		ansibleErr := spawnCommand("ansible-playbook", ansibleArgs, ansibleDir, nil, ansibleWrapped)
+		close(ansibleWrapped)
+		ansibleWg.Wait()
+		if ansibleErr != nil {
+			emit(fmt.Sprintf("[ERROR] Ansible playbook execution failed: %v", ansibleErr))
+			emitSliceStatus(ansibleNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
+		emitSliceStatus(ansibleNodeIDs, "completed")
 	} else {
 		emit("\n[PHASE 02] Skipped (No Ansible configuration nodes present on canvas)")
+		emitSliceStatus(ansibleNodeIDs, "completed")
 	}
 
 	// Phase 3: Kubernetes (Container Deployment)
@@ -471,6 +562,8 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 		emit("[PHASE 03] Kubernetes Deployment (kubectl)")
 		emit("=========================================\n")
 
+		emitSliceStatus(k8sNodeIDs, "running")
+
 		kubectlArgs := []string{"apply", "-f", "deployment.yaml"}
 		if verboseMode {
 			kubectlArgs = append(kubectlArgs, "--v=6")
@@ -478,15 +571,21 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 
 		if err := spawnCommand("kubectl", kubectlArgs, k8sDir, nil, logChan); err != nil {
 			emit(fmt.Sprintf("[ERROR] kubectl apply failed: %v", err))
+			emitSliceStatus(k8sNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
+		emitSliceStatus(k8sNodeIDs, "completed")
 	} else {
 		emit("\n[PHASE 03] Skipped (No Kubernetes deployment nodes present on canvas)")
+		emitSliceStatus(k8sNodeIDs, "completed")
 	}
 
 	// Optional Ephemeral Clean-up
 	if autoDestroy && hasTfNodes && fileExists(filepath.Join(tfDir, "main.tf")) {
+		if onStatusChange != nil {
+			onStatusChange("CLEANUP")
+		}
 		emit("\n=========================================")
 		emit("[PHASE CLEANUP] Ephemeral Auto-Destruction")
 		emit("=========================================\n")
