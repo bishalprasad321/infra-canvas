@@ -3188,6 +3188,7 @@ function WorkspaceContent() {
     setIsTerminalOpen(true);
     setActiveRunId(null);
     useCanvasStore.getState().resetExecutionStatuses();
+    useCanvasStore.getState().setPipelineAction('deploy');
 
     if (wsRef.current) {
       wsRef.current.close();
@@ -3266,6 +3267,8 @@ function WorkspaceContent() {
     setLogs("[CLIENT] Triggering infrastructure tear-down (terraform destroy)...\n");
     setIsTerminalOpen(true);
     setActiveRunId(null);
+    useCanvasStore.getState().resetExecutionStatuses();
+    useCanvasStore.getState().setPipelineAction('destroy');
 
     if (wsRef.current) {
       wsRef.current.close();
@@ -3310,6 +3313,8 @@ function WorkspaceContent() {
             setDeployStatus(wsData.status);
           } else if (wsData.type === "log") {
             setLogs(prev => prev + wsData.message);
+          } else if (wsData.type === "node_status") {
+            useCanvasStore.getState().setNodeExecutionStatus(wsData.nodeId, wsData.status);
           }
         } catch (e) {
           setLogs(prev => prev + event.data);

@@ -121,13 +121,13 @@ Future engineers picking up the codebase should note the following features are 
 11. **Live Node Execution Status Tracking**:
     - Each canvas node displays a live execution status strip attached below its card during pipeline runs, driven by per-node WebSocket events (`node_status` messages carrying `nodeId` and `status` fields).
     - The Go runner (`runner/runner.go`) parses live tool output to drive individual node state transitions rather than advancing all nodes of a phase simultaneously:
-      - Terraform resource nodes are tracked by matching log output patterns (`resource_id: Creating...` → `running`, `resource_id: Creation complete` → `completed`), enabling each AWS resource to light up and resolve independently.
-      - Ansible task nodes advance sequentially using `TASK [` markers in playbook output, transitioning each canvas node one at a time in execution order.
-      - Source nodes transition through `running` → `completed` during git clone; Target nodes are resolved immediately at pipeline start as they carry no execution step.
+      - **Deploy**: Terraform resource nodes are tracked by matching log output patterns (`resource_id: Creating...` → `running`, `resource_id: Creation complete` → `completed`), enabling each AWS resource to light up and resolve independently. Ansible task nodes advance sequentially using `TASK [` markers in playbook output, transitioning each canvas node one at a time in execution order. Source nodes transition through `running` → `completed` during git clone; Target nodes are resolved immediately at pipeline start as they carry no execution step.
+      - **Destroy**: Terraform resource nodes are individually tracked via destroy log patterns (`resource_id: Destroying...` → `running`, `resource_id: Destruction complete` → `completed`). Source, Target, Ansible, and Kubernetes nodes resolve immediately to `completed` since only Terraform runs during tear-down.
     - Status states flow as: `idle` → `pending` → `running` → `completed` / `failed`.
+    - Strip color adapts to the active pipeline action: pulsing **blue** for deploy running, pulsing **red** for destroy running. Completed and failed states remain green and red respectively regardless of action.
     - The `RunTracker` struct stores the latest per-node status and replays the full map to late-joining WebSocket clients, eliminating a race condition between pipeline startup and client WebSocket connection establishment.
     - An `onStatusChange` pipeline callback emits a `CLEANUP` status when the optional auto-destroy phase runs post-deployment, surfaced in the terminal drawer as a distinct "CLEANING UP" badge rather than remaining on "RUNNING".
-    - Frontend: `ReactFlowCanvasNode` renders a status strip at the base of each node card — gray (pending), pulsing blue (running), green (completed), red (failed) — sourced from a new `executionStatuses` map in the Zustand store (`apps/web/app/store/useCanvasStore.ts`).
+    - Frontend: `ReactFlowCanvasNode` renders a status strip at the base of each node card — gray (pending), pulsing blue or red (running, context-dependent), green (completed), red (failed) — sourced from `executionStatuses` and `pipelineAction` in the Zustand store (`apps/web/app/store/useCanvasStore.ts`).
 
 ---
 
