@@ -118,6 +118,17 @@ Future engineers picking up the codebase should note the following features are 
       - Disables side Library Panel dragging, parameter inspector input fields, canvas resets, and the CanvasControls toolbar.
       - Fades out visual delete buttons and toolbar controls to indicate read-only lock state.
 
+11. **Live Node Execution Status Tracking**:
+    - Each canvas node displays a live execution status strip attached below its card during pipeline runs, driven by per-node WebSocket events (`node_status` messages carrying `nodeId` and `status` fields).
+    - The Go runner (`runner/runner.go`) parses live tool output to drive individual node state transitions rather than advancing all nodes of a phase simultaneously:
+      - Terraform resource nodes are tracked by matching log output patterns (`resource_id: Creating...` → `running`, `resource_id: Creation complete` → `completed`), enabling each AWS resource to light up and resolve independently.
+      - Ansible task nodes advance sequentially using `TASK [` markers in playbook output, transitioning each canvas node one at a time in execution order.
+      - Source nodes transition through `running` → `completed` during git clone; Target nodes are resolved immediately at pipeline start as they carry no execution step.
+    - Status states flow as: `idle` → `pending` → `running` → `completed` / `failed`.
+    - The `RunTracker` struct stores the latest per-node status and replays the full map to late-joining WebSocket clients, eliminating a race condition between pipeline startup and client WebSocket connection establishment.
+    - An `onStatusChange` pipeline callback emits a `CLEANUP` status when the optional auto-destroy phase runs post-deployment, surfaced in the terminal drawer as a distinct "CLEANING UP" badge rather than remaining on "RUNNING".
+    - Frontend: `ReactFlowCanvasNode` renders a status strip at the base of each node card — gray (pending), pulsing blue (running), green (completed), red (failed) — sourced from a new `executionStatuses` map in the Zustand store (`apps/web/app/store/useCanvasStore.ts`).
+
 ---
 
 ## Non-Implemented & Mocked Features (Roadmap)
