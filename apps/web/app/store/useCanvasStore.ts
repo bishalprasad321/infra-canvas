@@ -10,6 +10,8 @@ import {
     applyEdgeChanges,
 } from '@xyflow/react';
 
+export type NodeExecutionStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed';
+
 // Define the shape of your state
 type CanvasState = {
     nodes: Node[];
@@ -29,6 +31,11 @@ type CanvasState = {
     setIsExecuting: (executing: boolean) => void;
     activeTool: 'select' | 'pan' | 'link';
     setActiveTool: (tool: 'select' | 'pan' | 'link') => void;
+    executionStatuses: Record<string, NodeExecutionStatus>;
+    setNodeExecutionStatus: (nodeId: string, status: NodeExecutionStatus) => void;
+    resetExecutionStatuses: () => void;
+    pipelineAction: 'deploy' | 'destroy' | null;
+    setPipelineAction: (action: 'deploy' | 'destroy' | null) => void;
 };
 
 // Initial nodes reflecting the 4 pre-populated nodes from design-idea
@@ -136,9 +143,16 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
     selectedNodeId: null,
     isExecuting: false,
     activeTool: 'select',
+    executionStatuses: {},
+    pipelineAction: null,
 
     setIsExecuting: (executing) => set({ isExecuting: executing }),
     setActiveTool: (tool) => set({ activeTool: tool }),
+    setNodeExecutionStatus: (nodeId, status) => set((state) => ({
+        executionStatuses: { ...state.executionStatuses, [nodeId]: status }
+    })),
+    resetExecutionStatuses: () => set({ executionStatuses: {} }),
+    setPipelineAction: (action) => set({ pipelineAction: action }),
 
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
     

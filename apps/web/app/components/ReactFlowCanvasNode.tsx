@@ -4,7 +4,7 @@ import React from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Icon } from '@iconify/react';
 import { clsx } from 'clsx';
-import useCanvasStore from '../store/useCanvasStore';
+import useCanvasStore, { NodeExecutionStatus } from '../store/useCanvasStore';
 
 interface ReactFlowCanvasNodeProps {
   id: string;
@@ -21,9 +21,35 @@ interface ReactFlowCanvasNodeProps {
   selected?: boolean;
 }
 
+function ExecutionStatusBar({ status, isDestroy }: { status: NodeExecutionStatus; isDestroy: boolean }) {
+  if (status === 'idle') return null;
+
+  const runningBar = isDestroy
+    ? { bar: 'bg-red-500/10 border-red-500/20', dot: 'bg-red-400', textColor: 'text-red-400' }
+    : { bar: 'bg-blue-500/10 border-blue-500/20', dot: 'bg-blue-400', textColor: 'text-blue-400' };
+
+  const configs: Record<Exclude<NodeExecutionStatus, 'idle'>, { bar: string; dot: string; label: string; pulse: boolean; textColor: string }> = {
+    pending:   { bar: 'bg-muted/80 border-border',              dot: 'bg-muted-foreground',  label: 'Pending',   pulse: false, textColor: 'text-muted-foreground' },
+    running:   { ...runningBar,                                                               label: 'Running…',  pulse: true  },
+    completed: { bar: 'bg-emerald-500/10 border-emerald-500/20',dot: 'bg-emerald-400',        label: 'Completed', pulse: false, textColor: 'text-emerald-400'      },
+    failed:    { bar: 'bg-red-500/10 border-red-500/20',        dot: 'bg-red-400',            label: 'Failed',    pulse: false, textColor: 'text-red-400'           },
+  };
+
+  const { bar, dot, label, pulse, textColor } = configs[status];
+
+  return (
+    <div className={clsx('flex items-center gap-1.5 px-3 py-1 border-t rounded-b-xl', bar)}>
+      <span className={clsx('h-1.5 w-1.5 rounded-full flex-shrink-0', dot, pulse && 'animate-pulse')} />
+      <span className={clsx('text-[9px] font-semibold uppercase tracking-wider', textColor)}>{label}</span>
+    </div>
+  );
+}
+
 export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCanvasNodeProps) {
   const { setSelectedNodeId, deleteNode, selectedNodeId } = useCanvasStore();
   const isExecuting = useCanvasStore((state) => state.isExecuting);
+  const execStatus = useCanvasStore((state) => state.executionStatuses[id] ?? 'idle');
+  const pipelineAction = useCanvasStore((state) => state.pipelineAction);
 
   // Zustand selectedNodeId is the single source of truth for the active marker.
   // React Flow's `selected` prop is intentionally ignored here — it reflects internal
@@ -126,6 +152,8 @@ export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCan
           style={{ position: 'absolute', zIndex: 30 }}
         />
       </div>
+
+      <ExecutionStatusBar status={execStatus} isDestroy={pipelineAction === 'destroy'} />
     </div>
   );
 }
