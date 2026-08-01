@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { Icon } from '@iconify/react';
+import { useAuthStore } from './store/useAuthStore';
+import ProfileMenu from './components/ProfileMenu';
 
 // --- SUB-COMPONENTS ---
 
@@ -12,6 +14,9 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, onToggleMobileMenu }) => {
+  const { user, hasHydrated } = useAuthStore();
+  const isLoggedIn = hasHydrated && !!user;
+
   return (
     <header className="sticky top-0 z-20 border-b border-border/80 bg-background/80 backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 lg:px-10">
@@ -32,12 +37,23 @@ const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, onToggleMobileMenu }) =
           </nav>
         </div>
         <div className="hidden items-center gap-3 md:flex">
-          <Link href="/login" className="rounded-lg border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-md hover:bg-secondary transition">
-            Sign In
-          </Link>
-          <Link href="/login?mode=signup" className="rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg hover:opacity-90 transition">
-            Start Free Trial
-          </Link>
+          {isLoggedIn ? (
+            <>
+              <Link href="/dashboard" className="rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg hover:opacity-90 transition">
+                Go to Dashboard
+              </Link>
+              <ProfileMenu variant="compact" />
+            </>
+          ) : (
+            <>
+              <Link href="/login" className="rounded-lg border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-md hover:bg-secondary transition">
+                Sign In
+              </Link>
+              <Link href="/login?mode=signup" className="rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg hover:opacity-90 transition">
+                Start Free Trial
+              </Link>
+            </>
+          )}
         </div>
         <button 
           onClick={onToggleMobileMenu}
@@ -55,12 +71,25 @@ const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, onToggleMobileMenu }) =
           <a href="#pricing" onClick={onToggleMobileMenu} className="text-base text-muted-foreground hover:text-foreground py-2">Pricing</a>
           <a href="#docs" onClick={onToggleMobileMenu} className="text-base text-muted-foreground hover:text-foreground py-2">Docs</a>
           <hr className="border-border my-2" />
-          <Link href="/login" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg border border-border bg-card py-3 text-sm font-medium text-foreground shadow-md">
-            Sign In
-          </Link>
-          <Link href="/login?mode=signup" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-lg">
-            Start Free Trial
-          </Link>
+          {isLoggedIn ? (
+            <>
+              <Link href="/dashboard" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-lg">
+                Go to Dashboard
+              </Link>
+              <Link href="/workspace" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg border border-border bg-card py-3 text-sm font-medium text-foreground shadow-md">
+                Workspace
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link href="/login" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg border border-border bg-card py-3 text-sm font-medium text-foreground shadow-md">
+                Sign In
+              </Link>
+              <Link href="/login?mode=signup" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-lg">
+                Start Free Trial
+              </Link>
+            </>
+          )}
         </div>
       )}
     </header>

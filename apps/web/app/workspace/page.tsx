@@ -22,6 +22,7 @@ import { clsx } from 'clsx';
 
 import useCanvasStore, { getInitialNodes, getInitialEdges } from '../store/useCanvasStore';
 import ReactFlowCanvasNode from '../components/ReactFlowCanvasNode';
+import ProfileMenu from '../components/ProfileMenu';
 import { generateAnsibleYAML } from '../lib/exportYaml';
 import { downloadZipBundle, downloadTerraformZip, generateBundleFiles, generateTerraformFiles } from '../lib/bundleGenerator';
 import { DEFAULT_INSTANCE_PARAMS, DEFAULT_SG_PARAMS } from '../lib/terraformDefaults';
@@ -210,9 +211,9 @@ const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Right: Zoom Controls & Export Split-Button */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 xl:gap-3">
         {/* Zoom controls */}
-        <div className="flex items-center gap-1 bg-muted p-1 rounded-lg border border-border">
+        <div className="hidden lg:flex items-center gap-1 bg-muted p-1 rounded-lg border border-border">
           <button onClick={onZoomOut} className="p-1.5 text-muted-foreground hover:text-foreground rounded transition-colors" title="Zoom Out">
             <Icon icon="lucide:minus" className="text-sm" />
           </button>
@@ -232,10 +233,11 @@ const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center relative">
           <button
             onClick={onExport}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm px-4 py-2 rounded-l-lg flex items-center gap-2 transition-all shadow-lg shadow-primary/20"
+            title="Export Code"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm px-3 xl:px-4 py-2 rounded-l-lg flex items-center gap-2 transition-all shadow-lg shadow-primary/20"
           >
             <Icon icon="lucide:download" className="text-base" />
-            <span>Export Code</span>
+            <span className="hidden xl:inline">Export Code</span>
           </button>
           <div className="relative">
             <button
@@ -284,10 +286,10 @@ const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Ephemeral Mode Toggle */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40 select-none">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40 select-none" title="Auto-Cleanup">
           <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
             <Icon icon="lucide:clock" className="text-amber-400 text-xs" />
-            Auto-Cleanup
+            <span className="hidden xl:inline">Auto-Cleanup</span>
           </span>
           <button
             onClick={() => onAutoDestroyChange(!autoDestroy)}
@@ -316,7 +318,7 @@ const Header: React.FC<HeaderProps> = ({
           ) : (
             <Icon icon="lucide:play" className="text-base" />
           )}
-          <span>Deploy</span>
+          <span className="hidden lg:inline">Deploy</span>
         </button>
 
         {/* Destroy Button */}
@@ -327,7 +329,7 @@ const Header: React.FC<HeaderProps> = ({
           title={autoDestroy ? "Destroy is disabled when Auto-Cleanup is enabled" : "Tear Down All Canvas Provisioned Resources"}
         >
           <Icon icon="lucide:trash-2" className="text-base" />
-          <span>Destroy</span>
+          <span className="hidden lg:inline">Destroy</span>
         </button>
 
         {/* Toggle Terminal Button */}
@@ -341,6 +343,10 @@ const Header: React.FC<HeaderProps> = ({
         >
           <Icon icon="lucide:terminal" className="text-base" />
         </button>
+
+        <div className="w-[1px] h-6 bg-border"></div>
+
+        <ProfileMenu variant="compact" />
       </div>
     </header>
   );
