@@ -98,14 +98,6 @@ export default function ProfileMenu({ variant = 'default' }: ProfileMenuProps) {
               <Icon icon="lucide:layout-dashboard" className="text-base text-muted-foreground" />
               Dashboard
             </Link>
-            <Link
-              href="/workspace"
-              onClick={() => setOpen(false)}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-foreground hover:bg-muted transition-colors"
-            >
-              <Icon icon="lucide:layers" className="text-base text-muted-foreground" />
-              Workspace
-            </Link>
           </div>
           <div className="p-1 border-t border-border">
             <button
