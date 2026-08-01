@@ -22,8 +22,17 @@ export default function ProfileMenu({ variant = 'default' }: ProfileMenuProps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, [open]);
 
   const handleLogout = () => {
@@ -67,42 +76,39 @@ export default function ProfileMenu({ variant = 'default' }: ProfileMenuProps) {
       </button>
 
       {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)}></div>
-          <div className="absolute right-0 top-full mt-2 w-56 bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-            <div className="px-3.5 py-3 border-b border-border">
-              <p className="text-sm font-semibold text-foreground truncate">{user.name}</p>
-              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-            </div>
-            <div className="p-1">
-              <Link
-                href="/dashboard"
-                onClick={() => setOpen(false)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-foreground hover:bg-muted transition-colors"
-              >
-                <Icon icon="lucide:layout-dashboard" className="text-base text-muted-foreground" />
-                Dashboard
-              </Link>
-              <Link
-                href="/workspace"
-                onClick={() => setOpen(false)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-foreground hover:bg-muted transition-colors"
-              >
-                <Icon icon="lucide:layers" className="text-base text-muted-foreground" />
-                Workspace
-              </Link>
-            </div>
-            <div className="p-1 border-t border-border">
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-              >
-                <Icon icon="lucide:log-out" className="text-base" />
-                Logout
-              </button>
-            </div>
+        <div className="absolute right-0 top-full mt-2 w-56 bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="px-3.5 py-3 border-b border-border">
+            <p className="text-sm font-semibold text-foreground truncate">{user.name}</p>
+            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
           </div>
-        </>
+          <div className="p-1">
+            <Link
+              href="/dashboard"
+              onClick={() => setOpen(false)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-foreground hover:bg-muted transition-colors"
+            >
+              <Icon icon="lucide:layout-dashboard" className="text-base text-muted-foreground" />
+              Dashboard
+            </Link>
+            <Link
+              href="/workspace"
+              onClick={() => setOpen(false)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-foreground hover:bg-muted transition-colors"
+            >
+              <Icon icon="lucide:layers" className="text-base text-muted-foreground" />
+              Workspace
+            </Link>
+          </div>
+          <div className="p-1 border-t border-border">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+            >
+              <Icon icon="lucide:log-out" className="text-base" />
+              Logout
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
