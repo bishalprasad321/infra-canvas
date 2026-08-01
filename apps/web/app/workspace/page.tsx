@@ -22,6 +22,8 @@ import { clsx } from 'clsx';
 
 import useCanvasStore, { getInitialNodes, getInitialEdges } from '../store/useCanvasStore';
 import ReactFlowCanvasNode from '../components/ReactFlowCanvasNode';
+import ProfileMenu from '../components/ProfileMenu';
+import Tooltip from '../components/Tooltip';
 import { generateAnsibleYAML } from '../lib/exportYaml';
 import { downloadZipBundle, downloadTerraformZip, generateBundleFiles, generateTerraformFiles } from '../lib/bundleGenerator';
 import { DEFAULT_INSTANCE_PARAMS, DEFAULT_SG_PARAMS } from '../lib/terraformDefaults';
@@ -58,8 +60,6 @@ interface LibraryNode {
 // Header Component
 interface HeaderProps {
   selectedProject: string;
-  selectedOS: string;
-  onOSChange: (os: string) => void;
   zoomLevel: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -82,8 +82,6 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({
   selectedProject,
-  selectedOS,
-  onOSChange,
   zoomLevel,
   onZoomIn,
   onZoomOut,
@@ -127,13 +125,14 @@ const Header: React.FC<HeaderProps> = ({
           <Icon icon="lucide:chevron-right" className="text-muted-foreground text-xs" />
           <span className="text-foreground font-medium font-heading">{projectDetails?.name || selectedProject}</span>
           {onOpenSettings && (
-            <button
-              onClick={onOpenSettings}
-              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer flex items-center justify-center"
-              title="Project Settings"
-            >
-              <Icon icon="lucide:settings" className="text-sm" />
-            </button>
+            <Tooltip label="Project Settings">
+              <button
+                onClick={onOpenSettings}
+                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer flex items-center justify-center"
+              >
+                <Icon icon="lucide:settings" className="text-sm" />
+              </button>
+            </Tooltip>
           )}
           {saveStatus === 'saved' && (
             <span className="ml-2 px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-[10px] uppercase tracking-wider font-semibold rounded border border-emerald-500/20 flex items-center gap-1" title="Canvas state auto-saved in database.">
@@ -157,31 +156,10 @@ const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        <div className="h-4 w-[1px] bg-border hidden md:block"></div>
-
-        {/* TODO: OS Environment Selector is currently visual-only. Toggling this state does not alter the generated Ansible playbooks or Terraform templates. Future engineers should integrate this parameters/OS state into the code generator. */}
-        {/* OS Environment Selector */}
-        <div className="hidden md:flex items-center gap-1 bg-muted p-1 rounded-lg border border-border">
-          {['Linux', 'macOS', 'Windows'].map((os) => (
-            <button
-              key={os}
-              onClick={() => onOSChange(os)}
-              className={clsx(
-                "px-2 py-1 text-xs rounded-md font-medium flex items-center gap-1 transition-all",
-                selectedOS === os
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Icon icon={os === 'macOS' ? "lucide:smartphone" : "lucide:monitor"} className="text-xs" />
-              {os}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Center: Collaboration Stack & Live Sync */}
-      <div className="hidden lg:flex items-center gap-4">
+      <div className="hidden lg:flex items-center gap-4 ml-6">
         <div className="flex items-center -space-x-1.5">
           {collaborators.map((c, idx) => (
             <div 
@@ -195,48 +173,58 @@ const Header: React.FC<HeaderProps> = ({
             </div>
           ))}
           {collaborators.length === 0 && (
-            <span className="text-xs text-muted-foreground italic select-none">Solo Workspace</span>
+            <span className="text-xs text-muted-foreground italic select-none whitespace-nowrap">Solo Workspace</span>
           )}
         </div>
-        <div className={clsx(
-          "flex items-center gap-2 px-3 py-1 border rounded-full text-xs font-medium transition-all duration-305",
-          isSyncConnected 
-            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
-            : "bg-red-500/10 border-red-500/20 text-red-400"
-        )}>
-          <Icon icon="lucide:refresh-cw" className={clsx("text-xs", isSyncConnected && "animate-spin")} />
-          <span>{isSyncConnected ? "Live Synchronized" : "Sync Offline"}</span>
-        </div>
+        <Tooltip label={isSyncConnected ? "Live Synchronized" : "Sync Offline"}>
+          <div className={clsx(
+            "flex items-center gap-2 px-3 py-1 border rounded-full text-xs font-medium transition-all duration-305 shrink-0",
+            isSyncConnected
+              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+              : "bg-red-500/10 border-red-500/20 text-red-400"
+          )}>
+            <Icon icon="lucide:refresh-cw" className={clsx("text-xs shrink-0", isSyncConnected && "animate-spin")} />
+            <span className="whitespace-nowrap">{isSyncConnected ? "Synced" : "Offline"}</span>
+          </div>
+        </Tooltip>
       </div>
 
       {/* Right: Zoom Controls & Export Split-Button */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 xl:gap-3">
         {/* Zoom controls */}
-        <div className="flex items-center gap-1 bg-muted p-1 rounded-lg border border-border">
-          <button onClick={onZoomOut} className="p-1.5 text-muted-foreground hover:text-foreground rounded transition-colors" title="Zoom Out">
-            <Icon icon="lucide:minus" className="text-sm" />
-          </button>
+        <div className="hidden lg:flex items-center gap-1 bg-muted p-1 rounded-lg border border-border shrink-0">
+          <Tooltip label="Zoom Out">
+            <button onClick={onZoomOut} className="p-1.5 text-muted-foreground hover:text-foreground rounded transition-colors">
+              <Icon icon="lucide:minus" className="text-sm" />
+            </button>
+          </Tooltip>
           <span onClick={onZoomReset} className="px-2 text-xs font-mono font-semibold text-foreground select-none cursor-pointer hover:text-primary transition-colors">
             {zoomLevel}%
           </span>
-          <button onClick={onZoomIn} className="p-1.5 text-muted-foreground hover:text-foreground rounded transition-colors" title="Zoom In">
-            <Icon icon="lucide:plus" className="text-sm" />
-          </button>
+          <Tooltip label="Zoom In">
+            <button onClick={onZoomIn} className="p-1.5 text-muted-foreground hover:text-foreground rounded transition-colors">
+              <Icon icon="lucide:plus" className="text-sm" />
+            </button>
+          </Tooltip>
           <div className="w-[1px] h-4 bg-border mx-1"></div>
-          <button onClick={onZoomReset} className="p-1.5 text-muted-foreground hover:text-foreground rounded transition-colors" title="Reset Zoom">
-            <Icon icon="lucide:maximize" className="text-sm" />
-          </button>
+          <Tooltip label="Reset Zoom">
+            <button onClick={onZoomReset} className="p-1.5 text-muted-foreground hover:text-foreground rounded transition-colors">
+              <Icon icon="lucide:maximize" className="text-sm" />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Export Split Button */}
-        <div className="flex items-center relative">
-          <button
-            onClick={onExport}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm px-4 py-2 rounded-l-lg flex items-center gap-2 transition-all shadow-lg shadow-primary/20"
-          >
-            <Icon icon="lucide:download" className="text-base" />
-            <span>Export Code</span>
-          </button>
+        <div className="flex items-stretch relative shrink-0">
+          <Tooltip label="Export Code">
+            <button
+              onClick={onExport}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm px-3 xl:px-4 py-2 rounded-l-lg flex items-center gap-2 transition-all shadow-lg shadow-primary/20 shrink-0"
+            >
+              <Icon icon="lucide:download" className="text-base shrink-0" />
+              <span className="hidden xl:inline whitespace-nowrap">Export Code</span>
+            </button>
+          </Tooltip>
           <div className="relative">
             <button
               onClick={() => setDropdownOpen(!dropdownOpen)}
@@ -284,63 +272,71 @@ const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Ephemeral Mode Toggle */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40 select-none">
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-            <Icon icon="lucide:clock" className="text-amber-400 text-xs" />
-            Auto-Cleanup
-          </span>
-          <button
-            onClick={() => onAutoDestroyChange(!autoDestroy)}
-            className={clsx(
-              "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
-              autoDestroy ? "bg-amber-500" : "bg-muted"
-            )}
-          >
-            <span
+        <Tooltip label="Auto-Cleanup: destroy infrastructure automatically after deploy">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40 select-none shrink-0">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+              <Icon icon="lucide:clock" className="text-amber-400 text-xs" />
+              <span className="hidden xl:inline">Auto-Cleanup</span>
+            </span>
+            <button
+              onClick={() => onAutoDestroyChange(!autoDestroy)}
               className={clsx(
-                "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                autoDestroy ? "translate-x-4" : "translate-x-0"
+                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                autoDestroy ? "bg-amber-500" : "bg-muted"
               )}
-            />
-          </button>
-        </div>
+            >
+              <span
+                className={clsx(
+                  "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                  autoDestroy ? "translate-x-4" : "translate-x-0"
+                )}
+              />
+            </button>
+          </div>
+        </Tooltip>
 
         {/* Deploy Button */}
-        <button
-          onClick={onDeploy}
-          disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP'}
-          className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-emerald-950/20 cursor-pointer disabled:cursor-not-allowed"
-        >
-          {deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP' ? (
-            <Icon icon="lucide:loader-2" className="text-base animate-spin" />
-          ) : (
-            <Icon icon="lucide:play" className="text-base" />
-          )}
-          <span>Deploy</span>
-        </button>
+        <Tooltip label="Deploy">
+          <button
+            onClick={onDeploy}
+            disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP'}
+            className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white p-2.5 rounded-lg flex items-center justify-center transition-all shadow-lg shadow-emerald-950/20 cursor-pointer disabled:cursor-not-allowed shrink-0"
+          >
+            {deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP' ? (
+              <Icon icon="lucide:loader-2" className="text-base animate-spin" />
+            ) : (
+              <Icon icon="lucide:play" className="text-base" />
+            )}
+          </button>
+        </Tooltip>
 
         {/* Destroy Button */}
-        <button
-          onClick={onDestroy}
-          disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP' || autoDestroy}
-          className="bg-rose-600 hover:bg-rose-500 disabled:bg-rose-800 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-rose-950/20 cursor-pointer disabled:cursor-not-allowed"
-          title={autoDestroy ? "Destroy is disabled when Auto-Cleanup is enabled" : "Tear Down All Canvas Provisioned Resources"}
-        >
-          <Icon icon="lucide:trash-2" className="text-base" />
-          <span>Destroy</span>
-        </button>
+        <Tooltip label={autoDestroy ? "Destroy is disabled when Auto-Cleanup is enabled" : "Tear Down All Canvas Provisioned Resources"}>
+          <button
+            onClick={onDestroy}
+            disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP' || autoDestroy}
+            className="bg-rose-600 hover:bg-rose-500 disabled:bg-rose-800 text-white p-2.5 rounded-lg flex items-center justify-center transition-all shadow-lg shadow-rose-950/20 cursor-pointer disabled:cursor-not-allowed shrink-0"
+          >
+            <Icon icon="lucide:trash-2" className="text-base" />
+          </button>
+        </Tooltip>
 
         {/* Toggle Terminal Button */}
-        <button
-          onClick={onToggleTerminal}
-          className={clsx(
-            "p-2 rounded-lg border border-border flex items-center justify-center transition-all cursor-pointer h-[38px] w-[38px]",
-            isTerminalOpen ? "bg-primary/20 text-primary border-primary" : "bg-card text-muted-foreground hover:text-foreground"
-          )}
-          title="Toggle Terminal Console"
-        >
-          <Icon icon="lucide:terminal" className="text-base" />
-        </button>
+        <Tooltip label="Toggle Terminal Console">
+          <button
+            onClick={onToggleTerminal}
+            className={clsx(
+              "p-2 rounded-lg border border-border flex items-center justify-center transition-all cursor-pointer h-[38px] w-[38px] shrink-0",
+              isTerminalOpen ? "bg-primary/20 text-primary border-primary" : "bg-card text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Icon icon="lucide:terminal" className="text-base" />
+          </button>
+        </Tooltip>
+
+        <div className="w-[1px] h-6 bg-border shrink-0"></div>
+
+        <div className="shrink-0"><ProfileMenu variant="compact" /></div>
       </div>
     </header>
   );
@@ -374,9 +370,9 @@ const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const router = useRouter();
 
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-  const activeToken = typeof window !== 'undefined' ? localStorage.getItem('infracanvas_token') : null;
+  const activeToken = token;
   const isAdmin = projectDetails?.user_role === 'ADMIN';
 
   // Sync state if project details loaded after mount
@@ -898,6 +894,8 @@ interface LibraryPanelProps {
   libraryNodes: LibraryNode[];
   onAddNode: (node: LibraryNode) => void;
   isReadOnly?: boolean;
+  selectedOS: string;
+  onOSChange: (os: string) => void;
 }
 
 const LibraryPanel: React.FC<LibraryPanelProps> = ({
@@ -910,6 +908,8 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({
   libraryNodes,
   onAddNode,
   isReadOnly = false,
+  selectedOS,
+  onOSChange,
 }) => {
   const filteredNodes = libraryNodes.filter((node) => {
     const matchesSearch = node.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -958,6 +958,30 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({
                   {tech === 'All' ? 'All' : tech === 'Terraform' ? 'TF' : tech === 'Ansible' ? 'Ans' : tech === 'Kubernetes' ? 'K8s' : tech === 'Target' ? 'Cloud' : 'Repo'}
                 </button>
               ))}
+            </div>
+
+            {/* TODO: OS Environment Selector is currently visual-only. Toggling this state does not alter the generated Ansible playbooks or Terraform templates. Future engineers should integrate this parameters/OS state into the code generator. */}
+            {/* OS Environment Selector */}
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 select-none">Environment</p>
+              <div className="flex items-center gap-1 bg-muted p-1 rounded-lg border border-border">
+                {['Linux', 'macOS', 'Windows'].map((os) => (
+                  <button
+                    key={os}
+                    onClick={() => onOSChange(os)}
+                    className={clsx(
+                      "flex-1 px-2 py-1 text-xs rounded-md font-medium flex items-center justify-center gap-1 transition-all",
+                      selectedOS === os
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    title={os}
+                  >
+                    <Icon icon={os === 'macOS' ? "lucide:smartphone" : "lucide:monitor"} className="text-xs" />
+                    <span className="hidden 2xl:inline">{os}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -3479,10 +3503,19 @@ function WorkspaceContent() {
   const { zoomIn, zoomOut, setViewport, getZoom } = useReactFlow();
 
   const searchParams = useSearchParams();
+  const hasProjectParam = !!searchParams.get('project');
   const projectId = searchParams.get('project') || 'Web-Server-Orchestration';
   const selectedProject = projectId; // compatibility alias
 
-  const { token, user, loadSession } = useAuthStore();
+  // Bare /workspace with no project selected is a dead end (all real workspaces
+  // are opened via /workspace?project=<id>) — send the user to create one instead.
+  useEffect(() => {
+    if (!hasProjectParam) {
+      router.replace('/dashboard?create=1');
+    }
+  }, [hasProjectParam, router]);
+
+  const { token, user, hasHydrated } = useAuthStore();
 
   const syncWsRef = useRef<WebSocket | null>(null);
   const isIncomingSyncRef = useRef<boolean>(false);
@@ -3514,19 +3547,14 @@ function WorkspaceContent() {
 
   // Authenticate session and protect workspace routes
   useEffect(() => {
-    loadSession();
-  }, [loadSession]);
-
-  useEffect(() => {
-    const checkedToken = localStorage.getItem('infracanvas_token');
-    if (!checkedToken) {
+    if (hasHydrated && !token) {
       router.push('/login');
     }
-  }, [token, router]);
+  }, [hasHydrated, token, router]);
 
   // Connect to WebSocket Room Syncing
   useEffect(() => {
-    const activeToken = localStorage.getItem('infracanvas_token');
+    const activeToken = token;
     if (!activeToken || !projectId || !user) return;
 
     const apiHost = process.env.NEXT_PUBLIC_API_URL 
@@ -3620,7 +3648,7 @@ function WorkspaceContent() {
 
   // Load Project Details & Canvas State on mount
   useEffect(() => {
-    const activeToken = localStorage.getItem('infracanvas_token');
+    const activeToken = token;
     if (!activeToken || !projectId || !user) return;
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -3698,7 +3726,7 @@ function WorkspaceContent() {
 
     setSaveStatus('saving');
     const timer = setTimeout(async () => {
-      const activeToken = localStorage.getItem('infracanvas_token');
+      const activeToken = token;
       if (!activeToken || !projectId) return;
 
       try {
@@ -3829,7 +3857,7 @@ function WorkspaceContent() {
 
       // Make post request to Go backend
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-      const activeToken = localStorage.getItem('infracanvas_token');
+      const activeToken = token;
       const response = await fetch(`${API_URL}/api/projects/${projectId}/deploy`, {
         method: "POST",
         headers: {
@@ -3909,7 +3937,7 @@ function WorkspaceContent() {
     try {
       // Make destroy request to Go backend
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-      const activeToken = localStorage.getItem('infracanvas_token');
+      const activeToken = token;
       const response = await fetch(`${API_URL}/api/projects/${projectId}/destroy`, {
         method: "POST",
         headers: {
@@ -4126,12 +4154,18 @@ function WorkspaceContent() {
     return nodes.find(n => n.id === selectedNodeId) || null;
   }, [nodes, selectedNodeId]);
 
+  if (!hasProjectParam) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-background text-muted-foreground">
+        <Icon icon="lucide:loader-2" className="animate-spin text-2xl" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
       <Header
         selectedProject={selectedProject}
-        selectedOS={selectedOS}
-        onOSChange={handleOSChange}
         zoomLevel={zoomLevel}
         onZoomIn={handleZoomInClick}
         onZoomOut={handleZoomOutClick}
@@ -4163,6 +4197,8 @@ function WorkspaceContent() {
           libraryNodes={LIBRARY_NODES}
           onAddNode={handleAddNodeToCanvas}
           isReadOnly={deployStatus === 'PENDING' || deployStatus === 'RUNNING' || saveStatus === 'readonly'}
+          selectedOS={selectedOS}
+          onOSChange={handleOSChange}
         />
 
         <main className="flex-1 bg-background relative overflow-hidden flex flex-col">

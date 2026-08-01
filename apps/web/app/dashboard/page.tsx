@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { Icon } from '@iconify/react';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -37,9 +38,10 @@ interface JoinRequest {
 	requested_at: string;
 }
 
-export default function DashboardPage() {
+function DashboardContent() {
 	const router = useRouter();
-	const { token, user, loadSession, logout } = useAuthStore();
+	const searchParams = useSearchParams();
+	const { token, user, hasHydrated, logout } = useAuthStore();
 
 	const [projects, setProjects] = useState<Project[]>([]);
 	const [teams, setTeams] = useState<Team[]>([]);
@@ -66,21 +68,25 @@ export default function DashboardPage() {
 	// Tabs/Filters
 	const [activeFilter, setActiveFilter] = useState<'my' | 'discover'>('my');
 
+	// Route protection — wait for the persisted store to rehydrate before deciding
 	useEffect(() => {
-		loadSession();
-	}, [loadSession]);
-
-	// Route protection
-	useEffect(() => {
-		const checkedToken = localStorage.getItem('infracanvas_token');
-		if (!checkedToken) {
+		if (hasHydrated && !token) {
 			router.push('/login');
 		}
-	}, [token, router]);
+	}, [hasHydrated, token, router]);
+
+	// Auto-open the create-workspace prompt when arriving via ?create=1
+	// (e.g. redirected here from a bare /workspace URL with no project selected)
+	useEffect(() => {
+		if (searchParams.get('create') === '1') {
+			setIsCreateModalOpen(true);
+			router.replace('/dashboard');
+		}
+	}, [searchParams, router]);
 
 	// Fetch teams, projects, and pending requests
 	const fetchData = async () => {
-		const activeToken = localStorage.getItem('infracanvas_token');
+		const activeToken = token;
 		if (!activeToken) return;
 
 		setIsLoadingData(true);
@@ -154,7 +160,7 @@ export default function DashboardPage() {
 		e.preventDefault();
 		setCreateError(null);
 
-		const activeToken = localStorage.getItem('infracanvas_token');
+		const activeToken = token;
 		if (!activeToken) return;
 
 		if (!newProjName.trim() || !newProjTeamId) {
@@ -199,7 +205,7 @@ export default function DashboardPage() {
 		setJoinError(null);
 		setJoinSuccess(null);
 
-		const activeToken = localStorage.getItem('infracanvas_token');
+		const activeToken = token;
 		if (!activeToken || !selectedProjToJoin) return;
 
 		try {
@@ -232,7 +238,7 @@ export default function DashboardPage() {
 	};
 
 	const handleReviewRequest = async (projectId: string, reqId: string, approve: boolean) => {
-		const activeToken = localStorage.getItem('infracanvas_token');
+		const activeToken = token;
 		if (!activeToken) return;
 
 		try {
@@ -276,7 +282,7 @@ export default function DashboardPage() {
 			{/* Top Header */}
 			<header className="sticky top-0 z-20 border-b border-slate-800/60 bg-[#0D1324]/80 backdrop-blur-xl">
 				<div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 lg:px-10">
-					<div className="flex items-center gap-3">
+					<Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity" title="Home">
 						<div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700/50 bg-[#1A233D] shadow-md">
 							<div className="h-4 w-4 rounded-md bg-gradient-to-br from-primary to-cyan-400"></div>
 						</div>
@@ -284,7 +290,7 @@ export default function DashboardPage() {
 							<p className="text-sm font-semibold tracking-wide text-white">OrchestrateOS</p>
 							<p className="text-xs text-slate-400">Workspace Dashboard</p>
 						</div>
-					</div>
+					</Link>
 
 					<div className="flex items-center gap-4">
 						<div className="flex items-center gap-3 px-3 py-1.5 rounded-xl border border-slate-800 bg-[#131A30]/50">
@@ -296,6 +302,13 @@ export default function DashboardPage() {
 								<p className="text-[10px] text-slate-400 leading-none">{user.email}</p>
 							</div>
 						</div>
+						<Link
+							href="/"
+							className="p-2.5 rounded-xl border border-slate-800 bg-[#131A30]/50 hover:bg-primary/10 hover:border-primary/20 text-slate-400 hover:text-primary transition cursor-pointer"
+							title="Home"
+						>
+							<Icon icon="lucide:home" className="text-lg" />
+						</Link>
 						<button
 							onClick={handleLogout}
 							className="p-2.5 rounded-xl border border-slate-800 bg-[#131A30]/50 hover:bg-red-500/10 hover:border-red-500/20 text-slate-400 hover:text-red-400 transition cursor-pointer"
@@ -613,5 +626,18 @@ export default function DashboardPage() {
 				</div>
 			)}
 		</div>
+	);
+}
+
+
+export default function DashboardPage() {
+	return (
+		<Suspense fallback={
+			<div className="min-h-screen w-full bg-[#0A0F1D] flex items-center justify-center text-slate-400">
+				<Icon icon="lucide:loader-2" className="animate-spin text-2xl text-primary" />
+			</div>
+		}>
+			<DashboardContent />
+		</Suspense>
 	);
 }
