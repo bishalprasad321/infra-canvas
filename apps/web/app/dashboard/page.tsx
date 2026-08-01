@@ -302,6 +302,13 @@ function DashboardContent() {
 								<p className="text-[10px] text-slate-400 leading-none">{user.email}</p>
 							</div>
 						</div>
+						<Link
+							href="/"
+							className="p-2.5 rounded-xl border border-slate-800 bg-[#131A30]/50 hover:bg-primary/10 hover:border-primary/20 text-slate-400 hover:text-primary transition cursor-pointer"
+							title="Home"
+						>
+							<Icon icon="lucide:home" className="text-lg" />
+						</Link>
 						<button
 							onClick={handleLogout}
 							className="p-2.5 rounded-xl border border-slate-800 bg-[#131A30]/50 hover:bg-red-500/10 hover:border-red-500/20 text-slate-400 hover:text-red-400 transition cursor-pointer"
