@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Icon } from '@iconify/react';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -271,7 +272,7 @@ export default function DashboardPage() {
 			{/* Top Header */}
 			<header className="sticky top-0 z-20 border-b border-slate-800/60 bg-[#0D1324]/80 backdrop-blur-xl">
 				<div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 lg:px-10">
-					<div className="flex items-center gap-3">
+					<Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity" title="Home">
 						<div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700/50 bg-[#1A233D] shadow-md">
 							<div className="h-4 w-4 rounded-md bg-gradient-to-br from-primary to-cyan-400"></div>
 						</div>
@@ -279,7 +280,7 @@ export default function DashboardPage() {
 							<p className="text-sm font-semibold tracking-wide text-white">OrchestrateOS</p>
 							<p className="text-xs text-slate-400">Workspace Dashboard</p>
 						</div>
-					</div>
+					</Link>
 
 					<div className="flex items-center gap-4">
 						<div className="flex items-center gap-3 px-3 py-1.5 rounded-xl border border-slate-800 bg-[#131A30]/50">

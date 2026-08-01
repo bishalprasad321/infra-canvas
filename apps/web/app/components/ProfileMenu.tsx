@@ -83,6 +83,14 @@ export default function ProfileMenu({ variant = 'default' }: ProfileMenuProps) {
           </div>
           <div className="p-1">
             <Link
+              href="/"
+              onClick={() => setOpen(false)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-foreground hover:bg-muted transition-colors"
+            >
+              <Icon icon="lucide:home" className="text-base text-muted-foreground" />
+              Home
+            </Link>
+            <Link
               href="/dashboard"
               onClick={() => setOpen(false)}
               className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-foreground hover:bg-muted transition-colors"
