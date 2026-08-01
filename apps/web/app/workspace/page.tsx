@@ -215,7 +215,7 @@ const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Export Split Button */}
-        <div className="flex items-center relative shrink-0">
+        <div className="flex items-stretch relative shrink-0">
           <Tooltip label="Export Code">
             <button
               onClick={onExport}
