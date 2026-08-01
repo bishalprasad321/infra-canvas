@@ -59,8 +59,6 @@ interface LibraryNode {
 // Header Component
 interface HeaderProps {
   selectedProject: string;
-  selectedOS: string;
-  onOSChange: (os: string) => void;
   zoomLevel: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -83,8 +81,6 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({
   selectedProject,
-  selectedOS,
-  onOSChange,
   zoomLevel,
   onZoomIn,
   onZoomOut,
@@ -158,27 +154,6 @@ const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        <div className="h-4 w-[1px] bg-border hidden md:block"></div>
-
-        {/* TODO: OS Environment Selector is currently visual-only. Toggling this state does not alter the generated Ansible playbooks or Terraform templates. Future engineers should integrate this parameters/OS state into the code generator. */}
-        {/* OS Environment Selector */}
-        <div className="hidden md:flex items-center gap-1 bg-muted p-1 rounded-lg border border-border">
-          {['Linux', 'macOS', 'Windows'].map((os) => (
-            <button
-              key={os}
-              onClick={() => onOSChange(os)}
-              className={clsx(
-                "px-2 py-1 text-xs rounded-md font-medium flex items-center gap-1 transition-all",
-                selectedOS === os
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Icon icon={os === 'macOS' ? "lucide:smartphone" : "lucide:monitor"} className="text-xs" />
-              {os}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Center: Collaboration Stack & Live Sync */}
@@ -904,6 +879,8 @@ interface LibraryPanelProps {
   libraryNodes: LibraryNode[];
   onAddNode: (node: LibraryNode) => void;
   isReadOnly?: boolean;
+  selectedOS: string;
+  onOSChange: (os: string) => void;
 }
 
 const LibraryPanel: React.FC<LibraryPanelProps> = ({
@@ -916,6 +893,8 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({
   libraryNodes,
   onAddNode,
   isReadOnly = false,
+  selectedOS,
+  onOSChange,
 }) => {
   const filteredNodes = libraryNodes.filter((node) => {
     const matchesSearch = node.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -964,6 +943,30 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({
                   {tech === 'All' ? 'All' : tech === 'Terraform' ? 'TF' : tech === 'Ansible' ? 'Ans' : tech === 'Kubernetes' ? 'K8s' : tech === 'Target' ? 'Cloud' : 'Repo'}
                 </button>
               ))}
+            </div>
+
+            {/* TODO: OS Environment Selector is currently visual-only. Toggling this state does not alter the generated Ansible playbooks or Terraform templates. Future engineers should integrate this parameters/OS state into the code generator. */}
+            {/* OS Environment Selector */}
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 select-none">Environment</p>
+              <div className="flex items-center gap-1 bg-muted p-1 rounded-lg border border-border">
+                {['Linux', 'macOS', 'Windows'].map((os) => (
+                  <button
+                    key={os}
+                    onClick={() => onOSChange(os)}
+                    className={clsx(
+                      "flex-1 px-2 py-1 text-xs rounded-md font-medium flex items-center justify-center gap-1 transition-all",
+                      selectedOS === os
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    title={os}
+                  >
+                    <Icon icon={os === 'macOS' ? "lucide:smartphone" : "lucide:monitor"} className="text-xs" />
+                    <span className="hidden 2xl:inline">{os}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -4148,8 +4151,6 @@ function WorkspaceContent() {
     <div className="flex-1 flex flex-col overflow-hidden relative">
       <Header
         selectedProject={selectedProject}
-        selectedOS={selectedOS}
-        onOSChange={handleOSChange}
         zoomLevel={zoomLevel}
         onZoomIn={handleZoomInClick}
         onZoomOut={handleZoomOutClick}
@@ -4181,6 +4182,8 @@ function WorkspaceContent() {
           libraryNodes={LIBRARY_NODES}
           onAddNode={handleAddNodeToCanvas}
           isReadOnly={deployStatus === 'PENDING' || deployStatus === 'RUNNING' || saveStatus === 'readonly'}
+          selectedOS={selectedOS}
+          onOSChange={handleOSChange}
         />
 
         <main className="flex-1 bg-background relative overflow-hidden flex flex-col">
