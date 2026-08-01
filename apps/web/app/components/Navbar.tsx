@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { clsx } from 'clsx';
+import ProfileMenu from './ProfileMenu';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -23,16 +24,19 @@ export default function Navbar() {
 
   return (
     <nav className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b border-border select-none shrink-0">
-      <div className="flex items-center gap-1 px-4 h-12">
-        <Link href="/" className={getLinkClass('/')}>
-          Home
-        </Link>
-        <Link href="/workspace" className={getLinkClass('/workspace')}>
-          Workspace
-        </Link>
-        <Link href="/export-code" className={getLinkClass('/export-code')}>
-          Export Code
-        </Link>
+      <div className="flex items-center justify-between gap-1 px-4 h-12">
+        <div className="flex items-center gap-1">
+          <Link href="/" className={getLinkClass('/')}>
+            Home
+          </Link>
+          <Link href="/workspace" className={getLinkClass('/workspace')}>
+            Workspace
+          </Link>
+          <Link href="/export-code" className={getLinkClass('/export-code')}>
+            Export Code
+          </Link>
+        </div>
+        <ProfileMenu variant="compact" />
       </div>
     </nav>
   );
