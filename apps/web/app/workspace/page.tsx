@@ -171,24 +171,24 @@ const Header: React.FC<HeaderProps> = ({
             </div>
           ))}
           {collaborators.length === 0 && (
-            <span className="text-xs text-muted-foreground italic select-none">Solo Workspace</span>
+            <span className="text-xs text-muted-foreground italic select-none whitespace-nowrap">Solo Workspace</span>
           )}
         </div>
         <div className={clsx(
-          "flex items-center gap-2 px-3 py-1 border rounded-full text-xs font-medium transition-all duration-305",
-          isSyncConnected 
-            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+          "flex items-center gap-2 px-3 py-1 border rounded-full text-xs font-medium transition-all duration-305 shrink-0",
+          isSyncConnected
+            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
             : "bg-red-500/10 border-red-500/20 text-red-400"
         )}>
-          <Icon icon="lucide:refresh-cw" className={clsx("text-xs", isSyncConnected && "animate-spin")} />
-          <span>{isSyncConnected ? "Live Synchronized" : "Sync Offline"}</span>
+          <Icon icon="lucide:refresh-cw" className={clsx("text-xs shrink-0", isSyncConnected && "animate-spin")} />
+          <span className="whitespace-nowrap">{isSyncConnected ? "Live Synchronized" : "Sync Offline"}</span>
         </div>
       </div>
 
       {/* Right: Zoom Controls & Export Split-Button */}
       <div className="flex items-center gap-2 xl:gap-3">
         {/* Zoom controls */}
-        <div className="hidden lg:flex items-center gap-1 bg-muted p-1 rounded-lg border border-border">
+        <div className="hidden lg:flex items-center gap-1 bg-muted p-1 rounded-lg border border-border shrink-0">
           <button onClick={onZoomOut} className="p-1.5 text-muted-foreground hover:text-foreground rounded transition-colors" title="Zoom Out">
             <Icon icon="lucide:minus" className="text-sm" />
           </button>
@@ -205,14 +205,14 @@ const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Export Split Button */}
-        <div className="flex items-center relative">
+        <div className="flex items-center relative shrink-0">
           <button
             onClick={onExport}
             title="Export Code"
-            className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm px-3 xl:px-4 py-2 rounded-l-lg flex items-center gap-2 transition-all shadow-lg shadow-primary/20"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm px-3 xl:px-4 py-2 rounded-l-lg flex items-center gap-2 transition-all shadow-lg shadow-primary/20 shrink-0"
           >
-            <Icon icon="lucide:download" className="text-base" />
-            <span className="hidden xl:inline">Export Code</span>
+            <Icon icon="lucide:download" className="text-base shrink-0" />
+            <span className="hidden xl:inline whitespace-nowrap">Export Code</span>
           </button>
           <div className="relative">
             <button
@@ -261,7 +261,7 @@ const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Ephemeral Mode Toggle */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40 select-none" title="Auto-Cleanup">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40 select-none shrink-0" title="Auto-Cleanup">
           <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
             <Icon icon="lucide:clock" className="text-amber-400 text-xs" />
             <span className="hidden xl:inline">Auto-Cleanup</span>
@@ -286,7 +286,7 @@ const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onDeploy}
           disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP'}
-          className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-emerald-950/20 cursor-pointer disabled:cursor-not-allowed"
+          className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-emerald-950/20 cursor-pointer disabled:cursor-not-allowed shrink-0"
         >
           {deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP' ? (
             <Icon icon="lucide:loader-2" className="text-base animate-spin" />
@@ -300,7 +300,7 @@ const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onDestroy}
           disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP' || autoDestroy}
-          className="bg-rose-600 hover:bg-rose-500 disabled:bg-rose-800 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-rose-950/20 cursor-pointer disabled:cursor-not-allowed"
+          className="bg-rose-600 hover:bg-rose-500 disabled:bg-rose-800 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-rose-950/20 cursor-pointer disabled:cursor-not-allowed shrink-0"
           title={autoDestroy ? "Destroy is disabled when Auto-Cleanup is enabled" : "Tear Down All Canvas Provisioned Resources"}
         >
           <Icon icon="lucide:trash-2" className="text-base" />
@@ -311,7 +311,7 @@ const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onToggleTerminal}
           className={clsx(
-            "p-2 rounded-lg border border-border flex items-center justify-center transition-all cursor-pointer h-[38px] w-[38px]",
+            "p-2 rounded-lg border border-border flex items-center justify-center transition-all cursor-pointer h-[38px] w-[38px] shrink-0",
             isTerminalOpen ? "bg-primary/20 text-primary border-primary" : "bg-card text-muted-foreground hover:text-foreground"
           )}
           title="Toggle Terminal Console"
@@ -319,9 +319,9 @@ const Header: React.FC<HeaderProps> = ({
           <Icon icon="lucide:terminal" className="text-base" />
         </button>
 
-        <div className="w-[1px] h-6 bg-border"></div>
+        <div className="w-[1px] h-6 bg-border shrink-0"></div>
 
-        <ProfileMenu variant="compact" />
+        <div className="shrink-0"><ProfileMenu variant="compact" /></div>
       </div>
     </header>
   );
