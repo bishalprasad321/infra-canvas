@@ -65,7 +65,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ token: data.token, user: data.user, isLoading: false });
       return true;
     } catch (err: any) {
-      set({ error: err.message || 'Login failed', isLoading: false });
+      let errMsg = err.message || 'Login failed';
+      if (errMsg === 'Failed to fetch' || errMsg.includes('fetch failed') || errMsg.includes('NetworkError')) {
+        errMsg = 'Cannot connect to the backend server. Please verify the API service is running and try again.';
+      }
+      set({ error: errMsg, isLoading: false });
       return false;
     }
   },
@@ -90,7 +94,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ isLoading: false });
       return get().login(email, password);
     } catch (err: any) {
-      set({ error: err.message || 'Signup failed', isLoading: false });
+      let errMsg = err.message || 'Signup failed';
+      if (errMsg === 'Failed to fetch' || errMsg.includes('fetch failed') || errMsg.includes('NetworkError')) {
+        errMsg = 'Cannot connect to the backend server. Please verify the API service is running and try again.';
+      }
+      set({ error: errMsg, isLoading: false });
       return false;
     }
   },
