@@ -157,7 +157,7 @@ const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Center: Collaboration Stack & Live Sync */}
-      <div className="hidden lg:flex items-center gap-4">
+      <div className="hidden lg:flex items-center gap-4 ml-6">
         <div className="flex items-center -space-x-1.5">
           {collaborators.map((c, idx) => (
             <div 
@@ -181,7 +181,7 @@ const Header: React.FC<HeaderProps> = ({
             : "bg-red-500/10 border-red-500/20 text-red-400"
         )}>
           <Icon icon="lucide:refresh-cw" className={clsx("text-xs shrink-0", isSyncConnected && "animate-spin")} />
-          <span className="whitespace-nowrap">{isSyncConnected ? "Live Synchronized" : "Sync Offline"}</span>
+          <span className="whitespace-nowrap" title={isSyncConnected ? "Live Synchronized" : "Sync Offline"}>{isSyncConnected ? "Synced" : "Offline"}</span>
         </div>
       </div>
 
@@ -286,25 +286,24 @@ const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onDeploy}
           disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP'}
-          className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-emerald-950/20 cursor-pointer disabled:cursor-not-allowed shrink-0"
+          className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white p-2.5 rounded-lg flex items-center justify-center transition-all shadow-lg shadow-emerald-950/20 cursor-pointer disabled:cursor-not-allowed shrink-0"
+          title="Deploy"
         >
           {deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP' ? (
             <Icon icon="lucide:loader-2" className="text-base animate-spin" />
           ) : (
             <Icon icon="lucide:play" className="text-base" />
           )}
-          <span className="hidden lg:inline">Deploy</span>
         </button>
 
         {/* Destroy Button */}
         <button
           onClick={onDestroy}
           disabled={deployStatus === 'RUNNING' || deployStatus === 'PENDING' || deployStatus === 'CLEANUP' || autoDestroy}
-          className="bg-rose-600 hover:bg-rose-500 disabled:bg-rose-800 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-rose-950/20 cursor-pointer disabled:cursor-not-allowed shrink-0"
+          className="bg-rose-600 hover:bg-rose-500 disabled:bg-rose-800 text-white p-2.5 rounded-lg flex items-center justify-center transition-all shadow-lg shadow-rose-950/20 cursor-pointer disabled:cursor-not-allowed shrink-0"
           title={autoDestroy ? "Destroy is disabled when Auto-Cleanup is enabled" : "Tear Down All Canvas Provisioned Resources"}
         >
           <Icon icon="lucide:trash-2" className="text-base" />
-          <span className="hidden lg:inline">Destroy</span>
         </button>
 
         {/* Toggle Terminal Button */}
