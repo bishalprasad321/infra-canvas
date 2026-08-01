@@ -85,32 +85,144 @@ func main() {
 		password_hash TEXT NOT NULL,
 		name TEXT NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE IF NOT EXISTS teams (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		slug TEXT UNIQUE NOT NULL,
+		owner_id TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT
+	);
+	CREATE TABLE IF NOT EXISTS team_members (
+		id TEXT PRIMARY KEY,
+		team_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		role TEXT NOT NULL CHECK (role IN ('OWNER', 'ADMIN', 'MEMBER')),
+		joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(team_id, user_id),
+		FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+	);
+	CREATE TABLE IF NOT EXISTS projects (
+		id TEXT PRIMARY KEY,
+		team_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		description TEXT,
+		visibility TEXT NOT NULL DEFAULT 'PRIVATE' CHECK (visibility IN ('PRIVATE', 'TEAM', 'PUBLIC')),
+		created_by TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+		FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+	);
+	CREATE TABLE IF NOT EXISTS project_members (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		role TEXT NOT NULL CHECK (role IN ('ADMIN', 'EDITOR', 'VIEWER')),
+		added_by TEXT NOT NULL,
+		joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(project_id, user_id),
+		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+	);
+	CREATE TABLE IF NOT EXISTS project_join_requests (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+		note TEXT,
+		reviewed_by TEXT,
+		requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		reviewed_at DATETIME,
+		UNIQUE(project_id, user_id, status),
+		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+	);
+	CREATE TABLE IF NOT EXISTS invitations (
+		id TEXT PRIMARY KEY,
+		team_id TEXT NOT NULL,
+		project_id TEXT,
+		email TEXT NOT NULL,
+		role TEXT NOT NULL,
+		token TEXT UNIQUE NOT NULL,
+		status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'ACCEPTED', 'EXPIRED')),
+		invited_by TEXT NOT NULL,
+		expires_at DATETIME NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+		FOREIGN KEY (invited_by) REFERENCES users(id) ON DELETE CASCADE
+	);
+	CREATE TABLE IF NOT EXISTS canvas_states (
+		project_id TEXT PRIMARY KEY,
+		version INTEGER NOT NULL DEFAULT 1,
+		nodes_json TEXT NOT NULL,
+		edges_json TEXT NOT NULL,
+		viewport_json TEXT NOT NULL,
+		updated_by TEXT NOT NULL,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+		FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT
+	);
+	CREATE TABLE IF NOT EXISTS canvas_snapshots (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		version INTEGER NOT NULL,
+		commit_message TEXT,
+		nodes_json TEXT NOT NULL,
+		edges_json TEXT NOT NULL,
+		created_by TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+		FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
 	);`
 	if _, err := db.Exec(schemaQuery); err != nil {
 		log.Fatalf("[DB] Failed to initialize schema: %v\n", err)
 	}
+	// Run migrations to alter existing pipeline_runs table columns safely
+	_, _ = db.Exec("ALTER TABLE pipeline_runs ADD COLUMN project_id TEXT;")
+	_, _ = db.Exec("ALTER TABLE pipeline_runs ADD COLUMN user_id TEXT;")
 	log.Println("[DB] Database initialized successfully.")
 
 	// Set up routing
 	mux := http.NewServeMux()
 
 	// API Routes
-	mux.HandleFunc("GET /api/runs", enableCORS(handleGetRuns))
+	mux.Handle("GET /api/projects/{id}/runs", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetRuns))))
 	mux.HandleFunc("GET /api/runs/{id}", enableCORS(handleGetRunByID))
-	mux.HandleFunc("POST /api/deploy", enableCORS(handleDeploy))
-	mux.HandleFunc("POST /api/destroy", enableCORS(handleDestroy))
+	mux.Handle("POST /api/projects/{id}/deploy", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleDeploy))))
+	mux.Handle("POST /api/projects/{id}/destroy", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleDestroy))))
 	mux.HandleFunc("/api/ws/runs/{id}", handleWebSocket)
 
 	// Auth & Workspace Sync Routes
 	mux.HandleFunc("POST /api/auth/signup", enableCORS(handleSignup))
 	mux.HandleFunc("POST /api/auth/login", enableCORS(handleLogin))
+	mux.Handle("GET /api/auth/me", AuthMiddleware(http.HandlerFunc(handleMe)))
 	mux.HandleFunc("GET /api/workspace/{projectId}/sync", handleWorkspaceWebSocketSync)
 
-	// Fallback/options endpoint for preflight requests
-	mux.HandleFunc("OPTIONS /api/deploy", handleOptions)
-	mux.HandleFunc("OPTIONS /api/destroy", handleOptions)
-	mux.HandleFunc("OPTIONS /api/auth/signup", handleOptions)
-	mux.HandleFunc("OPTIONS /api/auth/login", handleOptions)
+	// Team Routes
+	mux.Handle("GET /api/teams", AuthMiddleware(http.HandlerFunc(handleGetTeams)))
+	mux.Handle("POST /api/teams", AuthMiddleware(http.HandlerFunc(handleCreateTeam)))
+
+	// Project Routes
+	mux.Handle("GET /api/projects", AuthMiddleware(http.HandlerFunc(handleGetProjects)))
+	mux.Handle("POST /api/projects", AuthMiddleware(http.HandlerFunc(handleCreateProject)))
+	mux.Handle("GET /api/projects/{id}", AuthMiddleware(http.HandlerFunc(handleGetProjectByID)))
+	mux.Handle("PATCH /api/projects/{id}", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleUpdateProject))))
+	mux.Handle("DELETE /api/projects/{id}", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleDeleteProject))))
+	mux.Handle("GET /api/projects/{id}/canvas", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetCanvasState))))
+	mux.Handle("PUT /api/projects/{id}/canvas", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleUpdateCanvasState))))
+	mux.Handle("GET /api/projects/{id}/members", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetProjectMembers))))
+	mux.Handle("POST /api/projects/{id}/members", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleAddProjectMember))))
+	mux.Handle("PUT /api/projects/{id}/members/{userId}", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleUpdateProjectMemberRole))))
+	mux.Handle("DELETE /api/projects/{id}/members/{userId}", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleRemoveProjectMember))))
+
+	// Join Requests
+	mux.Handle("POST /api/projects/{id}/join-request", AuthMiddleware(http.HandlerFunc(handleCreateJoinRequest)))
+	mux.Handle("GET /api/projects/{id}/join-requests", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleGetJoinRequests))))
+	mux.Handle("POST /api/projects/{id}/join-requests/{reqId}/approve", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleApproveJoinRequest))))
+	mux.Handle("POST /api/projects/{id}/join-requests/{reqId}/reject", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleRejectJoinRequest))))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -118,9 +230,23 @@ func main() {
 	}
 
 	log.Printf("[SERVER] Listening on port %s\n", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	if err := http.ListenAndServe(":"+port, CORSWrapper(mux)); err != nil {
 		log.Fatalf("[SERVER] ListenAndServe failed: %v\n", err)
 	}
+}
+
+// CORSWrapper handles CORS for all incoming API routes and intercepts OPTIONS preflight requests
+func CORSWrapper(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // CORS Helper middleware
@@ -145,14 +271,15 @@ func handleOptions(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleGetRuns(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT id, status, logs, canvas, created_at, updated_at FROM pipeline_runs ORDER BY created_at DESC")
+	projectID := r.PathValue("id")
+	rows, err := db.Query("SELECT id, status, logs, canvas, created_at, updated_at FROM pipeline_runs WHERE project_id = ? ORDER BY created_at DESC", projectID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	var runs []PipelineRun
+	runs := []PipelineRun{}
 	for rows.Next() {
 		var run PipelineRun
 		var createdStr, updatedStr string
@@ -219,6 +346,9 @@ type DeployPayload struct {
 }
 
 func handleDeploy(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+	user, _ := GetUserFromContext(r)
+
 	var payload DeployPayload
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
@@ -236,8 +366,8 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 	runID := generateUUID()
 
 	// Insert into DB as PENDING
-	insertQuery := "INSERT INTO pipeline_runs (id, status, logs, canvas, created_at, updated_at) VALUES (?, 'PENDING', '', ?, datetime('now'), datetime('now'))"
-	_, err = db.Exec(insertQuery, runID, canvasStr)
+	insertQuery := "INSERT INTO pipeline_runs (id, project_id, user_id, status, logs, canvas, created_at, updated_at) VALUES (?, ?, ?, 'PENDING', '', ?, datetime('now'), datetime('now'))"
+	_, err = db.Exec(insertQuery, runID, projectID, user.ID, canvasStr)
 	if err != nil {
 		log.Printf("[DB] Error inserting new run %s: %v\n", runID, err)
 		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
@@ -466,6 +596,9 @@ func generateUUID() string {
 }
 
 func handleDestroy(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+	user, _ := GetUserFromContext(r)
+
 	var payload struct {
 		Canvas interface{} `json:"canvas"`
 	}
@@ -485,8 +618,8 @@ func handleDestroy(w http.ResponseWriter, r *http.Request) {
 	runID := generateUUID()
 
 	// Insert into DB as PENDING
-	insertQuery := "INSERT INTO pipeline_runs (id, status, logs, canvas, created_at, updated_at) VALUES (?, 'PENDING', '', ?, datetime('now'), datetime('now'))"
-	_, err = db.Exec(insertQuery, runID, canvasStr)
+	insertQuery := "INSERT INTO pipeline_runs (id, project_id, user_id, status, logs, canvas, created_at, updated_at) VALUES (?, ?, ?, 'PENDING', '', ?, datetime('now'), datetime('now'))"
+	_, err = db.Exec(insertQuery, runID, projectID, user.ID, canvasStr)
 	if err != nil {
 		log.Printf("[DB] Error inserting destroy run %s: %v\n", runID, err)
 		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
@@ -672,14 +805,43 @@ func handleSignup(w http.ResponseWriter, r *http.Request) {
 
 	userID := fmt.Sprintf("usr_%d", time.Now().UnixNano())
 
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, "Transaction failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
 	insertQuery := "INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)"
-	_, err = db.Exec(insertQuery, userID, email, hash, name)
+	_, err = tx.Exec(insertQuery, userID, email, hash, name)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			http.Error(w, "Email already exists", http.StatusConflict)
 		} else {
 			http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
 		}
+		return
+	}
+
+	// Create default personal team
+	teamID := fmt.Sprintf("team_%d", time.Now().UnixNano())
+	slug := "personal-" + userID
+	_, err = tx.Exec("INSERT INTO teams (id, name, slug, owner_id) VALUES (?, ?, ?, ?)", teamID, name+"'s Personal Workspace", slug, userID)
+	if err != nil {
+		http.Error(w, "Failed to create personal team: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Add membership
+	tmemID := fmt.Sprintf("tmem_%d", time.Now().UnixNano())
+	_, err = tx.Exec("INSERT INTO team_members (id, team_id, user_id, role) VALUES (?, ?, ?, ?)", tmemID, teamID, userID, "OWNER")
+	if err != nil {
+		http.Error(w, "Failed to join personal team: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Failed to finalize registration: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 

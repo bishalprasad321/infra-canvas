@@ -129,6 +129,39 @@ Future engineers picking up the codebase should note the following features are 
     - An `onStatusChange` pipeline callback emits a `CLEANUP` status when the optional auto-destroy phase runs post-deployment, surfaced in the terminal drawer as a distinct "CLEANING UP" badge rather than remaining on "RUNNING".
     - Frontend: `ReactFlowCanvasNode` renders a status strip at the base of each node card — gray (pending), pulsing blue or red (running, context-dependent), green (completed), red (failed) — sourced from `executionStatuses` and `pipelineAction` in the Zustand store (`apps/web/app/store/useCanvasStore.ts`).
 
+12. **User Authentication & Session Management**:
+    - Complete signup and login registration API handlers with bcrypt password hashing and token-based state session verification.
+    - Decodes and validates JWT tokens natively within a custom Go API authentication middleware.
+    - Frontend dashboard and workspace routes are secured via client-side Zustand store session hooks.
+
+13. **Real-time Collaboration Stack**:
+    - Real-time room synchronization backend utilizing Gorilla WebSockets.
+    - Tracks peer cursor coordinates, visual node editor locks, and active workspace member lists.
+    - Broadcasts edits dynamically to all collaborators to support real-time team interaction.
+
+14. **Project Workspaces Dashboard**:
+    - Serves as the user homepage, listing existing project scopes, visibility tags (Private, Team, Public), and tech details.
+    - Includes project creation wizard modules to initialize workspaces under team organizations.
+
+15. **Optimistic-Locked Canvas Auto-Saving**:
+    - Restores nodes, edges, parameters, and ReactFlow viewport position from the database when loading a project workspace.
+    - Debounces local canvas changes and auto-saves the state to the Go backend via a 1500ms delay.
+    - Features version verification checks (optimistic locking) to resolve concurrent editing conflicts gracefully.
+
+16. **Access Requests Discovery & Approval Workflows**:
+    - Project discovery panel allows users to search public or organization projects and request access.
+    - Admins receive notifications in their dashboard requests queue to approve or reject pending requests.
+
+17. **Project-Scoped Runner Pipelines**:
+    - Restricts deploy and destroy triggers to authorized project roles (ADMIN and EDITOR) using middleware.
+    - Scopes runner execution logs and pipeline status histories directly to the associated project ID.
+
+18. **Workspace Settings & Collaborators Management**:
+    - Provides a premium tabbed settings configuration interface inside the canvas header.
+    - Enables project administrators to edit project names, descriptions, and visibilities (Private, Team, Public).
+    - Features collaborator controls to invite new members by email, update direct roles (Admin, Editor, Viewer), and revoke user access.
+    - Offers a project deletion pipeline within the danger zone, protected by owner validation.
+
 ---
 
 ## Non-Implemented & Mocked Features (Roadmap)
@@ -137,9 +170,6 @@ To help engineers target their efforts, the following UI and logic blocks in the
 
 1. **OS Environment Selector (Header)**:
    - Status: Mocked. The Linux, macOS, and Windows selectors toggle component local state but have no effect on code generation options or target deployment scripts.
-
-2. **Collaboration Stack & Live Sync (Header)**:
-   - Status: Mocked. The user avatars and "Live Syncing" status spinner are static visual elements. Future developers should integrate a signaling framework or WebSockets (e.g., Y.js) to enable real-time collaborative workspace synchronization.
 
 ---
 
