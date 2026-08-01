@@ -36,7 +36,7 @@ export default function Navbar() {
             Export Code
           </Link>
         </div>
-        {pathname !== '/dashboard' && <ProfileMenu variant="compact" />}
+        {pathname !== '/dashboard' && pathname !== '/' && <ProfileMenu variant="compact" />}
       </div>
     </nav>
   );
