@@ -3485,8 +3485,17 @@ function WorkspaceContent() {
   const { zoomIn, zoomOut, setViewport, getZoom } = useReactFlow();
 
   const searchParams = useSearchParams();
+  const hasProjectParam = !!searchParams.get('project');
   const projectId = searchParams.get('project') || 'Web-Server-Orchestration';
   const selectedProject = projectId; // compatibility alias
+
+  // Bare /workspace with no project selected is a dead end (all real workspaces
+  // are opened via /workspace?project=<id>) — send the user to create one instead.
+  useEffect(() => {
+    if (!hasProjectParam) {
+      router.replace('/dashboard?create=1');
+    }
+  }, [hasProjectParam, router]);
 
   const { token, user, hasHydrated } = useAuthStore();
 
@@ -4126,6 +4135,14 @@ function WorkspaceContent() {
   const selectedNode = useMemo(() => {
     return nodes.find(n => n.id === selectedNodeId) || null;
   }, [nodes, selectedNodeId]);
+
+  if (!hasProjectParam) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-background text-muted-foreground">
+        <Icon icon="lucide:loader-2" className="animate-spin text-2xl" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@iconify/react';
 import { useAuthStore } from '../store/useAuthStore';
@@ -38,8 +38,9 @@ interface JoinRequest {
 	requested_at: string;
 }
 
-export default function DashboardPage() {
+function DashboardContent() {
 	const router = useRouter();
+	const searchParams = useSearchParams();
 	const { token, user, hasHydrated, logout } = useAuthStore();
 
 	const [projects, setProjects] = useState<Project[]>([]);
@@ -73,6 +74,15 @@ export default function DashboardPage() {
 			router.push('/login');
 		}
 	}, [hasHydrated, token, router]);
+
+	// Auto-open the create-workspace prompt when arriving via ?create=1
+	// (e.g. redirected here from a bare /workspace URL with no project selected)
+	useEffect(() => {
+		if (searchParams.get('create') === '1') {
+			setIsCreateModalOpen(true);
+			router.replace('/dashboard');
+		}
+	}, [searchParams, router]);
 
 	// Fetch teams, projects, and pending requests
 	const fetchData = async () => {
@@ -609,5 +619,18 @@ export default function DashboardPage() {
 				</div>
 			)}
 		</div>
+	);
+}
+
+
+export default function DashboardPage() {
+	return (
+		<Suspense fallback={
+			<div className="min-h-screen w-full bg-[#0A0F1D] flex items-center justify-center text-slate-400">
+				<Icon icon="lucide:loader-2" className="animate-spin text-2xl text-primary" />
+			</div>
+		}>
+			<DashboardContent />
+		</Suspense>
 	);
 }
