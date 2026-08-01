@@ -39,7 +39,7 @@ interface JoinRequest {
 
 export default function DashboardPage() {
 	const router = useRouter();
-	const { token, user, loadSession, logout } = useAuthStore();
+	const { token, user, hasHydrated, logout } = useAuthStore();
 
 	const [projects, setProjects] = useState<Project[]>([]);
 	const [teams, setTeams] = useState<Team[]>([]);
@@ -66,21 +66,16 @@ export default function DashboardPage() {
 	// Tabs/Filters
 	const [activeFilter, setActiveFilter] = useState<'my' | 'discover'>('my');
 
+	// Route protection — wait for the persisted store to rehydrate before deciding
 	useEffect(() => {
-		loadSession();
-	}, [loadSession]);
-
-	// Route protection
-	useEffect(() => {
-		const checkedToken = localStorage.getItem('infracanvas_token');
-		if (!checkedToken) {
+		if (hasHydrated && !token) {
 			router.push('/login');
 		}
-	}, [token, router]);
+	}, [hasHydrated, token, router]);
 
 	// Fetch teams, projects, and pending requests
 	const fetchData = async () => {
-		const activeToken = localStorage.getItem('infracanvas_token');
+		const activeToken = token;
 		if (!activeToken) return;
 
 		setIsLoadingData(true);
@@ -154,7 +149,7 @@ export default function DashboardPage() {
 		e.preventDefault();
 		setCreateError(null);
 
-		const activeToken = localStorage.getItem('infracanvas_token');
+		const activeToken = token;
 		if (!activeToken) return;
 
 		if (!newProjName.trim() || !newProjTeamId) {
@@ -199,7 +194,7 @@ export default function DashboardPage() {
 		setJoinError(null);
 		setJoinSuccess(null);
 
-		const activeToken = localStorage.getItem('infracanvas_token');
+		const activeToken = token;
 		if (!activeToken || !selectedProjToJoin) return;
 
 		try {
@@ -232,7 +227,7 @@ export default function DashboardPage() {
 	};
 
 	const handleReviewRequest = async (projectId: string, reqId: string, approve: boolean) => {
-		const activeToken = localStorage.getItem('infracanvas_token');
+		const activeToken = token;
 		if (!activeToken) return;
 
 		try {

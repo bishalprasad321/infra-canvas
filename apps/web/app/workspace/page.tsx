@@ -374,9 +374,9 @@ const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const router = useRouter();
 
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-  const activeToken = typeof window !== 'undefined' ? localStorage.getItem('infracanvas_token') : null;
+  const activeToken = token;
   const isAdmin = projectDetails?.user_role === 'ADMIN';
 
   // Sync state if project details loaded after mount
@@ -3482,7 +3482,7 @@ function WorkspaceContent() {
   const projectId = searchParams.get('project') || 'Web-Server-Orchestration';
   const selectedProject = projectId; // compatibility alias
 
-  const { token, user, loadSession } = useAuthStore();
+  const { token, user, hasHydrated } = useAuthStore();
 
   const syncWsRef = useRef<WebSocket | null>(null);
   const isIncomingSyncRef = useRef<boolean>(false);
@@ -3514,19 +3514,14 @@ function WorkspaceContent() {
 
   // Authenticate session and protect workspace routes
   useEffect(() => {
-    loadSession();
-  }, [loadSession]);
-
-  useEffect(() => {
-    const checkedToken = localStorage.getItem('infracanvas_token');
-    if (!checkedToken) {
+    if (hasHydrated && !token) {
       router.push('/login');
     }
-  }, [token, router]);
+  }, [hasHydrated, token, router]);
 
   // Connect to WebSocket Room Syncing
   useEffect(() => {
-    const activeToken = localStorage.getItem('infracanvas_token');
+    const activeToken = token;
     if (!activeToken || !projectId || !user) return;
 
     const apiHost = process.env.NEXT_PUBLIC_API_URL 
@@ -3620,7 +3615,7 @@ function WorkspaceContent() {
 
   // Load Project Details & Canvas State on mount
   useEffect(() => {
-    const activeToken = localStorage.getItem('infracanvas_token');
+    const activeToken = token;
     if (!activeToken || !projectId || !user) return;
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -3698,7 +3693,7 @@ function WorkspaceContent() {
 
     setSaveStatus('saving');
     const timer = setTimeout(async () => {
-      const activeToken = localStorage.getItem('infracanvas_token');
+      const activeToken = token;
       if (!activeToken || !projectId) return;
 
       try {
@@ -3829,7 +3824,7 @@ function WorkspaceContent() {
 
       // Make post request to Go backend
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-      const activeToken = localStorage.getItem('infracanvas_token');
+      const activeToken = token;
       const response = await fetch(`${API_URL}/api/projects/${projectId}/deploy`, {
         method: "POST",
         headers: {
@@ -3909,7 +3904,7 @@ function WorkspaceContent() {
     try {
       // Make destroy request to Go backend
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-      const activeToken = localStorage.getItem('infracanvas_token');
+      const activeToken = token;
       const response = await fetch(`${API_URL}/api/projects/${projectId}/destroy`, {
         method: "POST",
         headers: {
