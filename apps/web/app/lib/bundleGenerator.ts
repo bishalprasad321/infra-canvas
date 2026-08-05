@@ -264,6 +264,22 @@ resource "aws_s3_bucket_versioning" "${name}_versioning" {
   }
 }\n\n`;
     }
+    else if ((node.data as any)?.isCustom && (node.data as any)?.tech === 'Terraform') {
+      let customCode = (node.data as any).rawCode || '';
+      const params = (node.data as any).parameters || {};
+      
+      Object.entries(params).forEach(([key, val]) => {
+        const escapedKey = key.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const reVarUsage = new RegExp(`var\\.${escapedKey}\\b`, 'g');
+        const reVarInterpolation = new RegExp(`\\$\\{var\\.${escapedKey}\\}`, 'g');
+        
+        let stringValue = typeof val === 'string' ? `"${val}"` : `${val}`;
+        customCode = customCode.replace(reVarInterpolation, `${val}`);
+        customCode = customCode.replace(reVarUsage, stringValue);
+      });
+      
+      tfResourcesBlock += `# Custom block: ${node.data.label}\n${customCode}\n\n`;
+    }
   });
 
   // If EC2 exists but no Security Group node is present, append default web_sg
@@ -548,6 +564,16 @@ spec:
     requests:
       storage: ${size}
   storageClassName: ${storageClass}`);
+      }
+      else if ((node.data as any)?.isCustom && (node.data as any)?.tech === 'Kubernetes') {
+        let customYaml = (node.data as any).rawCode || '';
+        const params = (node.data as any).parameters || {};
+        
+        Object.entries(params).forEach(([key, val]) => {
+          const re = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
+          customYaml = customYaml.replace(re, `${val}`);
+        });
+        k8sManifests.push(customYaml);
       }
     });
 
