@@ -42,6 +42,10 @@ type CanvasState = {
     setSaveStatus: (status: 'saved' | 'saving' | 'error' | 'readonly') => void;
     version: number;
     setVersion: (version: number) => void;
+    customLibraryNodes: any[];
+    setCustomLibraryNodes: (nodes: any[]) => void;
+    addCustomLibraryNode: (node: any) => void;
+    deleteCustomLibraryNode: (nodeId: string) => void;
 };
 
 // Initial nodes reflecting the 4 pre-populated nodes from design-idea
@@ -265,7 +269,12 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
         selectedNodeId: null,
         activeTool: 'select'
       });
-    }
+    },
+
+    customLibraryNodes: [],
+    setCustomLibraryNodes: (nodes: any[]) => set({ customLibraryNodes: nodes }),
+    addCustomLibraryNode: (node: any) => set({ customLibraryNodes: [node, ...get().customLibraryNodes] }),
+    deleteCustomLibraryNode: (nodeId: string) => set({ customLibraryNodes: get().customLibraryNodes.filter(n => n.id !== nodeId) }),
 }));
 
 export default useCanvasStore;
