@@ -309,6 +309,15 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         owner: "${owner}"
         mode: "${mode}"\n\n`;
     }
+    else if ((node.data as any)?.isCustom && (node.data as any)?.tech === 'Ansible') {
+      let customTasks = (node.data as any).rawCode || '';
+      const lines = customTasks.split('\n').map((line: string) => {
+        if (line.trim() === '') return '';
+        return '    ' + line;
+      }).join('\n');
+      
+      tasksString += `    # Custom block: ${node.data.label}\n${lines}\n\n`;
+    }
   });
 
   let fullYaml = headerString + tasksString;

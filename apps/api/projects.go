@@ -516,6 +516,7 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		"id":    user.ID,
 		"email": user.Email,
 		"name":  user.Name,
+		"plan":  user.Plan,
 	})
 }
 
