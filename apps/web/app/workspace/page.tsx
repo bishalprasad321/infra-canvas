@@ -1397,6 +1397,8 @@ const LiveCodePreview: React.FC<LiveCodePreviewProps> = ({ selectedNode, nodes, 
   // Reset to first tab when node changes
   React.useEffect(() => { setActiveFile(0); setOverviewFile(null); }, [selectedNode?.id]);
 
+  const allFiles = useMemo(() => generateBundleFiles(nodes, edges), [nodes, edges]);
+
   // --- NODE SELECTED: file tab view ---
   if (selectedNode) {
     if (files.length === 0) {
@@ -1434,7 +1436,6 @@ const LiveCodePreview: React.FC<LiveCodePreviewProps> = ({ selectedNode, nodes, 
   }
 
   // --- NO NODE SELECTED: canvas overview ---
-  const allFiles = useMemo(() => generateBundleFiles(nodes, edges), [nodes, edges]);
   const sections: { label: string; color: string; paths: string[] }[] = [
     { label: 'Terraform', color: 'text-primary', paths: ['terraform/'] },
     { label: 'Ansible', color: 'text-[#00A4FF]', paths: ['ansible/'] },
