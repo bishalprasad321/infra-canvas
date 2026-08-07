@@ -169,6 +169,12 @@ Future engineers picking up the codebase should note the following features are 
     - Extracts configuration parameter variables and binds them natively to the Inspector Panel.
     - Topologically compiles custom script payloads into generated Terraform files, Ansible playbooks, and Kubernetes manifests.
 
+20. **InfraCanvas CLI & Import Engine**:
+    - Creates a lightweight, cross-platform Go command-line tool (`infracanvas`) supporting user login, projects management, and deployment pipeline runs.
+    - Integrates a backend reverse-parser engine utilizing HCL syntax trees and YAML decoders to import existing configuration manifests (`.tf`, `.yml`, `.yaml`).
+    - Translates code blocks into interactive library canvas nodes, extracts variables, and establishes resource dependency connections.
+    - Automatically structures layout coordinates via a grid spacing algorithm and broadcasts WebSocket signals to update active browser client workspaces instantly.
+
 ---
 
 ## Non-Implemented & Mocked Features (Roadmap)

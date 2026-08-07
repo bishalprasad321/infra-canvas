@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"api/importer"
 	"api/runner"
 
 	"github.com/gorilla/websocket"
@@ -232,6 +233,7 @@ func main() {
 	mux.Handle("DELETE /api/projects/{id}", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleDeleteProject))))
 	mux.Handle("GET /api/projects/{id}/canvas", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetCanvasState))))
 	mux.Handle("PUT /api/projects/{id}/canvas", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleUpdateCanvasState))))
+	mux.Handle("POST /api/projects/{id}/import", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleImport))))
 	mux.Handle("GET /api/projects/{id}/members", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetProjectMembers))))
 	mux.Handle("POST /api/projects/{id}/members", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleAddProjectMember))))
 	mux.Handle("PUT /api/projects/{id}/members/{userId}", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleUpdateProjectMemberRole))))
@@ -248,6 +250,10 @@ func main() {
 	mux.Handle("GET /api/projects/{id}/join-requests", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleGetJoinRequests))))
 	mux.Handle("POST /api/projects/{id}/join-requests/{reqId}/approve", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleApproveJoinRequest))))
 	mux.Handle("POST /api/projects/{id}/join-requests/{reqId}/reject", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleRejectJoinRequest))))
+
+	// Static downloads serving
+	_ = os.MkdirAll("./static/downloads", 0755)
+	mux.Handle("GET /downloads/", http.StripPrefix("/downloads/", http.FileServer(http.Dir("./static/downloads"))))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -381,12 +387,62 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	canvasBytes, err := json.Marshal(payload.Canvas)
-	if err != nil {
-		http.Error(w, "Invalid canvas format", http.StatusBadRequest)
-		return
+	var canvasStr string
+	var canvasNodesJSON, canvasEdgesJSON string
+
+	if payload.Canvas == nil {
+		err = db.QueryRow("SELECT nodes_json, edges_json FROM canvas_states WHERE project_id = ?", projectID).Scan(&canvasNodesJSON, &canvasEdgesJSON)
+		if err == sql.ErrNoRows {
+			canvasNodesJSON = "[]"
+			canvasEdgesJSON = "[]"
+		} else if err != nil {
+			http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		canvasStr = fmt.Sprintf(`{"nodes":%s,"edges":%s}`, canvasNodesJSON, canvasEdgesJSON)
+	} else {
+		canvasBytes, err := json.Marshal(payload.Canvas)
+		if err != nil {
+			http.Error(w, "Invalid canvas format", http.StatusBadRequest)
+			return
+		}
+		canvasStr = string(canvasBytes)
+		
+		var canvasStruct struct {
+			Nodes []importer.CanvasNode `json:"nodes"`
+			Edges []importer.CanvasEdge `json:"edges"`
+		}
+		_ = json.Unmarshal(canvasBytes, &canvasStruct)
+		
+		if len(payload.Files) == 0 {
+			compiledFiles, err := importer.CompileCanvas(canvasStruct.Nodes, canvasStruct.Edges)
+			if err == nil {
+				for _, f := range compiledFiles {
+					payload.Files = append(payload.Files, runner.FileItem{
+						Path:    f.Path,
+						Content: f.Content,
+					})
+				}
+			}
+		}
 	}
-	canvasStr := string(canvasBytes)
+
+	if len(payload.Files) == 0 && canvasNodesJSON != "" {
+		var nodes []importer.CanvasNode
+		var edges []importer.CanvasEdge
+		_ = json.Unmarshal([]byte(canvasNodesJSON), &nodes)
+		_ = json.Unmarshal([]byte(canvasEdgesJSON), &edges)
+
+		compiledFiles, err := importer.CompileCanvas(nodes, edges)
+		if err == nil {
+			for _, f := range compiledFiles {
+				payload.Files = append(payload.Files, runner.FileItem{
+					Path:    f.Path,
+					Content: f.Content,
+				})
+			}
+		}
+	}
 
 	runID := generateUUID()
 
@@ -633,12 +689,26 @@ func handleDestroy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	canvasBytes, err := json.Marshal(payload.Canvas)
-	if err != nil {
-		http.Error(w, "Invalid canvas format", http.StatusBadRequest)
-		return
+	var canvasStr string
+	if payload.Canvas == nil {
+		var canvasNodesJSON, canvasEdgesJSON string
+		err = db.QueryRow("SELECT nodes_json, edges_json FROM canvas_states WHERE project_id = ?", projectID).Scan(&canvasNodesJSON, &canvasEdgesJSON)
+		if err == sql.ErrNoRows {
+			canvasNodesJSON = "[]"
+			canvasEdgesJSON = "[]"
+		} else if err != nil {
+			http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		canvasStr = fmt.Sprintf(`{"nodes":%s,"edges":%s}`, canvasNodesJSON, canvasEdgesJSON)
+	} else {
+		canvasBytes, err := json.Marshal(payload.Canvas)
+		if err != nil {
+			http.Error(w, "Invalid canvas format", http.StatusBadRequest)
+			return
+		}
+		canvasStr = string(canvasBytes)
 	}
-	canvasStr := string(canvasBytes)
 
 	runID := generateUUID()
 
