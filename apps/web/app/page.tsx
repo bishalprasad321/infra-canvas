@@ -33,7 +33,7 @@ const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, onToggleMobileMenu }) =
           <nav className="hidden items-center gap-6 lg:flex ml-8">
             <a href="#features" className="text-sm text-muted-foreground transition hover:text-foreground">Features</a>
             <a href="#pricing" className="text-sm text-muted-foreground transition hover:text-foreground">Pricing</a>
-            <a href="#docs" className="text-sm text-muted-foreground transition hover:text-foreground">Docs</a>
+            <Link href="/docs" className="text-sm text-muted-foreground transition hover:text-foreground">Docs</Link>
           </nav>
         </div>
         <div className="hidden items-center gap-3 md:flex">
@@ -69,7 +69,7 @@ const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, onToggleMobileMenu }) =
         <div className="absolute top-full left-0 w-full bg-background border-b border-border p-6 flex flex-col gap-4 md:hidden shadow-2xl animate-in fade-in slide-in-from-top-5 duration-200">
           <a href="#features" onClick={onToggleMobileMenu} className="text-base text-muted-foreground hover:text-foreground py-2">Features</a>
           <a href="#pricing" onClick={onToggleMobileMenu} className="text-base text-muted-foreground hover:text-foreground py-2">Pricing</a>
-          <a href="#docs" onClick={onToggleMobileMenu} className="text-base text-muted-foreground hover:text-foreground py-2">Docs</a>
+          <Link href="/docs" onClick={onToggleMobileMenu} className="text-base text-muted-foreground hover:text-foreground py-2">Docs</Link>
           <hr className="border-border my-2" />
           {isLoggedIn ? (
             <>
@@ -667,7 +667,7 @@ const Footer: React.FC<FooterProps> = ({ footerEmail, onEmailChange, onSubmit, i
         <div className="lg:col-span-2">
           <p className="text-sm font-semibold text-foreground">Resources</p>
           <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
-            <li><span className="hover:text-foreground transition cursor-pointer">Docs</span></li>
+            <li><Link href="/docs" className="hover:text-white transition">Docs</Link></li>
             <li><span className="hover:text-foreground transition cursor-pointer">API Reference</span></li>
             <li><span className="hover:text-foreground transition cursor-pointer">Case Studies</span></li>
             <li><span className="hover:text-foreground transition cursor-pointer">Status</span></li>
@@ -733,6 +733,122 @@ const Footer: React.FC<FooterProps> = ({ footerEmail, onEmailChange, onSubmit, i
   );
 };
 
+// --- CLI DOWNLOAD SECTION ---
+
+interface CliDownloadSectionProps {
+  isLoggedIn: boolean;
+}
+
+const CliDownloadSection: React.FC<CliDownloadSectionProps> = ({ isLoggedIn }) => {
+  const downloadBaseUrl = 'http://localhost:8080/downloads';
+
+  return (
+    <section className="relative overflow-hidden border-b border-border py-16 lg:py-24">
+      <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/5 via-transparent to-primary/5"></div>
+      <div className="relative mx-auto grid w-full max-w-7xl gap-12 px-6 lg:grid-cols-12 lg:px-10">
+        <div className="flex flex-col justify-center lg:col-span-7">
+          <div className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-border bg-card/85 px-4 py-2 text-xs text-muted-foreground shadow-sm">
+            <span className="h-2 w-2 rounded-full bg-cyan-500 animate-pulse"></span>
+            NEW: Standalone CLI Tool v1.0.0
+          </div>
+          <h2 className="text-3xl font-heading font-bold text-foreground lg:text-4xl">
+            Control your cloud from the terminal.
+          </h2>
+          <p className="mt-4 text-base leading-7 text-muted-foreground lg:text-lg">
+            Manage visual workspace stacks, trigger remote pipeline executions, stream logs in real-time, and reverse-parse infrastructure manifests directly from your local system.
+          </p>
+
+          <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
+            {isLoggedIn ? (
+              <div className="flex flex-wrap gap-3">
+                <a 
+                  href={`${downloadBaseUrl}/infracanvas-windows-amd64.exe`} 
+                  download 
+                  className="rounded-xl border border-border bg-card px-5 py-3.5 text-sm font-medium hover:bg-secondary transition flex items-center gap-2.5 shadow-md text-foreground"
+                >
+                  <Icon icon="logos:microsoft-windows" />
+                  Windows
+                </a>
+                <a 
+                  href={`${downloadBaseUrl}/infracanvas-darwin-arm64`} 
+                  download 
+                  className="rounded-xl border border-border bg-card px-5 py-3.5 text-sm font-medium hover:bg-secondary transition flex items-center gap-2.5 shadow-md text-foreground"
+                >
+                  <Icon icon="logos:apple" className="text-white" />
+                  macOS (M-Series)
+                </a>
+                <a 
+                  href={`${downloadBaseUrl}/infracanvas-darwin-amd64`} 
+                  download 
+                  className="rounded-xl border border-border bg-card px-5 py-3.5 text-sm font-medium hover:bg-secondary transition flex items-center gap-2.5 shadow-md text-foreground"
+                >
+                  <Icon icon="logos:apple" />
+                  macOS (Intel)
+                </a>
+                <a 
+                  href={`${downloadBaseUrl}/infracanvas-linux-amd64`} 
+                  download 
+                  className="rounded-xl border border-border bg-card px-5 py-3.5 text-sm font-medium hover:bg-secondary transition flex items-center gap-2.5 shadow-md text-foreground"
+                >
+                  <Icon icon="logos:linux-tux" />
+                  Linux
+                </a>
+              </div>
+            ) : (
+              <Link 
+                href="/login" 
+                className="rounded-xl bg-cyan-500 hover:bg-cyan-400 px-6 py-3.5 text-sm font-semibold text-slate-950 shadow-lg transition flex items-center gap-2"
+              >
+                <Icon icon="lucide:lock" />
+                Sign In to Download CLI
+              </Link>
+            )}
+
+            <Link 
+              href="/docs" 
+              className="rounded-xl border border-border bg-secondary px-6 py-3.5 text-sm font-medium text-foreground hover:bg-secondary/80 transition flex items-center gap-2 shadow-md"
+            >
+              <Icon icon="lucide:book-open" />
+              CLI Documentation
+            </Link>
+          </div>
+          
+          {!isLoggedIn && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              CLI documentation is available publicly for review. Signing in is only required to download release binaries.
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-center lg:col-span-5">
+          <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/90 p-4 shadow-2xl font-mono text-xs text-cyan-400 backdrop-blur-xl">
+            <div className="mb-3 flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-full bg-red-500/80"></span>
+                <span className="h-3 w-3 rounded-full bg-yellow-500/80"></span>
+                <span className="h-3 w-3 rounded-full bg-green-500/80"></span>
+              </div>
+              <span className="text-slate-500">infracanvas --version</span>
+            </div>
+            <div className="space-y-2 text-slate-300">
+              <p><span className="text-slate-500">$</span> infracanvas login</p>
+              <p className="text-cyan-400">Enter Email: user@company.com</p>
+              <p className="text-slate-500">Successfully authenticated and logged in!</p>
+              <p className="mt-2"><span className="text-slate-500">$</span> infracanvas import --project "Dev-Cluster" -f main.tf</p>
+              <p className="text-emerald-500">✓ Success: Files imported successfully. Coordinates mapped.</p>
+              <p className="text-slate-500">Syncing live visual canvas workspace...</p>
+              <p className="mt-2"><span className="text-slate-500">$</span> infracanvas deploy --project "Dev-Cluster"</p>
+              <p className="text-cyan-500">[SYSTEM] Pipeline status changed to: RUNNING</p>
+              <p className="text-slate-400">aws_instance.web: Creating...</p>
+              <p className="text-emerald-500">[SYSTEM] Pipeline status changed to: SUCCESS</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
 // --- MAIN COMPONENT ---
 
 export default function MarketingLandingPage() {
@@ -793,6 +909,9 @@ export default function MarketingLandingPage() {
     }, 1200);
   };
 
+  const { user, hasHydrated } = useAuthStore();
+  const isLoggedIn = hasHydrated && !!user;
+
   return (
     <div className="min-h-screen w-full bg-background flex flex-col relative text-foreground font-sans overflow-x-hidden">
       <Header 
@@ -817,6 +936,8 @@ export default function MarketingLandingPage() {
           isEnterpriseSecurityToggle={isEnterpriseSecurityToggle}
           onToggleSecurityMode={toggleSecurityMode}
         />
+
+        <CliDownloadSection isLoggedIn={isLoggedIn} />
 
         <PricingSection 
           isAnnualBilling={isAnnualBilling}

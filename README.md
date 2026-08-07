@@ -16,7 +16,7 @@ This project is built as a monorepo containing a Next.js web application utilizi
 - Package Compilation: JSZip
 
 ### Backend
-- Core Language: Go 1.22
+- Core Language: Go 1.23
 - WebSockets: Gorilla WebSocket (for live run logs streaming)
 - Database: SQLite (via modernc.org/sqlite, pure Go without CGO dependencies)
 
@@ -161,6 +161,19 @@ Future engineers picking up the codebase should note the following features are 
     - Enables project administrators to edit project names, descriptions, and visibilities (Private, Team, Public).
     - Features collaborator controls to invite new members by email, update direct roles (Admin, Editor, Viewer), and revoke user access.
     - Offers a project deletion pipeline within the danger zone, protected by owner validation.
+
+19. **Premium Custom Node Authoring**:
+    - Adds a Premium-badged custom node creation interface in the workspace Library Panel.
+    - Gates access to Pro and Enterprise tier plans, prompting Free tier users with a styled sandbox upgrade pathway.
+    - Validates author-provided HCL/YAML code configurations dynamically on the backend via Go abstract syntax parsers (HCL AST syntax analyzer and YAML structures linter).
+    - Extracts configuration parameter variables and binds them natively to the Inspector Panel.
+    - Topologically compiles custom script payloads into generated Terraform files, Ansible playbooks, and Kubernetes manifests.
+
+20. **InfraCanvas CLI & Import Engine**:
+    - Creates a lightweight, cross-platform Go command-line tool (`infracanvas`) supporting user login, projects management, and deployment pipeline runs.
+    - Integrates a backend reverse-parser engine utilizing HCL syntax trees and YAML decoders to import existing configuration manifests (`.tf`, `.yml`, `.yaml`).
+    - Translates code blocks into interactive library canvas nodes, extracts variables, and establishes resource dependency connections.
+    - Automatically structures layout coordinates via a grid spacing algorithm and broadcasts WebSocket signals to update active browser client workspaces instantly.
 
 ---
 
