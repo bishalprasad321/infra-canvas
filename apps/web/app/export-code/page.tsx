@@ -321,13 +321,15 @@ function ExportCodeContent() {
           <div className="flex items-center gap-1 bg-muted p-1 rounded-lg border border-border">
             <span className="px-2 text-xs font-mono font-semibold text-foreground select-none">100%</span>
           </div>
-          <button
-            onClick={handleOpenModal}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-primary/20"
-          >
-            <Icon icon="lucide:download" className="text-base" />
-            <span>Export Code</span>
-          </button>
+          {!isModalOpen && (
+            <button
+              onClick={handleOpenModal}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-primary/20"
+            >
+              <Icon icon="lucide:download" className="text-base" />
+              <span>Export Code</span>
+            </button>
+          )}
           <div className="w-[1px] h-6 bg-border"></div>
           <ProfileMenu variant="compact" />
         </div>
