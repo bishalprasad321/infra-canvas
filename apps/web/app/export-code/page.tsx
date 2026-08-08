@@ -279,11 +279,14 @@ function ExportCodeContent() {
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
-    router.push(`/workspace?project=${projectId}`);
   };
 
   const handleOpenModal = () => {
     setIsModalOpen(true);
+  };
+
+  const handleGoToWorkspace = () => {
+    router.push(`/workspace?project=${projectId}`);
   };
 
   if (!projectId || isLoadingCanvas) {
@@ -387,7 +390,7 @@ function ExportCodeContent() {
                     <Icon icon="lucide:layout-template" className="text-4xl opacity-30" />
                     <p className="text-sm font-medium">Canvas is empty</p>
                     <p className="text-xs text-center max-w-xs">Add Terraform, Ansible, or Kubernetes nodes to the canvas and come back to export the generated code.</p>
-                    <button onClick={handleCloseModal} className="mt-2 text-xs text-primary hover:underline cursor-pointer">Go to canvas</button>
+                    <button onClick={handleGoToWorkspace} className="mt-2 text-xs text-primary hover:underline cursor-pointer">Go to canvas</button>
                   </div>
                 ) : (
                   <>
