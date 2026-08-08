@@ -4180,7 +4180,7 @@ function WorkspaceContent() {
 
   // Navigate to export-code page
   const handleExportClick = () => {
-    router.push('/export-code');
+    router.push(`/export-code?project=${projectId}`);
   };
 
   const handleResetClick = () => {
