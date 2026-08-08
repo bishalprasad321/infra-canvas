@@ -1,11 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { Icon } from '@iconify/react';
 import { clsx } from 'clsx';
 
 import useCanvasStore from '../store/useCanvasStore';
+import { useAuthStore } from '../store/useAuthStore';
+import ProfileMenu from '../components/ProfileMenu';
 import { generateBundleFiles, downloadZipBundle, FileItem } from '../lib/bundleGenerator';
 
 // --- SUB-COMPONENTS ---
@@ -166,14 +169,73 @@ const CodeViewer: React.FC<CodeViewerProps> = ({ selectedFile, isCopied, onCopy 
 
 // --- MAIN COMPONENT ---
 
-export default function ExportCodeModalOverlay() {
+function ExportCodeContent() {
   const router = useRouter();
-  const { nodes, edges } = useCanvasStore();
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get('project');
+  const { nodes, edges, setNodes, setEdges, setProjectId } = useCanvasStore();
+  const { token, user, hasHydrated } = useAuthStore();
 
   const [selectedFilePath, setSelectedFilePath] = useState<string>('');
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(true);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
+  const [projectDetails, setProjectDetails] = useState<any>(null);
+  const [isLoadingCanvas, setIsLoadingCanvas] = useState<boolean>(true);
+
+  // Bare /export-code has no project context to export from
+  useEffect(() => {
+    if (!projectId) {
+      router.replace('/dashboard');
+    }
+  }, [projectId, router]);
+
+  // Route protection — wait for the persisted store to rehydrate before deciding
+  useEffect(() => {
+    if (hasHydrated && !token) {
+      router.push('/login');
+    }
+  }, [hasHydrated, token, router]);
+
+  // Fetch project details & canvas state for this project id so the page is
+  // refresh-safe instead of depending purely on in-memory Zustand state
+  useEffect(() => {
+    if (!token || !projectId || !user) return;
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    let cancelled = false;
+
+    const loadProjectAndCanvas = async () => {
+      setIsLoadingCanvas(true);
+      try {
+        const projRes = await fetch(`${API_URL}/api/projects/${projectId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (projRes.ok) {
+          const projDetails = await projRes.json();
+          if (!cancelled) setProjectDetails(projDetails);
+        }
+
+        const canvasRes = await fetch(`${API_URL}/api/projects/${projectId}/canvas`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (canvasRes.ok) {
+          const state = await canvasRes.json();
+          const parsedNodes = JSON.parse(state.nodes_json || '[]');
+          const parsedEdges = JSON.parse(state.edges_json || '[]');
+          setNodes(parsedNodes);
+          setEdges(parsedEdges);
+          setProjectId(projectId);
+        }
+      } catch (err) {
+        console.warn("Failed to load project canvas data", err);
+      } finally {
+        if (!cancelled) setIsLoadingCanvas(false);
+      }
+    };
+
+    loadProjectAndCanvas();
+    return () => { cancelled = true; };
+  }, [projectId, token, user, setNodes, setEdges, setProjectId]);
 
   // Compile files dynamically from canvas Zustand store
   const bundleFiles = useMemo(() => generateBundleFiles(nodes, edges), [nodes, edges]);
@@ -217,12 +279,20 @@ export default function ExportCodeModalOverlay() {
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
-    router.push('/workspace');
+    router.push(`/workspace?project=${projectId}`);
   };
 
   const handleOpenModal = () => {
     setIsModalOpen(true);
   };
+
+  if (!projectId || isLoadingCanvas) {
+    return (
+      <div className="h-screen w-full bg-background flex items-center justify-center text-muted-foreground">
+        <Icon icon="lucide:loader-2" className="animate-spin text-2xl" />
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-full bg-background text-foreground flex flex-col relative font-sans overflow-hidden">
@@ -240,22 +310,26 @@ export default function ExportCodeModalOverlay() {
           </div>
           <div className="h-4 w-[1px] bg-border"></div>
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Project Alpha</span>
+            <Link href={`/workspace?project=${projectId}`} className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer flex items-center gap-1 font-semibold">
+              <Icon icon="lucide:arrow-left" className="text-xs" /> Workspace
+            </Link>
             <Icon icon="lucide:chevron-right" className="text-muted-foreground text-xs" />
-            <span className="text-foreground font-medium font-heading">Web-Server-Orchestration</span>
+            <span className="text-foreground font-medium font-heading">{projectDetails?.name || projectId}</span>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1 bg-muted p-1 rounded-lg border border-border">
             <span className="px-2 text-xs font-mono font-semibold text-foreground select-none">100%</span>
           </div>
-          <button 
+          <button
             onClick={handleOpenModal}
             className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-primary/20"
           >
             <Icon icon="lucide:download" className="text-base" />
             <span>Export Code</span>
           </button>
+          <div className="w-[1px] h-6 bg-border"></div>
+          <ProfileMenu variant="compact" />
         </div>
       </header>
 
@@ -371,5 +445,17 @@ export default function ExportCodeModalOverlay() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ExportCodePage() {
+  return (
+    <Suspense fallback={
+      <div className="h-screen w-full bg-background flex items-center justify-center text-muted-foreground">
+        <Icon icon="lucide:loader-2" className="animate-spin text-2xl" />
+      </div>
+    }>
+      <ExportCodeContent />
+    </Suspense>
   );
 }
