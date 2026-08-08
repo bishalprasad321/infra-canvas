@@ -5,6 +5,7 @@ interface User {
   id: string;
   name: string;
   email: string;
+  plan: string;
 }
 
 interface AuthState {
@@ -18,6 +19,7 @@ interface AuthState {
   signup: (name: string, email: string, password: string) => Promise<boolean>;
   logout: () => void;
   clearError: () => void;
+  upgradePlan: (newPlan: string) => Promise<boolean>;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -94,6 +96,32 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         set({ token: null, user: null, error: null });
+      },
+
+      upgradePlan: async (newPlan) => {
+        const token = get().token;
+        if (!token) return false;
+        try {
+          const res = await fetch(`${API_URL}/api/auth/upgrade`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ plan: newPlan }),
+          });
+
+          if (!res.ok) {
+            throw new Error('Failed to upgrade plan');
+          }
+
+          const data = await res.json();
+          set({ token: data.token, user: data.user });
+          return true;
+        } catch (err: any) {
+          console.error("Upgrade error", err);
+          return false;
+        }
       },
     }),
     {
