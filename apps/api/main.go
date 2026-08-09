@@ -251,9 +251,22 @@ func main() {
 	mux.Handle("POST /api/projects/{id}/join-requests/{reqId}/approve", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleApproveJoinRequest))))
 	mux.Handle("POST /api/projects/{id}/join-requests/{reqId}/reject", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleRejectJoinRequest))))
 
-	// Static downloads serving
+	// Static downloads serving with fallback redirection to GitHub Releases
 	_ = os.MkdirAll("./static/downloads", 0755)
-	mux.Handle("GET /downloads/", http.StripPrefix("/downloads/", http.FileServer(http.Dir("./static/downloads"))))
+	mux.Handle("GET /downloads/{filename...}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		filename := r.PathValue("filename")
+		if filename == "" || filename == "/" {
+			http.NotFound(w, r)
+			return
+		}
+		localPath := filepath.Join("./static/downloads", filename)
+		if _, err := os.Stat(localPath); err == nil {
+			http.ServeFile(w, r, localPath)
+			return
+		}
+		githubURL := "https://github.com/bishalprasad321/infra-canvas/releases/latest/download/" + filename
+		http.Redirect(w, r, githubURL, http.StatusTemporaryRedirect)
+	}))
 
 	port := os.Getenv("PORT")
 	if port == "" {
