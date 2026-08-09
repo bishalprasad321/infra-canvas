@@ -1,12 +1,15 @@
 package main
 
 import (
+	"api/importer"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // Team payloads & models
@@ -827,4 +830,124 @@ func handleRemoveProjectMember(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Member removed successfully"})
+}
+
+// POST /api/projects/{id}/import
+func handleImport(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var payload struct {
+		Files []struct {
+			Name    string `json:"name"`
+			Content string `json:"content"`
+		} `json:"files"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var allNodes []importer.CanvasNode
+	var allEdges []importer.CanvasEdge
+
+	for _, file := range payload.Files {
+		content := file.Content
+		name := strings.ToLower(file.Name)
+
+		if strings.HasSuffix(name, ".tf") {
+			nodes, edges, err := importer.ParseTerraform(content)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error parsing Terraform in %s: %v", file.Name, err), http.StatusBadRequest)
+				return
+			}
+			allNodes = append(allNodes, nodes...)
+			allEdges = append(allEdges, edges...)
+		} else if strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml") {
+			isK8s := strings.Contains(content, "apiVersion:") && strings.Contains(content, "kind:")
+			if isK8s {
+				nodes, edges, err := importer.ParseKubernetes(content)
+				if err != nil {
+					http.Error(w, fmt.Sprintf("Error parsing Kubernetes in %s: %v", file.Name, err), http.StatusBadRequest)
+					return
+				}
+				allNodes = append(allNodes, nodes...)
+				allEdges = append(allEdges, edges...)
+			} else {
+				nodes, edges, err := importer.ParseAnsible(content)
+				if err != nil {
+					http.Error(w, fmt.Sprintf("Error parsing Ansible in %s: %v", file.Name, err), http.StatusBadRequest)
+					return
+				}
+				allNodes = append(allNodes, nodes...)
+				allEdges = append(allEdges, edges...)
+			}
+		}
+	}
+
+	// Fetch existing canvas state
+	var existingNodes, existingEdges, existingViewport string
+	var currentVersion int
+	err := db.QueryRow("SELECT nodes_json, edges_json, viewport_json, version FROM canvas_states WHERE project_id = ?", projectID).Scan(
+		&existingNodes, &existingEdges, &existingViewport, &currentVersion)
+	if err == sql.ErrNoRows {
+		existingNodes = "[]"
+		existingEdges = "[]"
+		existingViewport = `{"x":0,"y":0,"zoom":1}`
+		currentVersion = 0
+		_, err = db.Exec("INSERT INTO canvas_states (project_id, nodes_json, edges_json, viewport_json, version, updated_by) VALUES (?, ?, ?, ?, ?, ?)",
+			projectID, "[]", "[]", existingViewport, 0, user.ID)
+		if err != nil {
+			http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else if err != nil {
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Merge existing and imported
+	mergedNodesJSON, mergedEdgesJSON, err := importer.ArrangeNodesAndMerge(fmt.Sprintf(`{"nodes":%s,"edges":%s}`, existingNodes, existingEdges), allNodes, allEdges)
+	if err != nil {
+		http.Error(w, "Merge coordinates error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	nextVersion := currentVersion + 1
+	_, err = db.Exec("UPDATE canvas_states SET nodes_json = ?, edges_json = ?, version = ?, updated_by = ?, updated_at = datetime('now') WHERE project_id = ?",
+		mergedNodesJSON, mergedEdgesJSON, nextVersion, user.ID, projectID)
+	if err != nil {
+		http.Error(w, "Failed to save canvas state: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Broadcast WS sync event to all active workspaces room peers
+	roomsMutex.Lock()
+	room, exists := rooms[projectID]
+	if exists {
+		msgBytes, _ := json.Marshal(SyncMessage{
+			Type:      "change",
+			ProjectID: projectID,
+			Payload:   json.RawMessage(fmt.Sprintf(`{"nodes":%s,"edges":%s}`, mergedNodesJSON, mergedEdgesJSON)),
+		})
+		room.Lock()
+		for conn := range room.clients {
+			_ = conn.WriteMessage(websocket.TextMessage, msgBytes)
+		}
+		room.Unlock()
+	}
+	roomsMutex.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Files imported successfully",
+		"nodes":   json.RawMessage(mergedNodesJSON),
+		"edges":   json.RawMessage(mergedEdgesJSON),
+		"version": nextVersion,
+	})
 }

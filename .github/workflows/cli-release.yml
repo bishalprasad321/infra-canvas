@@ -1,0 +1,99 @@
+name: CLI Release Build
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/cli/**'
+    tags:
+      - 'cli-v*'
+  pull_request:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'apps/cli/**'
+    tags:
+      - 'cli-v*'
+
+jobs:
+  build:
+    name: Build CLI for ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [windows, darwin, linux]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
+          - goos: linux
+            goarch: arm64 # Can include if ARM64 Linux servers are targeted, but keep it standard
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 'apps/cli/go.mod'
+          cache-dependency-path: 'apps/cli/go.sum'
+
+      - name: Build CLI Binary
+        working-directory: apps/cli
+        run: |
+          BINARY_NAME="infracanvas-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          
+          echo "Building binary: ${BINARY_NAME}"
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -ldflags="-s -w" -o "${BINARY_NAME}" main.go
+          
+          # Move binary to root directory for artifact uploading
+          mv "${BINARY_NAME}" ../../
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: infracanvas-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: infracanvas-${{ matrix.goos }}-${{ matrix.goarch }}*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Determine Release Tag
+        id: get_tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/cli-v* ]]; then
+            echo "TAG_NAME=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG_NAME=cli-latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_tag.outputs.TAG_NAME }}
+          name: ${{ steps.get_tag.outputs.TAG_NAME }}
+          prerelease: false
+          files: |
+            artifacts/infracanvas-windows-amd64.exe
+            artifacts/infracanvas-darwin-arm64
+            artifacts/infracanvas-darwin-amd64
+            artifacts/infracanvas-linux-amd64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
