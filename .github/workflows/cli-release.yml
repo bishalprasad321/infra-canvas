@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'apps/cli/**'
+    tags:
+      - 'cli-v*'
+  pull_request:
+    branches:
+      - main
       - dev
     paths:
       - 'apps/cli/**'
