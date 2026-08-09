@@ -740,7 +740,8 @@ interface CliDownloadSectionProps {
 }
 
 const CliDownloadSection: React.FC<CliDownloadSectionProps> = ({ isLoggedIn }) => {
-  const downloadBaseUrl = 'http://localhost:8080/downloads';
+  const API_URL = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) || 'http://localhost:8080';
+  const downloadBaseUrl = `${API_URL}/downloads`;
 
   return (
     <section className="relative overflow-hidden border-b border-border py-16 lg:py-24">

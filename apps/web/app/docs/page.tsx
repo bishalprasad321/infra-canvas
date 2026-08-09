@@ -13,7 +13,8 @@ export default function DocsPage() {
   const [activeTab, setActiveTab] = useState<'windows' | 'macos' | 'linux'>('windows');
   const [activeSection, setActiveSection] = useState<string>('intro');
 
-  const downloadBaseUrl = 'http://localhost:8080/downloads';
+  const API_URL = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) || 'http://localhost:8080';
+  const downloadBaseUrl = `${API_URL}/downloads`;
 
   const downloadLinks = {
     windows: `${downloadBaseUrl}/infracanvas-windows-amd64.exe`,
