@@ -3563,7 +3563,8 @@ function WorkspaceContent() {
     setVersion,
     setNodes,
     setEdges,
-    setCustomLibraryNodes
+    setCustomLibraryNodes,
+    setProjectId
   } = useCanvasStore();
   const { zoomIn, zoomOut, setViewport, getZoom } = useReactFlow();
 
@@ -3751,6 +3752,7 @@ function WorkspaceContent() {
           setNodes(parsedNodes);
           setEdges(parsedEdges);
           setVersion(state.version || 1);
+          setProjectId(projectId);
 
           // Restore viewport
           const viewport = JSON.parse(state.viewport_json || '{"x":0,"y":0,"zoom":1}');
@@ -3771,7 +3773,7 @@ function WorkspaceContent() {
     };
 
     loadProjectAndCanvas();
-  }, [projectId, user, setViewport, setNodes, setEdges, setVersion, setSaveStatus, setCustomLibraryNodes]);
+  }, [projectId, user, setViewport, setNodes, setEdges, setVersion, setSaveStatus, setCustomLibraryNodes, setProjectId]);
 
   // Broadcast local canvas state changes to room peers AND auto-save debouncely to REST API
   useEffect(() => {
@@ -4180,7 +4182,7 @@ function WorkspaceContent() {
 
   // Navigate to export-code page
   const handleExportClick = () => {
-    router.push('/export-code');
+    router.push(`/export-code?project=${projectId}`);
   };
 
   const handleResetClick = () => {
