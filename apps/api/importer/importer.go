@@ -22,6 +22,11 @@ type NodeData struct {
 	IsCustom      bool                   `json:"isCustom"`
 	RawCode       string                 `json:"rawCode"`
 	CodeType      string                 `json:"codeType"`
+	Environment   string                 `json:"environment,omitempty"`
+	Region        string                 `json:"region,omitempty"`
+	CredentialID  string                 `json:"credentialId,omitempty"`
+	ProjectId     string                 `json:"projectId,omitempty"`
+	GcpZone       string                 `json:"gcpZone,omitempty"`
 }
 
 type CanvasNode struct {

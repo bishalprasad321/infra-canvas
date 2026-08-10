@@ -343,7 +343,7 @@ func enableCORS(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func handleOptions(w http.ResponseWriter, r *http.Request) {
+func handleOptions(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -1359,13 +1359,21 @@ func extractSecretsAndEnvironment(projectID string, canvasStr string) ([]string,
 		Nodes []struct {
 			ID   string `json:"id"`
 			Data struct {
-				Parameters map[string]interface{} `json:"parameters"`
+				Parameters   map[string]interface{} `json:"parameters"`
+				CredentialID string                 `json:"credentialId"`
+				SshKeyID     string                 `json:"sshKeyId"`
 			} `json:"data"`
 		} `json:"nodes"`
 	}
 	_ = json.Unmarshal([]byte(canvasStr), &canvasStruct)
 
 	for _, n := range canvasStruct.Nodes {
+		if n.Data.CredentialID != "" {
+			loadCredential(n.Data.CredentialID)
+		}
+		if n.Data.SshKeyID != "" {
+			loadCredential(n.Data.SshKeyID)
+		}
 		if cid, ok := n.Data.Parameters["credentialId"].(string); ok && cid != "" {
 			loadCredential(cid)
 		}
