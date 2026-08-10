@@ -5,25 +5,8 @@ import Link from 'next/link';
 import { Icon } from '@iconify/react';
 import { useAuthStore } from './store/useAuthStore';
 import ProfileMenu from './components/ProfileMenu';
-import InteractiveSandbox from './components/landing/InteractiveSandbox';
 
 // --- SUB-COMPONENTS ---
-
-const Logo: React.FC = () => (
-  <div className="flex items-center gap-3">
-    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-slate-950 shadow-lg relative overflow-hidden group">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary to-cyan-500 opacity-20 group-hover:opacity-40 transition-opacity"></div>
-      <svg className="h-5 w-5 text-cyan-400 relative z-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM9 14H5a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1v-4a1 1 0 00-1-1z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M14 15h5M14 19h5" />
-      </svg>
-    </div>
-    <div>
-      <p className="text-sm font-bold tracking-wider text-white">InfraCanvas</p>
-      <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-mono font-medium leading-none mt-0.5">Visual Compiler</p>
-    </div>
-  </div>
-);
 
 interface HeaderProps {
   mobileMenuOpen: boolean;
@@ -35,7 +18,7 @@ const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, onToggleMobileMenu }) =
   const isLoggedIn = hasHydrated && !!user;
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#030712]/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-20 border-b border-border/80 bg-background/80 backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 lg:px-10">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
@@ -56,17 +39,17 @@ const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, onToggleMobileMenu }) =
         <div className="hidden items-center gap-3 md:flex">
           {isLoggedIn ? (
             <>
-              <Link href="/dashboard" className="rounded-xl bg-primary px-5 py-2.5 text-xs font-semibold text-primary-foreground shadow-lg hover:opacity-90 transition active:scale-95">
+              <Link href="/dashboard" className="rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg hover:opacity-90 transition">
                 Go to Dashboard
               </Link>
               <ProfileMenu variant="compact" />
             </>
           ) : (
             <>
-              <Link href="/login" className="rounded-xl border border-white/[0.06] bg-slate-900/60 px-4 py-2.5 text-xs font-semibold text-white shadow-md hover:bg-slate-900 transition">
+              <Link href="/login" className="rounded-lg border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-md hover:bg-secondary transition">
                 Sign In
               </Link>
-              <Link href="/login?mode=signup" className="rounded-xl bg-primary px-5 py-2.5 text-xs font-semibold text-primary-foreground shadow-lg hover:opacity-90 transition active:scale-95">
+              <Link href="/login?mode=signup" className="rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg hover:opacity-90 transition">
                 Start Free Trial
               </Link>
             </>
@@ -75,10 +58,10 @@ const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, onToggleMobileMenu }) =
 
         <button
           onClick={onToggleMobileMenu}
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.06] bg-slate-900/60 md:hidden"
+          className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-card md:hidden"
           aria-label="Toggle Menu"
         >
-          <Icon icon={mobileMenuOpen ? "lucide:x" : "lucide:menu"} className="text-lg text-white" />
+          <Icon icon={mobileMenuOpen ? "lucide:x" : "lucide:menu"} className="text-xl text-foreground" />
         </button>
       </div>
 
@@ -90,23 +73,23 @@ const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, onToggleMobileMenu }) =
           <Link href="/docs" onClick={onToggleMobileMenu} className="text-base text-muted-foreground hover:text-foreground py-2">Docs</Link>
           <hr className="border-border my-2" />
           {isLoggedIn ? (
-            <div className="flex flex-col gap-3">
-              <Link href="/dashboard" onClick={onToggleMobileMenu} className="w-full text-center rounded-xl bg-primary py-3 text-xs font-semibold text-primary-foreground shadow-lg">
+            <>
+              <Link href="/dashboard" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-lg">
                 Go to Dashboard
               </Link>
-              <Link href="/workspace" onClick={onToggleMobileMenu} className="w-full text-center rounded-xl border border-white/[0.06] bg-slate-900/60 py-3 text-xs font-semibold text-white shadow-md">
+              <Link href="/workspace" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg border border-border bg-card py-3 text-sm font-medium text-foreground shadow-md">
                 Workspace
               </Link>
-            </div>
+            </>
           ) : (
-            <div className="flex flex-col gap-3">
-              <Link href="/login" onClick={onToggleMobileMenu} className="w-full text-center rounded-xl border border-white/[0.06] bg-slate-900/60 py-3 text-xs font-semibold text-white shadow-md">
+            <>
+              <Link href="/login" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg border border-border bg-card py-3 text-sm font-medium text-foreground shadow-md">
                 Sign In
               </Link>
-              <Link href="/login?mode=signup" onClick={onToggleMobileMenu} className="w-full text-center rounded-xl bg-primary py-3 text-xs font-semibold text-primary-foreground shadow-lg">
+              <Link href="/login?mode=signup" onClick={onToggleMobileMenu} className="w-full text-center rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-lg">
                 Start Free Trial
               </Link>
-            </div>
+            </>
           )}
         </div>
       )}
@@ -178,46 +161,48 @@ const HeroSection: React.FC<HeroSectionProps> = ({ heroEmail, onEmailChange, onS
         </div>
 
         {isSubmitted && (
-          <p className="mt-4 text-xs text-cyan-400 flex items-center gap-1.5 justify-center">
-            <Icon icon="lucide:check-circle" /> Thank you! Check your inbox for setup instructions.
+          <p className="mt-3 text-sm text-cyan-400 flex items-center gap-2">
+            <Icon icon="lucide:check-circle" /> Thank you! We will reach out to you shortly.
           </p>
         )}
 
-        <div className="mt-10 flex flex-wrap justify-center gap-6 text-xs text-slate-400">
-          <div className="flex items-center gap-1.5 bg-slate-950/40 border border-white/[0.03] px-3.5 py-1.5 rounded-full">
-            <Icon icon="lucide:circle-check" className="text-cyan-400" />
-            <span>Zero AWS Bills in Sandbox</span>
+        <div className="mt-8 flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Icon icon="lucide:circle-check" className="text-lg text-cyan-500" />
+            <span>No credit card required</span>
           </div>
-          <div className="flex items-center gap-1.5 bg-slate-950/40 border border-white/[0.03] px-3.5 py-1.5 rounded-full">
-            <Icon icon="lucide:shield" className="text-violet-400" />
-            <span>SOC2 Ready Security Locks</span>
+          <div className="flex items-center gap-2">
+            <Icon icon="lucide:shield" className="text-lg text-cyan-500" />
+            <span>SOC2-ready architecture</span>
           </div>
-          <div className="flex items-center gap-1.5 bg-slate-950/40 border border-white/[0.03] px-3.5 py-1.5 rounded-full">
-            <Icon icon="lucide:zap" className="text-emerald-400" />
-            <span>Terraform ➔ Ansible inventory sync</span>
+          <div className="flex items-center gap-2">
+            <Icon icon="lucide:zap" className="text-lg text-cyan-500" />
+            <span>Deploy in under 15 minutes</span>
           </div>
-        </div>
-
-        {/* Dynamic Sandbox Playground */}
-        <div className="mt-16 w-full animate-in fade-in duration-1000">
-          <InteractiveSandbox />
         </div>
       </div>
-    </section>
+
+      {/* Dynamic Sandbox Playground */}
+      <div className="mt-16 w-full animate-in fade-in duration-1000">
+        <InteractiveSandbox />
+      </div>
+    </div>
+    </section >
   );
 };
 
 const LogoCloud: React.FC = () => {
   return (
-    <section className="border-b border-white/[0.06] bg-[#030712]/50 py-10 relative overflow-hidden">
+    <section className="border-b border-border py-8">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 lg:px-10">
-        <p className="text-center text-[10px] uppercase tracking-[0.3em] text-muted-foreground font-semibold">Empowering Platform Engineering at Scale</p>
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6 items-center">
-          {['Datadrift', 'Cortex Cloud', 'VectorOps', 'Northstar AI', 'Monolith Labs', 'ScaleGrid'].map((brand, i) => (
-            <div key={i} className="rounded-xl border border-white/[0.04] bg-slate-900/20 px-5 py-4 text-center text-xs font-semibold text-slate-500 hover:text-white hover:border-white/[0.08] hover:bg-slate-900/40 transition cursor-default tracking-wide font-mono">
-              {brand}
-            </div>
-          ))}
+        <p className="text-center text-xs uppercase tracking-[0.3em] text-muted-foreground">Trusted by engineering leaders at</p>
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+          <div className="rounded-xl border border-border bg-card/60 px-5 py-4 text-center text-sm font-medium text-muted-foreground hover:text-foreground transition cursor-default">Datadrift</div>
+          <div className="rounded-xl border border-border bg-card/60 px-5 py-4 text-center text-sm font-medium text-muted-foreground hover:text-foreground transition cursor-default">Cortex Cloud</div>
+          <div className="rounded-xl border border-border bg-card/60 px-5 py-4 text-center text-sm font-medium text-muted-foreground hover:text-foreground transition cursor-default">VectorOps</div>
+          <div className="rounded-xl border border-border bg-card/60 px-5 py-4 text-center text-sm font-medium text-muted-foreground hover:text-foreground transition cursor-default">Northstar AI</div>
+          <div className="rounded-xl border border-border bg-card/60 px-5 py-4 text-center text-sm font-medium text-muted-foreground hover:text-foreground transition cursor-default">Monolith Labs</div>
+          <div className="rounded-xl border border-border bg-card/60 px-5 py-4 text-center text-sm font-medium text-muted-foreground hover:text-foreground transition cursor-default">ScaleGrid</div>
         </div>
       </div>
     </section>
@@ -232,17 +217,15 @@ interface BentoGridProps {
 }
 
 const BentoGrid: React.FC<BentoGridProps> = ({ selectedSdkTab, onSelectSdkTab, isEnterpriseSecurityToggle, onToggleSecurityMode }) => {
-  const [tuningVal, setTuningVal] = useState<number>(65);
-
   const getCodeSnippet = () => {
     switch (selectedSdkTab) {
       case 'python':
-        return `import infracanvas\n\nclient = infracanvas.Client(api_key="ic_live_9f2x")\n\n# Compile workspace dynamically\nrun = client.compile(\n  workspace="checkout-stack",\n  target="local-sandbox"\n)\nprint(f"Status: {run.status}")`;
+        return `import orchestrate\n\norchestrate.deploy(\n  service="checkout",\n  policy="strict"\n)`;
       case 'node':
-        return `const { InfraCanvas } = require('@infracanvas/sdk');\nconst ic = new InfraCanvas({ apiKey: 'ic_live_9f2x' });\n\nasync function deploy() {\n  const res = await ic.compile('checkout-stack');\n  console.log(\`Sandbox URL: \${res.sandboxUrl}\`);\n}\ndeploy();`;
+        return `const sdk = require('orchestrate');\n\nsdk.deploy({\n  service: "checkout",\n  policy: "strict"\n});`;
       case 'curl':
       default:
-        return `curl -X POST https://api.infracanvas.com/v1/compile \\\n  -H 'Authorization: Bearer ic_live_9f2x' \\\n  -d '{"workspace_id":"checkout-stack","target":"local-sandbox"}'`;
+        return `curl -X POST /deploy \\\n  -H 'Authorization: Bearer sk_live' \\\n  -d '{"service":"checkout","policy":"strict"}'`;
     }
   };
 
@@ -371,8 +354,8 @@ const BentoGrid: React.FC<BentoGridProps> = ({ selectedSdkTab, onSelectSdkTab, i
                     key={tab}
                     onClick={() => onSelectSdkTab(tab)}
                     className={`rounded-lg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider transition cursor-pointer ${selectedSdkTab === tab
-                        ? 'bg-primary text-white shadow-md'
-                        : 'text-muted-foreground hover:text-white'
+                      ? 'bg-primary text-white shadow-md'
+                      : 'text-muted-foreground hover:text-white'
                       }`}
                   >
                     {tab}
@@ -393,16 +376,12 @@ const BentoGrid: React.FC<BentoGridProps> = ({ selectedSdkTab, onSelectSdkTab, i
             </div>
           </div>
 
-          {/* Platform Governance Card */}
-          <div className="rounded-3xl border border-white/[0.06] bg-slate-900/20 p-6 shadow-xl lg:col-span-7 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none"></div>
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          {/* Governance Card */}
+          <div className="rounded-[24px] border border-border bg-card/80 p-6 shadow-xl lg:col-span-7">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <h4 className="text-xs uppercase tracking-wider text-primary font-bold">Enterprise Governance</h4>
-                <h3 className="mt-3 text-xl font-bold text-white tracking-tight">Accelerate Cloud Delivery Without Sacrificing Control.</h3>
-                <p className="mt-2 text-xs text-muted-foreground leading-relaxed max-w-xl">
-                  Platform teams define compliant baseline components (Golden Paths); developers drag-and-drop elements to construct sandbox environments. Change risks are mitigated before target cloud provisioning.
-                </p>
+                <p className="text-sm font-medium text-foreground">Governance without friction</p>
+                <h3 className="mt-3 text-2xl font-heading font-semibold text-foreground">Control every release path with visible policy intelligence.</h3>
               </div>
               <div className="rounded-2xl bg-primary/10 border border-primary/20 px-4 py-2.5 text-center shrink-0">
                 <p className="text-xs font-semibold text-primary">Deployment Failures</p>
@@ -416,15 +395,10 @@ const BentoGrid: React.FC<BentoGridProps> = ({ selectedSdkTab, onSelectSdkTab, i
                 <p className="mt-3 text-2xl font-extrabold text-white font-mono">Instant</p>
                 <p className="mt-1 text-[10px] text-muted-foreground">Compliance check on link drops</p>
               </div>
-              <div className="rounded-2xl border border-white/[0.04] bg-slate-950/40 p-4">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Safe Rollback</p>
-                <p className="mt-3 text-2xl font-extrabold text-white font-mono">1 Click</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">Restore prior visual snapshot state</p>
-              </div>
-              <div className="rounded-2xl border border-white/[0.04] bg-slate-950/40 p-4">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">State Visibility</p>
-                <p className="mt-3 text-2xl font-extrabold text-cyan-400 font-mono">100%</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">Direct translation of nodes to HCL</p>
+              <div className="rounded-2xl border border-border bg-secondary p-5">
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Visibility</p>
+                <p className="mt-4 text-3xl font-heading font-bold text-cyan-500">100%</p>
+                <p className="mt-2 text-sm text-muted-foreground">Action-level audit coverage</p>
               </div>
             </div>
           </div>
@@ -484,36 +458,32 @@ const PricingSection: React.FC<PricingSectionProps> = ({ isAnnualBilling, onTogg
       <div className="mx-auto w-full max-w-7xl px-6 lg:px-10">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <p className="text-xs uppercase tracking-widest text-primary font-bold">Flexible Seat Plans</p>
-            <h2 className="mt-3 text-3xl font-extrabold text-white lg:text-5xl tracking-tight font-heading">
-              Transparent Plans.<br />Built to Grow with Your Scale.
-            </h2>
+            <p className="text-sm font-medium text-primary">Pricing designed for scale</p>
+            <h2 className="mt-3 text-3xl font-heading font-bold text-foreground lg:text-5xl">Choose a plan that grows from fast-moving teams to global enterprise orchestration.</h2>
           </div>
 
           <div className="flex items-center gap-3.5 rounded-full border border-white/[0.08] bg-slate-900/60 px-4 py-2.5 shadow-lg backdrop-blur-md shrink-0">
             <span className={`text-xs font-semibold transition ${!isAnnualBilling ? 'text-white' : 'text-slate-500'}`}>Monthly</span>
             <button
               onClick={onToggleBillingCycle}
-              className="flex h-6 w-12 items-center rounded-full bg-primary px-0.5 transition cursor-pointer"
+              className="flex h-8 w-16 items-center rounded-full bg-primary px-1 transition"
               aria-label="Toggle Billing Cycle"
             >
-              <div className={`h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${isAnnualBilling ? 'translate-x-6' : 'translate-x-0'}`}></div>
+              <div className={`h-6 w-6 rounded-full bg-primary-foreground transition-transform duration-200 ${isAnnualBilling ? 'translate-x-8' : 'translate-x-0'}`}></div>
             </button>
-            <span className={`text-xs font-semibold transition ${isAnnualBilling ? 'text-white' : 'text-slate-500'}`}>Annual</span>
-            <span className="rounded-full bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-1 text-[9px] font-bold text-cyan-400 uppercase font-mono">Save 20%</span>
+            <span className={`text-sm transition ${isAnnualBilling ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>Annual</span>
+            <span className="rounded-full bg-cyan-500/15 px-3 py-1 text-xs font-medium text-cyan-500">Save 20%</span>
           </div>
         </div>
 
-        <div className="mt-12 grid gap-6 lg:grid-cols-3">
-          {/* Free Tier */}
-          <div className="rounded-3xl border border-white/[0.06] bg-slate-900/20 p-6 md:p-8 shadow-xl flex flex-col justify-between hover:border-white/[0.1] transition-colors relative overflow-hidden group">
+        <div className="mt-10 grid gap-6 lg:grid-cols-3">
+          {/* Starter Plan */}
+          <div className="rounded-[24px] border border-border bg-card/80 p-6 shadow-xl flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between">
-                <p className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Free (Developer)</p>
-                <Icon icon="lucide:user" className="text-lg text-slate-500" />
-              </div>
-              <p className="mt-5 text-4xl font-extrabold text-white font-mono tracking-tight">
-                $0
+              <p className="text-sm font-medium text-foreground">Starter</p>
+              <p className="mt-4 text-5xl font-heading font-bold text-foreground">
+                ${calculatePrice(49)}
+                <span className="text-base font-normal text-muted-foreground">/seat</span>
               </p>
               <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
                 For developers testing local infrastructure configs and configurations visually.
@@ -523,16 +493,16 @@ const PricingSection: React.FC<PricingSectionProps> = ({ isAnnualBilling, onTogg
 
               <div className="space-y-4 text-xs text-slate-400">
                 <div className="flex items-center gap-3">
-                  <Icon icon="lucide:circle-check" className="text-sm text-cyan-400" />
-                  <span>1 User Workspace</span>
+                  <Icon icon="lucide:circle-check" className="text-lg text-cyan-500" />
+                  <span>5 workflow environments</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Icon icon="lucide:circle-check" className="text-sm text-cyan-400" />
-                  <span>2 Active Projects</span>
+                  <Icon icon="lucide:circle-check" className="text-lg text-cyan-500" />
+                  <span>Core deployment automations</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Icon icon="lucide:circle-check" className="text-sm text-cyan-400" />
-                  <span>Zero-Cost Local Sandbox Simulation</span>
+                  <Icon icon="lucide:circle-check" className="text-lg text-cyan-500" />
+                  <span>Email support</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Icon icon="lucide:circle-check" className="text-sm text-cyan-400" />
@@ -546,19 +516,16 @@ const PricingSection: React.FC<PricingSectionProps> = ({ isAnnualBilling, onTogg
             </Link>
           </div>
 
-          {/* Team Tier (Most Popular) */}
-          <div className="rounded-3xl border border-primary bg-[#080512]/60 p-6 md:p-8 shadow-2xl flex flex-col justify-between relative overflow-hidden group">
-            <div className="absolute -top-3 right-6 rounded-full bg-primary px-3.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-primary-foreground">
+          {/* Enterprise Plan */}
+          <div className="rounded-[24px] border border-primary bg-card/90 p-6 shadow-2xl flex flex-col justify-between relative">
+            <div className="absolute -top-3 right-6 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">
               Most Popular
             </div>
             <div>
-              <div className="flex items-center justify-between">
-                <p className="text-xs uppercase tracking-wider text-slate-300 font-semibold">Team (Growth)</p>
-                <Icon icon="lucide:users" className="text-lg text-primary" />
-              </div>
-              <p className="mt-5 text-4xl font-extrabold text-white font-mono tracking-tight">
-                ${calculatePrice(49)}
-                <span className="text-sm font-normal text-muted-foreground">/mo</span>
+              <p className="text-sm font-medium text-foreground">Enterprise</p>
+              <p className="mt-4 text-5xl font-heading font-bold text-foreground">
+                ${calculatePrice(149)}
+                <span className="text-base font-normal text-muted-foreground">/seat</span>
               </p>
               <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
                 For growing DevOps and engineering teams requiring collaborative environment building.
@@ -568,20 +535,20 @@ const PricingSection: React.FC<PricingSectionProps> = ({ isAnnualBilling, onTogg
 
               <div className="space-y-4 text-xs text-slate-300">
                 <div className="flex items-center gap-3">
-                  <Icon icon="lucide:circle-check" className="text-sm text-cyan-400" />
-                  <span>Unlimited Canvas Workspaces</span>
+                  <Icon icon="lucide:circle-check" className="text-lg text-cyan-500" />
+                  <span>Unlimited orchestration workflows</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Icon icon="lucide:circle-check" className="text-sm text-cyan-400" />
-                  <span>Real-Time Peer Cursor Sync</span>
+                  <Icon icon="lucide:circle-check" className="text-lg text-cyan-500" />
+                  <span>SSO, RBAC, and approval routing</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Icon icon="lucide:circle-check" className="text-sm text-cyan-400" />
-                  <span>Canvas Locks &amp; Deployment History</span>
+                  <Icon icon="lucide:circle-check" className="text-lg text-cyan-500" />
+                  <span>Advanced audit logs and controls</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Icon icon="lucide:circle-check" className="text-sm text-cyan-400" />
-                  <span>SQLite-Backed Run State Logs</span>
+                  <Icon icon="lucide:circle-check" className="text-lg text-cyan-500" />
+                  <span>Priority implementation support</span>
                 </div>
               </div>
             </div>
@@ -591,8 +558,8 @@ const PricingSection: React.FC<PricingSectionProps> = ({ isAnnualBilling, onTogg
             </Link>
           </div>
 
-          {/* Enterprise Tier */}
-          <div className="rounded-3xl border border-white/[0.06] bg-slate-900/20 p-6 md:p-8 shadow-xl flex flex-col justify-between hover:border-white/[0.1] transition-colors relative overflow-hidden group">
+          {/* Custom Plan */}
+          <div className="rounded-[24px] border border-border bg-card/80 p-6 shadow-xl flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between">
                 <p className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Enterprise (Scale)</p>
@@ -610,16 +577,16 @@ const PricingSection: React.FC<PricingSectionProps> = ({ isAnnualBilling, onTogg
 
               <div className="space-y-4 text-xs text-slate-400">
                 <div className="flex items-center gap-3">
-                  <Icon icon="lucide:circle-check" className="text-sm text-cyan-400" />
-                  <span>SSO, SAML &amp; Granular RBAC Permissions</span>
+                  <Icon icon="lucide:circle-check" className="text-lg text-cyan-500" />
+                  <span>Dedicated security review</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Icon icon="lucide:circle-check" className="text-sm text-cyan-400" />
-                  <span>Private Custom Ansible Playbook Catalogs</span>
+                  <Icon icon="lucide:circle-check" className="text-lg text-cyan-500" />
+                  <span>Private deployment options</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Icon icon="lucide:circle-check" className="text-sm text-cyan-400" />
-                  <span>OPA/Sentinel Compliance Engine Checking</span>
+                  <Icon icon="lucide:circle-check" className="text-lg text-cyan-500" />
+                  <span>Custom SLAs and procurement</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Icon icon="lucide:circle-check" className="text-sm text-cyan-400" />
@@ -648,7 +615,7 @@ interface FooterProps {
 
 const Footer: React.FC<FooterProps> = ({ footerEmail, onEmailChange, onSubmit, isLoading, isSubmitted }) => {
   return (
-    <footer className="bg-[#030712] border-t border-white/[0.06] relative z-10">
+    <footer className="bg-background">
       <div className="mx-auto grid w-full max-w-7xl gap-10 px-6 py-14 lg:grid-cols-12 lg:px-10">
         <div className="lg:col-span-3">
           <Logo />
@@ -662,12 +629,12 @@ const Footer: React.FC<FooterProps> = ({ footerEmail, onEmailChange, onSubmit, i
         </div>
 
         <div className="lg:col-span-2">
-          <p className="text-xs uppercase tracking-widest text-white font-bold">Product</p>
-          <ul className="mt-4 space-y-2.5 text-xs text-muted-foreground">
-            <li><a href="#features" className="hover:text-white transition">Features</a></li>
-            <li><a href="#solutions" className="hover:text-white transition">Niches</a></li>
-            <li><a href="#pricing" className="hover:text-white transition">Pricing</a></li>
-            <li><span className="text-muted-foreground/30 cursor-not-allowed font-mono text-[10px]">ROADMAP ➔</span></li>
+          <p className="text-sm font-semibold text-foreground">Product</p>
+          <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
+            <li><a href="#features" className="hover:text-foreground transition">Features</a></li>
+            <li><a href="#pricing" className="hover:text-foreground transition">Pricing</a></li>
+            <li><a href="#features" className="hover:text-foreground transition">Integrations</a></li>
+            <li><span className="text-muted-foreground/50 cursor-not-allowed">Roadmap</span></li>
           </ul>
         </div>
 
@@ -682,12 +649,12 @@ const Footer: React.FC<FooterProps> = ({ footerEmail, onEmailChange, onSubmit, i
         </div>
 
         <div className="lg:col-span-2">
-          <p className="text-xs uppercase tracking-widest text-white font-bold">Company</p>
-          <ul className="mt-4 space-y-2.5 text-xs text-muted-foreground">
-            <li><span className="hover:text-white transition cursor-pointer">About Us</span></li>
-            <li><span className="hover:text-white transition cursor-pointer">Security Center</span></li>
-            <li><span className="hover:text-white transition cursor-pointer">Careers</span></li>
-            <li><span className="hover:text-white transition cursor-pointer">Contact Support</span></li>
+          <p className="text-sm font-semibold text-foreground">Company</p>
+          <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
+            <li><span className="hover:text-foreground transition cursor-pointer">About</span></li>
+            <li><span className="hover:text-foreground transition cursor-pointer">Careers</span></li>
+            <li><span className="hover:text-foreground transition cursor-pointer">Security</span></li>
+            <li><span className="hover:text-foreground transition cursor-pointer">Contact</span></li>
           </ul>
         </div>
 
@@ -711,18 +678,20 @@ const Footer: React.FC<FooterProps> = ({ footerEmail, onEmailChange, onSubmit, i
               <button
                 type="submit"
                 disabled={isLoading || isSubmitted}
-                className="rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground hover:opacity-90 active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-md"
+                className="rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90 transition flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {isLoading ? (
-                  <Icon icon="lucide:loader-2" className="animate-spin text-xs" />
+                  <Icon icon="lucide:loader-2" className="animate-spin" />
                 ) : isSubmitted ? (
-                  <Icon icon="lucide:check" className="text-xs" />
+                  <Icon icon="lucide:check" />
                 ) : (
-                  "Subscribe Updates"
+                  "Subscribe"
                 )}
               </button>
-              {isSubmitted && (
-                <p className="text-[10px] text-cyan-400 text-center mt-1">Successfully subscribed!</p>
+              {isSubmitted ? (
+                <p className="text-xs text-cyan-500">Successfully subscribed!</p>
+              ) : (
+                <p className="text-xs text-cyan-500">Looks good — we’ll only send technical updates.</p>
               )}
             </form>
           </div>
