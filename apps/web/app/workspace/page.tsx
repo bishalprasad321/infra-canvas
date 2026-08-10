@@ -25,6 +25,7 @@ import ReactFlowCanvasNode from '../components/ReactFlowCanvasNode';
 import ProfileMenu from '../components/ProfileMenu';
 import Tooltip from '../components/Tooltip';
 import CustomNodeModal from '../components/CustomNodeModal';
+import { CredentialManagerTab } from '../components/CredentialManagerModal';
 import { generateAnsibleYAML } from '../lib/exportYaml';
 import { downloadZipBundle, downloadTerraformZip, generateBundleFiles, generateTerraformFiles } from '../lib/bundleGenerator';
 import { DEFAULT_INSTANCE_PARAMS, DEFAULT_SG_PARAMS } from '../lib/terraformDefaults';
@@ -363,7 +364,7 @@ const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   onUpdateProjectDetails,
   projectId
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'members' | 'danger'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'members' | 'credentials' | 'danger'>('general');
   const [name, setName] = useState(projectDetails?.name || '');
   const [description, setDescription] = useState(projectDetails?.description || '');
   const [visibility, setVisibility] = useState(projectDetails?.visibility || 'PRIVATE');
@@ -589,6 +590,14 @@ const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
           >
             Collaborators
           </button>
+          <button
+            onClick={() => setActiveTab('credentials')}
+            className={`py-3 border-b-2 font-medium transition-all cursor-pointer ${
+              activeTab === 'credentials' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Cloud Credentials
+          </button>
           {isAdmin && (
             <button
               onClick={() => setActiveTab('danger')}
@@ -604,6 +613,11 @@ const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         {/* Body content */}
         <div className="flex-grow overflow-y-auto p-6 scrollbar-thin">
           
+          {/* CREDENTIALS TAB */}
+          {activeTab === 'credentials' && (
+            <CredentialManagerTab projectId={projectId} token={activeToken} />
+          )}
+
           {/* GENERAL SETTINGS */}
           {activeTab === 'general' && (
             <form onSubmit={handleGeneralSave} className="space-y-4">
@@ -1682,6 +1696,7 @@ interface InspectorPanelProps {
   isReadOnly?: boolean;
   onStartEditing?: (nodeId: string) => void;
   onEndEditing?: (nodeId: string) => void;
+  availableCredentials?: any[];
 }
 
 const InspectorPanel: React.FC<InspectorPanelProps> = ({
@@ -1698,6 +1713,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   isReadOnly = false,
   onStartEditing,
   onEndEditing,
+  availableCredentials = [],
 }) => {
   const [newTagKey, setNewTagKey] = useState('');
   const [newTagVal, setNewTagVal] = useState('');
@@ -1755,6 +1771,10 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const branchVal = (selectedNode?.data?.branch as string) || '';
   const environmentVal = (selectedNode?.data?.environment as string) || 'localstack';
   const regionVal = (selectedNode?.data?.region as string) || 'us-east-1';
+  const credentialIdVal = (selectedNode?.data?.credentialId as string) || '';
+  const sshKeyIdVal = (selectedNode?.data?.sshKeyId as string) || '';
+  const projectIDVal = (selectedNode?.data?.projectId as string) || '';
+  const gcpZoneVal = (selectedNode?.data?.gcpZone as string) || 'us-central1-a';
   const startCommandVal = (selectedNode?.data?.startCommand as string) || '';
   const appPortVal = (selectedNode?.data?.appPort as string) || '';
 
@@ -2599,35 +2619,146 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     </div>
                   )}
 
-                  {/* 2c. AWS TARGET NODE PARAMETERS */}
+                  {/* 2c. TARGET NODE PARAMETERS */}
                   {selectedNode.data.tech === 'Target' && (
                     <div className="space-y-4">
-                      <p className="text-[11px] text-muted-foreground">
-                        Chooses which AWS environment Terraform provisions into. Only the LocalStack sandbox is wired up right now.
-                      </p>
+                      {selectedNode.id.startsWith('aws_target') ? (
+                        <>
+                          <p className="text-[11px] text-muted-foreground">
+                            Chooses which AWS environment Terraform provisions into. LocalStack sandbox for testing, live AWS cloud for production.
+                          </p>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Environment</label>
+                            <div className="relative">
+                              <select
+                                  value={environmentVal}
+                                  onChange={(e) => updateNodeData(selectedNode.id, { environment: e.target.value })}
+                                  className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                              >
+                                <option value="localstack">LocalStack (Sandbox)</option>
+                                <option value="aws">Live AWS (Cloud)</option>
+                              </select>
+                              <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                            </div>
+                          </div>
+
+                          {environmentVal === 'aws' && (
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">AWS Credential Source</label>
+                              <div className="relative">
+                                <select
+                                    value={credentialIdVal}
+                                    onChange={(e) => updateNodeData(selectedNode.id, { credentialId: e.target.value })}
+                                    className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                                >
+                                  <option value="">-- Select AWS Credential --</option>
+                                  {availableCredentials.filter(c => c.provider === 'AWS').map(c => (
+                                    <option key={c.id} value={c.id}>{c.name} ({c.key_fingerprint})</option>
+                                  ))}
+                                </select>
+                                <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                              </div>
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">AWS Region</label>
+                            <input
+                              type="text"
+                              value={regionVal}
+                              onChange={(e) => updateNodeData(selectedNode.id, { region: e.target.value })}
+                              placeholder="us-east-1"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-[11px] text-muted-foreground">
+                            Chooses which GCP project and zone to deploy into.
+                          </p>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Environment</label>
+                            <div className="relative">
+                              <select
+                                  value={environmentVal}
+                                  onChange={(e) => updateNodeData(selectedNode.id, { environment: e.target.value })}
+                                  className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                              >
+                                <option value="gcp">Live GCP (Cloud)</option>
+                              </select>
+                              <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">GCP Service Account JSON</label>
+                            <div className="relative">
+                              <select
+                                  value={credentialIdVal}
+                                  onChange={(e) => updateNodeData(selectedNode.id, { credentialId: e.target.value })}
+                                  className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                              >
+                                <option value="">-- Select GCP Service Account --</option>
+                                {availableCredentials.filter(c => c.provider === 'GCP').map(c => (
+                                  <option key={c.id} value={c.id}>{c.name} ({c.key_fingerprint})</option>
+                                ))}
+                              </select>
+                              <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">GCP Project ID</label>
+                            <input
+                              type="text"
+                              value={projectIDVal}
+                              onChange={(e) => updateNodeData(selectedNode.id, { projectId: e.target.value })}
+                              placeholder="infracanvas-prod-12345"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">GCP Region</label>
+                            <input
+                              type="text"
+                              value={regionVal}
+                              onChange={(e) => updateNodeData(selectedNode.id, { region: e.target.value })}
+                              placeholder="us-central1"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">GCP Zone</label>
+                            <input
+                              type="text"
+                              value={gcpZoneVal}
+                              onChange={(e) => updateNodeData(selectedNode.id, { gcpZone: e.target.value })}
+                              placeholder="us-central1-a"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {/* COMMON SSH KEY CONFIGURATION */}
                       <div>
-                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Environment</label>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Ansible SSH Target Private Key</label>
                         <div className="relative">
                           <select
-                            value={environmentVal}
-                            onChange={(e) => updateNodeData(selectedNode.id, { environment: e.target.value })}
-                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                              value={sshKeyIdVal}
+                              onChange={(e) => updateNodeData(selectedNode.id, { sshKeyId: e.target.value })}
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
                           >
-                            <option value="localstack">LocalStack (Sandbox)</option>
-                            <option value="aws" disabled>Real AWS — coming later</option>
+                            <option value="">-- Select SSH Key (.pem) --</option>
+                            {availableCredentials.filter(c => c.provider === 'SSH').map(c => (
+                              <option key={c.id} value={c.id}>{c.name} ({c.key_fingerprint})</option>
+                            ))}
                           </select>
                           <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
                         </div>
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">AWS Region</label>
-                        <input
-                          type="text"
-                          value={regionVal}
-                          onChange={(e) => updateNodeData(selectedNode.id, { region: e.target.value })}
-                          placeholder="us-east-1"
-                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-                        />
                       </div>
                     </div>
                   )}
@@ -3118,6 +3249,14 @@ const LIBRARY_NODES: LibraryNode[] = [
     description: 'Chooses where this pipeline deploys — LocalStack sandbox for testing, real AWS later.',
     category: 'Cloud Target'
   },
+  {
+    id: 'gcp_target',
+    tech: 'Target',
+    icon: 'lucide:cloud',
+    title: 'GCP Target',
+    description: 'Chooses where this pipeline deploys — Live GCP Project.',
+    category: 'Cloud Target'
+  },
   // Terraform Nodes
   {
     id: 'aws_instance.web_server',
@@ -3594,6 +3733,7 @@ function WorkspaceContent() {
   const [projectDetails, setProjectDetails] = useState<any>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isCustomNodeOpen, setIsCustomNodeOpen] = useState(false);
+  const [availableCredentials, setAvailableCredentials] = useState<any[]>([]);
 
   const [selectedOS, setSelectedOS] = useState("Linux");
   const [zoomLevel, setZoomLevel] = useState(100);
@@ -3766,6 +3906,15 @@ function WorkspaceContent() {
         if (customRes.ok) {
           const customNodes = await customRes.json();
           setCustomLibraryNodes(customNodes || []);
+        }
+
+        // 4. Fetch cloud credentials
+        const credsRes = await fetch(`${API_URL}/api/projects/${projectId}/credentials`, {
+          headers: { 'Authorization': `Bearer ${activeToken}` }
+        });
+        if (credsRes.ok) {
+          const creds = await credsRes.json();
+          setAvailableCredentials(creds || []);
         }
       } catch (err) {
         console.warn("Failed to load project canvas data", err);
@@ -4360,6 +4509,7 @@ function WorkspaceContent() {
           isReadOnly={deployStatus === 'PENDING' || deployStatus === 'RUNNING' || saveStatus === 'readonly'}
           onStartEditing={handleStartEditing}
           onEndEditing={handleEndEditing}
+          availableCredentials={availableCredentials}
         />
       </div>
 
