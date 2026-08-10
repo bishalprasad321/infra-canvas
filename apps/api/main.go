@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"api/importer"
 	"api/runner"
 
 	"github.com/gorilla/websocket"
@@ -84,6 +85,7 @@ func main() {
 		email TEXT UNIQUE NOT NULL,
 		password_hash TEXT NOT NULL,
 		name TEXT NOT NULL,
+		plan TEXT NOT NULL DEFAULT 'FREE' CHECK (plan IN ('FREE', 'PRO', 'ENTERPRISE')),
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE TABLE IF NOT EXISTS teams (
@@ -176,6 +178,22 @@ func main() {
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
 		FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+	);
+	CREATE TABLE IF NOT EXISTS custom_nodes (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		created_by TEXT NOT NULL,
+		title TEXT NOT NULL,
+		tech TEXT NOT NULL CHECK (tech IN ('Terraform', 'Ansible', 'Kubernetes')),
+		category TEXT NOT NULL DEFAULT 'Custom Blocks',
+		description TEXT,
+		code_type TEXT NOT NULL CHECK (code_type IN ('tf', 'yml', 'yaml')),
+		raw_code TEXT NOT NULL,
+		parsed_meta_json TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+		FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
 	);`
 	if _, err := db.Exec(schemaQuery); err != nil {
 		log.Fatalf("[DB] Failed to initialize schema: %v\n", err)
@@ -183,6 +201,7 @@ func main() {
 	// Run migrations to alter existing pipeline_runs table columns safely
 	_, _ = db.Exec("ALTER TABLE pipeline_runs ADD COLUMN project_id TEXT;")
 	_, _ = db.Exec("ALTER TABLE pipeline_runs ADD COLUMN user_id TEXT;")
+	_, _ = db.Exec("ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT 'FREE' CHECK (plan IN ('FREE', 'PRO', 'ENTERPRISE'));")
 	log.Println("[DB] Database initialized successfully.")
 
 	// Set up routing
@@ -198,6 +217,7 @@ func main() {
 	// Auth & Workspace Sync Routes
 	mux.HandleFunc("POST /api/auth/signup", enableCORS(handleSignup))
 	mux.HandleFunc("POST /api/auth/login", enableCORS(handleLogin))
+	mux.Handle("POST /api/auth/upgrade", AuthMiddleware(http.HandlerFunc(handleUpgradePlan)))
 	mux.Handle("GET /api/auth/me", AuthMiddleware(http.HandlerFunc(handleMe)))
 	mux.HandleFunc("GET /api/workspace/{projectId}/sync", handleWorkspaceWebSocketSync)
 
@@ -213,16 +233,40 @@ func main() {
 	mux.Handle("DELETE /api/projects/{id}", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleDeleteProject))))
 	mux.Handle("GET /api/projects/{id}/canvas", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetCanvasState))))
 	mux.Handle("PUT /api/projects/{id}/canvas", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleUpdateCanvasState))))
+	mux.Handle("POST /api/projects/{id}/import", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleImport))))
 	mux.Handle("GET /api/projects/{id}/members", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetProjectMembers))))
 	mux.Handle("POST /api/projects/{id}/members", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleAddProjectMember))))
 	mux.Handle("PUT /api/projects/{id}/members/{userId}", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleUpdateProjectMemberRole))))
 	mux.Handle("DELETE /api/projects/{id}/members/{userId}", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleRemoveProjectMember))))
+
+	// Custom Nodes Routes
+	mux.HandleFunc("POST /api/custom-nodes/validate", handleValidateCustomNode)
+	mux.Handle("GET /api/projects/{id}/custom-nodes", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetCustomNodes))))
+	mux.Handle("POST /api/projects/{id}/custom-nodes", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleCreateCustomNode))))
+	mux.Handle("DELETE /api/projects/{id}/custom-nodes/{nodeId}", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleDeleteCustomNode))))
 
 	// Join Requests
 	mux.Handle("POST /api/projects/{id}/join-request", AuthMiddleware(http.HandlerFunc(handleCreateJoinRequest)))
 	mux.Handle("GET /api/projects/{id}/join-requests", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleGetJoinRequests))))
 	mux.Handle("POST /api/projects/{id}/join-requests/{reqId}/approve", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleApproveJoinRequest))))
 	mux.Handle("POST /api/projects/{id}/join-requests/{reqId}/reject", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleRejectJoinRequest))))
+
+	// Static downloads serving with fallback redirection to GitHub Releases
+	_ = os.MkdirAll("./static/downloads", 0755)
+	mux.Handle("GET /downloads/{filename...}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		filename := r.PathValue("filename")
+		if filename == "" || filename == "/" {
+			http.NotFound(w, r)
+			return
+		}
+		localPath := filepath.Join("./static/downloads", filename)
+		if _, err := os.Stat(localPath); err == nil {
+			http.ServeFile(w, r, localPath)
+			return
+		}
+		githubURL := "https://github.com/bishalprasad321/infra-canvas/releases/latest/download/" + filename
+		http.Redirect(w, r, githubURL, http.StatusTemporaryRedirect)
+	}))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -356,12 +400,62 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	canvasBytes, err := json.Marshal(payload.Canvas)
-	if err != nil {
-		http.Error(w, "Invalid canvas format", http.StatusBadRequest)
-		return
+	var canvasStr string
+	var canvasNodesJSON, canvasEdgesJSON string
+
+	if payload.Canvas == nil {
+		err = db.QueryRow("SELECT nodes_json, edges_json FROM canvas_states WHERE project_id = ?", projectID).Scan(&canvasNodesJSON, &canvasEdgesJSON)
+		if err == sql.ErrNoRows {
+			canvasNodesJSON = "[]"
+			canvasEdgesJSON = "[]"
+		} else if err != nil {
+			http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		canvasStr = fmt.Sprintf(`{"nodes":%s,"edges":%s}`, canvasNodesJSON, canvasEdgesJSON)
+	} else {
+		canvasBytes, err := json.Marshal(payload.Canvas)
+		if err != nil {
+			http.Error(w, "Invalid canvas format", http.StatusBadRequest)
+			return
+		}
+		canvasStr = string(canvasBytes)
+		
+		var canvasStruct struct {
+			Nodes []importer.CanvasNode `json:"nodes"`
+			Edges []importer.CanvasEdge `json:"edges"`
+		}
+		_ = json.Unmarshal(canvasBytes, &canvasStruct)
+		
+		if len(payload.Files) == 0 {
+			compiledFiles, err := importer.CompileCanvas(canvasStruct.Nodes, canvasStruct.Edges)
+			if err == nil {
+				for _, f := range compiledFiles {
+					payload.Files = append(payload.Files, runner.FileItem{
+						Path:    f.Path,
+						Content: f.Content,
+					})
+				}
+			}
+		}
 	}
-	canvasStr := string(canvasBytes)
+
+	if len(payload.Files) == 0 && canvasNodesJSON != "" {
+		var nodes []importer.CanvasNode
+		var edges []importer.CanvasEdge
+		_ = json.Unmarshal([]byte(canvasNodesJSON), &nodes)
+		_ = json.Unmarshal([]byte(canvasEdgesJSON), &edges)
+
+		compiledFiles, err := importer.CompileCanvas(nodes, edges)
+		if err == nil {
+			for _, f := range compiledFiles {
+				payload.Files = append(payload.Files, runner.FileItem{
+					Path:    f.Path,
+					Content: f.Content,
+				})
+			}
+		}
+	}
 
 	runID := generateUUID()
 
@@ -608,12 +702,26 @@ func handleDestroy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	canvasBytes, err := json.Marshal(payload.Canvas)
-	if err != nil {
-		http.Error(w, "Invalid canvas format", http.StatusBadRequest)
-		return
+	var canvasStr string
+	if payload.Canvas == nil {
+		var canvasNodesJSON, canvasEdgesJSON string
+		err = db.QueryRow("SELECT nodes_json, edges_json FROM canvas_states WHERE project_id = ?", projectID).Scan(&canvasNodesJSON, &canvasEdgesJSON)
+		if err == sql.ErrNoRows {
+			canvasNodesJSON = "[]"
+			canvasEdgesJSON = "[]"
+		} else if err != nil {
+			http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		canvasStr = fmt.Sprintf(`{"nodes":%s,"edges":%s}`, canvasNodesJSON, canvasEdgesJSON)
+	} else {
+		canvasBytes, err := json.Marshal(payload.Canvas)
+		if err != nil {
+			http.Error(w, "Invalid canvas format", http.StatusBadRequest)
+			return
+		}
+		canvasStr = string(canvasBytes)
 	}
-	canvasStr := string(canvasBytes)
 
 	runID := generateUUID()
 
@@ -709,10 +817,11 @@ type TokenClaims struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
 	Name  string `json:"name"`
+	Plan  string `json:"plan"`
 	Exp   int64  `json:"exp"`
 }
 
-func GenerateToken(userID, email, name string) (string, error) {
+func GenerateToken(userID, email, name, plan string) (string, error) {
 	header := TokenHeader{Alg: "HS256", Typ: "JWT"}
 	headerJSON, _ := json.Marshal(header)
 	headerB64 := base64.RawURLEncoding.EncodeToString(headerJSON)
@@ -721,6 +830,7 @@ func GenerateToken(userID, email, name string) (string, error) {
 		ID:    userID,
 		Email: email,
 		Name:  name,
+		Plan:  plan,
 		Exp:   time.Now().Add(24 * time.Hour).Unix(),
 	}
 	claimsJSON, _ := json.Marshal(claims)
@@ -869,8 +979,8 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userID, name, hash string
-	err := db.QueryRow("SELECT id, name, password_hash FROM users WHERE email = ?", email).Scan(&userID, &name, &hash)
+	var userID, name, hash, plan string
+	err := db.QueryRow("SELECT id, name, password_hash, plan FROM users WHERE email = ?", email).Scan(&userID, &name, &hash, &plan)
 	if err == sql.ErrNoRows {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
@@ -884,7 +994,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := GenerateToken(userID, email, name)
+	token, err := GenerateToken(userID, email, name, plan)
 	if err != nil {
 		http.Error(w, "Failed to sign token: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -897,6 +1007,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 			"id":    userID,
 			"email": email,
 			"name":  name,
+			"plan":  plan,
 		},
 	})
 }
@@ -1112,4 +1223,50 @@ func broadcastToRoom(roomID string, msg SyncMessage, senderConn *websocket.Conn)
 		}
 		_ = conn.WriteJSON(msg)
 	}
+}
+
+// POST /api/auth/upgrade
+func handleUpgradePlan(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var payload struct {
+		Plan string `json:"plan"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid payload", http.StatusBadRequest)
+		return
+	}
+
+	plan := strings.ToUpper(payload.Plan)
+	if plan != "PRO" && plan != "ENTERPRISE" && plan != "FREE" {
+		http.Error(w, "Invalid plan selection", http.StatusBadRequest)
+		return
+	}
+
+	_, err := db.Exec("UPDATE users SET plan = ? WHERE id = ?", plan, user.ID)
+	if err != nil {
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	newToken, err := GenerateToken(user.ID, user.Email, user.Name, plan)
+	if err != nil {
+		http.Error(w, "Failed to sign token", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"token": newToken,
+		"user": map[string]string{
+			"id":    user.ID,
+			"email": user.Email,
+			"name":  user.Name,
+			"plan":  plan,
+		},
+	})
 }
