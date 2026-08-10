@@ -21,6 +21,93 @@ export interface TerraformFiles {
 
 export function generateTerraformFiles(nodes: Node[]): TerraformFiles {
   const targetNode = nodes.find(n => (n.data as any)?.tech === 'Target');
+  const isGcp = targetNode?.id.startsWith('gcp_target');
+
+  if (isGcp) {
+    const gcpRegion = ((targetNode?.data as any)?.region as string) || 'us-central1';
+    const gcpProjectId = ((targetNode?.data as any)?.projectId as string) || 'infracanvas-prod-12345';
+    const gcpZone = ((targetNode?.data as any)?.gcpZone as string) || 'us-central1-a';
+
+    const instanceNode = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
+    const parameters = (instanceNode?.data as any)?.parameters || {};
+    const instanceName = parameters.instanceName || 'web-server';
+    const machineType = parameters.instanceType || 'e2-micro';
+    const diskSizeGb = parameters.rootVolumeSize || 10;
+
+    const mainTf = `terraform {
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "google" {
+  project = var.gcp_project_id
+  region  = var.gcp_region
+  zone    = var.gcp_zone
+}
+
+resource "google_compute_network" "vpc_network" {
+  name                    = "infracanvas-vpc"
+  auto_create_subnetworks = false
+}
+
+resource "google_compute_subnetwork" "subnet" {
+  name          = "infracanvas-subnet"
+  ip_cidr_range = "10.10.1.0/24"
+  region        = var.gcp_region
+  network       = google_compute_network.vpc_network.id
+}
+
+resource "google_compute_instance" "vm_instance" {
+  name         = "${instanceName}"
+  machine_type = "${machineType}"
+  zone         = var.gcp_zone
+
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-2204-lts"
+      size  = ${diskSizeGb}
+    }
+  }
+
+  network_interface {
+    subnetwork = google_compute_subnetwork.subnet.id
+    access_config {
+      // Ephemeral public IP for SSH access
+    }
+  }
+
+  metadata = {
+    ssh-keys = "ubuntu:\${file("~/.ssh/id_rsa.pub")}"
+  }
+}`;
+
+    const variablesTf = `variable "gcp_project_id" {
+  type    = string
+  default = "${gcpProjectId}"
+}
+
+variable "gcp_region" {
+  type    = string
+  default = "${gcpRegion}"
+}
+
+variable "gcp_zone" {
+  type    = string
+  default = "${gcpZone}"
+}`;
+
+    const outputsTf = `output "gcp_instance_public_ip" {
+  value       = google_compute_instance.vm_instance.network_interface.0.access_config.0.nat_ip
+  description = "The public IP of the GCP VM instance"
+}`;
+
+    return { mainTf, variablesTf, outputsTf };
+  }
+
   const awsRegion = ((targetNode?.data as any)?.region as string) || 'us-east-1';
   const environment = ((targetNode?.data as any)?.environment as string) || 'localstack';
 
@@ -422,15 +509,23 @@ export function generateBundleFiles(nodes: Node[], edges: Edge[]): FileItem[] {
   }
 
   if (hasAnsible) {
+    const targetNode = nodes.find(n => (n.data as any)?.tech === 'Target');
+    const isGcp = targetNode?.id.startsWith('gcp_target');
     const instanceNode = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
     const instanceName = ((instanceNode?.data as any)?.parameters || DEFAULT_INSTANCE_PARAMS).instanceName || 'web_server';
     const playbookYml = generateAnsibleYAML(nodes, edges);
     const colon = ':';
+    
+    const hostLine = isGcp
+      ? `web_server_1 ansible_host=google_compute_instance.${instanceName}.public_ip ansible_user=ubuntu`
+      : `web_server_1 ansible_host=aws_instance.${instanceName}.public_ip ansible_user=ubuntu`;
+
     const hostsIni = `[webservers]
-web_server_1 ansible_host=aws_instance.${instanceName}.public_ip ansible_user=ubuntu
+${hostLine}
 
 [all${colon}vars]
 ansible_python_interpreter=/usr/bin/python3`;
+
     files.push(
       { path: 'ansible/playbook.yml', name: 'playbook.yml', language: 'YAML', icon: 'lucide:clipboard', iconColor: 'text-[#00A4FF]', lines: countLines(playbookYml), size: getSizeKb(playbookYml), content: playbookYml },
       { path: 'ansible/hosts.ini', name: 'hosts.ini', language: 'INI', icon: 'lucide:settings', iconColor: 'text-muted-foreground', lines: countLines(hostsIni), size: getSizeKb(hostsIni), content: hostsIni },
