@@ -2,9 +2,32 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
+
+// createPersonalTeam creates the default personal workspace team + OWNER
+// membership for a brand-new user. Shared by password signup (handleSignup)
+// and first-time OAuth login (findOrCreateOAuthUser in oauth.go) so the two
+// account-creation paths can't silently drift apart — an OAuth user who
+// never gets a personal team has nowhere to create projects.
+func createPersonalTeam(tx *sql.Tx, userID, name string) error {
+	teamID := fmt.Sprintf("team_%d", time.Now().UnixNano())
+	slug := "personal-" + userID
+	if _, err := tx.Exec("INSERT INTO teams (id, name, slug, owner_id) VALUES (?, ?, ?, ?)", teamID, name+"'s Personal Workspace", slug, userID); err != nil {
+		return fmt.Errorf("failed to create personal team: %w", err)
+	}
+
+	tmemID := fmt.Sprintf("tmem_%d", time.Now().UnixNano())
+	if _, err := tx.Exec("INSERT INTO team_members (id, team_id, user_id, role) VALUES (?, ?, ?, ?)", tmemID, teamID, userID, "OWNER"); err != nil {
+		return fmt.Errorf("failed to join personal team: %w", err)
+	}
+
+	return nil
+}
 
 type contextKey string
 
