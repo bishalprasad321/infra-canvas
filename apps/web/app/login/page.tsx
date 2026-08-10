@@ -210,24 +210,22 @@ function LoginForm() {
           <div className="flex-grow border-t border-slate-800"></div>
         </div>
 
-        {/* Free-Tier Social OAuth simulation (GitHub & Google) */}
+        {/* Social Sign-In (GitHub & Google) */}
         <div className="grid grid-cols-2 gap-3">
-          <button 
-            type="button" 
-            onClick={() => alert('Social OAuth is disabled for local developer sandboxing.')}
+          <a
+            href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/auth/github/login`}
             className="flex items-center justify-center gap-2.5 rounded-xl border border-slate-800 bg-[#0D1324] py-3 text-sm font-medium text-slate-300 hover:bg-[#131A30] hover:text-white transition duration-200 cursor-pointer"
           >
             <Icon icon="mdi:github" className="text-xl" />
             <span>GitHub</span>
-          </button>
-          <button 
-            type="button" 
-            onClick={() => alert('Social OAuth is disabled for local developer sandboxing.')}
+          </a>
+          <a
+            href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/auth/google/login`}
             className="flex items-center justify-center gap-2.5 rounded-xl border border-slate-800 bg-[#0D1324] py-3 text-sm font-medium text-slate-300 hover:bg-[#131A30] hover:text-white transition duration-200 cursor-pointer"
           >
             <Icon icon="flat-color-icons:google" className="text-xl" />
             <span>Google</span>
-          </button>
+          </a>
         </div>
 
         {/* Switch Sign In / Sign Up footer link */}
