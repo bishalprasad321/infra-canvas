@@ -28,7 +28,24 @@ func CompileCanvas(nodes []CanvasNode, edges []CanvasEdge) ([]FileItem, error) {
 	}
 
 	if hasTerraform {
-		mainTf := `terraform {
+		// Detect AWS target settings
+		isLiveAWS := false
+		awsRegion := "us-east-1"
+		for _, n := range nodes {
+			if strings.HasPrefix(n.ID, "aws_target") {
+				if n.Data.Environment == "aws" {
+					isLiveAWS = true
+				}
+				if n.Data.Region != "" {
+					awsRegion = n.Data.Region
+				}
+				break
+			}
+		}
+
+		var mainTf string
+		if isLiveAWS {
+			mainTf = fmt.Sprintf(`terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -49,7 +66,32 @@ func CompileCanvas(nodes []CanvasNode, edges []CanvasEdge) ([]FileItem, error) {
 }
 
 provider "aws" {
-  region                      = "us-east-1"
+  region = "%s"
+}
+`, awsRegion)
+		} else {
+			mainTf = fmt.Sprintf(`terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+
+  backend "s3" {
+    bucket                      = "infracanvas-state-bucket"
+    key                         = "terraform.tfstate"
+    region                      = "us-east-1"
+    endpoints                   = { s3 = "http://localhost:4566" }
+    use_path_style              = true
+    skip_credentials_validation = true
+    skip_metadata_api_check     = true
+    skip_requesting_account_id  = true
+  }
+}
+
+provider "aws" {
+  region                      = "%s"
   access_key                  = "test"
   secret_key                  = "test"
   skip_credentials_validation = true
@@ -62,7 +104,10 @@ provider "aws" {
     s3  = "http://localhost:4566"
   }
 }
+`, awsRegion, awsRegion)
+		}
 
+		mainTf += `
 data "aws_vpc" "default" {
   default = true
 }

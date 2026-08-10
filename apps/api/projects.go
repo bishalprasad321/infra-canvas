@@ -981,6 +981,11 @@ func handleGetProjectCredentials(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if err = rows.Err(); err != nil {
+		http.Error(w, "Database error during row iteration: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(items)
 }
