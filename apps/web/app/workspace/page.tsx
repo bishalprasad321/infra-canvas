@@ -24,6 +24,7 @@ import useCanvasStore, { getInitialNodes, getInitialEdges } from '../store/useCa
 import ReactFlowCanvasNode from '../components/ReactFlowCanvasNode';
 import ProfileMenu from '../components/ProfileMenu';
 import Tooltip from '../components/Tooltip';
+import CustomNodeModal from '../components/CustomNodeModal';
 import { generateAnsibleYAML } from '../lib/exportYaml';
 import { downloadZipBundle, downloadTerraformZip, generateBundleFiles, generateTerraformFiles } from '../lib/bundleGenerator';
 import { DEFAULT_INSTANCE_PARAMS, DEFAULT_SG_PARAMS } from '../lib/terraformDefaults';
@@ -53,6 +54,10 @@ interface LibraryNode {
   title: string;
   description: string;
   category: string;
+  isCustom?: boolean;
+  rawCode?: string;
+  codeType?: 'tf' | 'yml' | 'yaml';
+  parameters?: Record<string, any>;
 }
 
 // --- HELPER SUB-COMPONENTS ---
@@ -852,6 +857,12 @@ const NodeCard: React.FC<NodeCardProps> = ({ node, onAddNode, isReadOnly = false
     event.dataTransfer.setData('application/reactflow-node-title', node.title);
     event.dataTransfer.setData('application/reactflow-node-description', node.description);
     event.dataTransfer.setData('application/reactflow-node-category', node.category);
+    if (node.isCustom) {
+      event.dataTransfer.setData('application/reactflow-node-iscustom', 'true');
+      event.dataTransfer.setData('application/reactflow-node-rawcode', node.rawCode || '');
+      event.dataTransfer.setData('application/reactflow-node-codetype', node.codeType || '');
+      event.dataTransfer.setData('application/reactflow-node-parameters', JSON.stringify(node.parameters || {}));
+    }
     event.dataTransfer.effectAllowed = 'move';
   };
 
@@ -896,6 +907,7 @@ interface LibraryPanelProps {
   isReadOnly?: boolean;
   selectedOS: string;
   onOSChange: (os: string) => void;
+  onCreateCustomNode?: () => void;
 }
 
 const LibraryPanel: React.FC<LibraryPanelProps> = ({
@@ -910,8 +922,30 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({
   isReadOnly = false,
   selectedOS,
   onOSChange,
+  onCreateCustomNode,
 }) => {
-  const filteredNodes = libraryNodes.filter((node) => {
+  const customLibraryNodes = useCanvasStore((state) => state.customLibraryNodes);
+  const mappedCustomNodes: LibraryNode[] = (customLibraryNodes || []).map((cn) => {
+    let parsedMeta: any = {};
+    try {
+      parsedMeta = JSON.parse(cn.parsed_meta_json || '{}');
+    } catch (e) {}
+    return {
+      id: cn.id,
+      tech: cn.tech,
+      icon: cn.tech === 'Terraform' ? 'devicon:terraform' : cn.tech === 'Ansible' ? 'devicon:ansible' : 'devicon:kubernetes',
+      title: cn.title,
+      description: cn.description,
+      category: cn.category,
+      isCustom: true,
+      rawCode: cn.raw_code,
+      codeType: cn.code_type,
+      parameters: parsedMeta.parameters || {}
+    };
+  });
+
+  const allNodes = [...libraryNodes, ...mappedCustomNodes];
+  const filteredNodes = allNodes.filter((node) => {
     const matchesSearch = node.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       node.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTech = techFilter === 'All' || node.tech === techFilter;
@@ -987,6 +1021,19 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({
 
           {/* Draggable/Clickable Nodes List */}
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            {!isReadOnly && onCreateCustomNode && (
+              <div className="mb-4">
+                <button
+                  type="button"
+                  onClick={onCreateCustomNode}
+                  className="w-full py-2.5 px-3 bg-gradient-to-r from-purple-600/10 to-indigo-600/10 border border-purple-500/30 hover:border-purple-500 rounded-lg text-xs font-bold text-purple-300 hover:text-white flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-purple-950/5 group"
+                >
+                  <Icon icon="lucide:sparkles" className="text-purple-400 group-hover:animate-pulse text-sm shrink-0" />
+                  <span>Create Custom Node</span>
+                  <span className="px-1.5 py-0.5 bg-purple-500 text-white text-[8px] font-bold uppercase rounded-full tracking-wider shrink-0">Pro</span>
+                </button>
+              </div>
+            )}
             {categories.map((category) => (
               <div key={category}>
                 <h3 className="text-xs font-heading font-bold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
@@ -1350,6 +1397,8 @@ const LiveCodePreview: React.FC<LiveCodePreviewProps> = ({ selectedNode, nodes, 
   // Reset to first tab when node changes
   React.useEffect(() => { setActiveFile(0); setOverviewFile(null); }, [selectedNode?.id]);
 
+  const allFiles = useMemo(() => generateBundleFiles(nodes, edges), [nodes, edges]);
+
   // --- NODE SELECTED: file tab view ---
   if (selectedNode) {
     if (files.length === 0) {
@@ -1387,7 +1436,6 @@ const LiveCodePreview: React.FC<LiveCodePreviewProps> = ({ selectedNode, nodes, 
   }
 
   // --- NO NODE SELECTED: canvas overview ---
-  const allFiles = useMemo(() => generateBundleFiles(nodes, edges), [nodes, edges]);
   const sections: { label: string; color: string; paths: string[] }[] = [
     { label: 'Terraform', color: 'text-primary', paths: ['terraform/'] },
     { label: 'Ansible', color: 'text-[#00A4FF]', paths: ['ansible/'] },
@@ -3354,7 +3402,19 @@ function WorkspaceCanvas({ deployStatus, peerCursors = {}, handleMouseMove }: Wo
 
     const newNodeId = `${id}_${Date.now().toString().slice(-4)}`;
 
+    const isCustom = event.dataTransfer.getData('application/reactflow-node-iscustom') === 'true';
+    const rawCode = event.dataTransfer.getData('application/reactflow-node-rawcode');
+    const codeType = event.dataTransfer.getData('application/reactflow-node-codetype');
+    const parametersStr = event.dataTransfer.getData('application/reactflow-node-parameters');
+
     const defaultParams = getDefaultParametersForNode(id);
+    let parsedParameters = defaultParams;
+    if (isCustom && parametersStr) {
+      try {
+        parsedParameters = JSON.parse(parametersStr);
+      } catch (e) {}
+    }
+
     const newNode: Node = {
       id: newNodeId,
       type: 'customNode',
@@ -3363,27 +3423,31 @@ function WorkspaceCanvas({ deployStatus, peerCursors = {}, handleMouseMove }: Wo
         label: title,
         tech: tech as any,
         icon,
-        categoryLabel: tech === 'Terraform' ? 'AWS Resource' : tech === 'Ansible' ? 'Ansible Task' : tech === 'Source' ? 'Source Code' : tech === 'Target' ? 'Cloud Target' : 'K8s Resource',
+        categoryLabel: category || (tech === 'Terraform' ? 'AWS Resource' : tech === 'Ansible' ? 'Ansible Task' : tech === 'Source' ? 'Source Code' : tech === 'Target' ? 'Cloud Target' : 'K8s Resource'),
         description,
         status: 'Validated',
-        statusText: 'Validated',
-        parameters: defaultParams,
-        // Sync direct property bounds for compatibility
-        port: defaultParams?.port,
-        dbUser: defaultParams?.dbUser,
-        dbPass: defaultParams?.dbPass,
-        repoUrl: defaultParams?.repoUrl,
-        branch: defaultParams?.branch,
-        startCommand: defaultParams?.startCommand,
-        appPort: defaultParams?.appPort,
+        statusText: isCustom ? 'Custom Block' : 'Validated',
+        parameters: parsedParameters,
+        isCustom: isCustom ? true : undefined,
+        rawCode: isCustom ? rawCode : undefined,
+        codeType: isCustom ? codeType as any : undefined,
+        port: parsedParameters?.port,
+        dbUser: parsedParameters?.dbUser,
+        dbPass: parsedParameters?.dbPass,
+        repoUrl: parsedParameters?.repoUrl,
+        branch: parsedParameters?.branch,
+        startCommand: parsedParameters?.startCommand,
+        appPort: parsedParameters?.appPort,
       },
     };
 
-    if (id === 'aws_instance.web_server') {
-      newNode.data.parameters = { ...DEFAULT_INSTANCE_PARAMS };
-    }
-    if (id === 'aws_security_group') {
-      newNode.data.parameters = { ...DEFAULT_SG_PARAMS };
+    if (!isCustom) {
+      if (id === 'aws_instance.web_server') {
+        newNode.data.parameters = { ...DEFAULT_INSTANCE_PARAMS };
+      }
+      if (id === 'aws_security_group') {
+        newNode.data.parameters = { ...DEFAULT_SG_PARAMS };
+      }
     }
 
     addNode(newNode);
@@ -3498,7 +3562,9 @@ function WorkspaceContent() {
     version,
     setVersion,
     setNodes,
-    setEdges
+    setEdges,
+    setCustomLibraryNodes,
+    setProjectId
   } = useCanvasStore();
   const { zoomIn, zoomOut, setViewport, getZoom } = useReactFlow();
 
@@ -3527,6 +3593,7 @@ function WorkspaceContent() {
   const [peerEdits, setPeerEdits] = useState<Record<string, string>>({}); // maps nodeId -> userName editing it
   const [projectDetails, setProjectDetails] = useState<any>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isCustomNodeOpen, setIsCustomNodeOpen] = useState(false);
 
   const [selectedOS, setSelectedOS] = useState("Linux");
   const [zoomLevel, setZoomLevel] = useState(100);
@@ -3685,10 +3752,20 @@ function WorkspaceContent() {
           setNodes(parsedNodes);
           setEdges(parsedEdges);
           setVersion(state.version || 1);
+          setProjectId(projectId);
 
           // Restore viewport
           const viewport = JSON.parse(state.viewport_json || '{"x":0,"y":0,"zoom":1}');
           setViewport({ x: viewport.x || 0, y: viewport.y || 0, zoom: viewport.zoom || 1 }, { duration: 400 });
+        }
+
+        // 3. Fetch custom nodes templates
+        const customRes = await fetch(`${API_URL}/api/projects/${projectId}/custom-nodes`, {
+          headers: { 'Authorization': `Bearer ${activeToken}` }
+        });
+        if (customRes.ok) {
+          const customNodes = await customRes.json();
+          setCustomLibraryNodes(customNodes || []);
         }
       } catch (err) {
         console.warn("Failed to load project canvas data", err);
@@ -3696,7 +3773,7 @@ function WorkspaceContent() {
     };
 
     loadProjectAndCanvas();
-  }, [projectId, user, setViewport, setNodes, setEdges, setVersion, setSaveStatus]);
+  }, [projectId, user, setViewport, setNodes, setEdges, setVersion, setSaveStatus, setCustomLibraryNodes, setProjectId]);
 
   // Broadcast local canvas state changes to room peers AND auto-save debouncely to REST API
   useEffect(() => {
@@ -4105,7 +4182,7 @@ function WorkspaceContent() {
 
   // Navigate to export-code page
   const handleExportClick = () => {
-    router.push('/export-code');
+    router.push(`/export-code?project=${projectId}`);
   };
 
   const handleResetClick = () => {
@@ -4199,6 +4276,7 @@ function WorkspaceContent() {
           isReadOnly={deployStatus === 'PENDING' || deployStatus === 'RUNNING' || saveStatus === 'readonly'}
           selectedOS={selectedOS}
           onOSChange={handleOSChange}
+          onCreateCustomNode={() => setIsCustomNodeOpen(true)}
         />
 
         <main className="flex-1 bg-background relative overflow-hidden flex flex-col">
@@ -4290,6 +4368,12 @@ function WorkspaceContent() {
         onClose={() => setIsSettingsOpen(false)}
         projectDetails={projectDetails}
         onUpdateProjectDetails={(updated) => setProjectDetails(updated)}
+        projectId={projectId}
+      />
+
+      <CustomNodeModal
+        isOpen={isCustomNodeOpen}
+        onClose={() => setIsCustomNodeOpen(false)}
         projectId={projectId}
       />
     </div>

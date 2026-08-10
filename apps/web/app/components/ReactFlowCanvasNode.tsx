@@ -17,6 +17,7 @@ interface ReactFlowCanvasNodeProps {
     status: 'Validated' | 'Warning' | 'Editing';
     statusText: string;
     editorName?: string;
+    isCustom?: boolean;
   };
   selected?: boolean;
 }
@@ -118,6 +119,9 @@ export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCan
           <div className="flex items-center gap-1.5 pr-6">
             <Icon icon={data.icon} className={clsx("text-base", data.tech === 'Terraform' ? 'text-primary' : data.tech === 'Ansible' ? 'text-[#00A4FF]' : data.tech === 'Source' ? 'text-[#D97706]' : data.tech === 'Target' ? 'text-[#0D9488]' : 'text-[#326CE5]')} />
             <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate max-w-[90px]">{data.categoryLabel}</span>
+            {data.isCustom && (
+              <span className="px-1 py-0.5 bg-purple-500/15 text-purple-400 text-[8px] font-bold uppercase rounded border border-purple-500/25 shrink-0">Custom</span>
+            )}
           </div>
 
           <div className="flex-shrink-0">
@@ -141,7 +145,12 @@ export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCan
           </div>
         </div>
 
-        <h4 className="text-sm font-semibold text-foreground mb-1 truncate pr-2">{data.label}</h4>
+        <h4 className="text-sm font-semibold text-foreground mb-1 flex items-center justify-between gap-1.5 pr-2">
+          <span className="truncate">{data.label}</span>
+          {data.isCustom && (
+            <span className="text-[8px] font-bold text-purple-400 uppercase tracking-wider shrink-0 bg-purple-500/10 border border-purple-500/20 px-1 py-0.5 rounded select-none">Custom Node</span>
+          )}
+        </h4>
         <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 h-[34px]">{data.description}</p>
 
         {/* Right Output Port */}
