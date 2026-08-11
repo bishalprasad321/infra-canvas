@@ -6,6 +6,12 @@ services:
     container_name: infracanvas-api
     ports:
       - "8080:8080"
+    env_file:
+      # OAuth Client ID/Secret and friends — see .env.example. Optional so
+      # `docker compose up` still works before you've created one; social
+      # login endpoints just report "not configured" until you do.
+      - path: .env
+        required: false
     environment:
       - PORT=8080
       - IS_DOCKER=true

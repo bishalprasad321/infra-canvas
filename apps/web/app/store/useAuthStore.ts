@@ -17,6 +17,7 @@ interface AuthState {
   setHasHydrated: (v: boolean) => void;
   login: (email: string, password: string) => Promise<boolean>;
   signup: (name: string, email: string, password: string) => Promise<boolean>;
+  setSessionFromToken: (token: string) => boolean;
   logout: () => void;
   clearError: () => void;
   upgradePlan: (newPlan: string) => Promise<boolean>;
@@ -31,6 +32,27 @@ const networkErrorMessage = (err: any, fallback: string) => {
   }
   return msg;
 };
+
+// Decodes the (already-server-verified) JWT's claims payload client-side so
+// we can populate `user` without an extra round trip. This does NOT verify
+// the signature — every subsequent API call still goes through the backend's
+// AuthMiddleware/VerifyToken, so a tampered token just fails there instead.
+function decodeTokenClaims(token: string): User | null {
+  try {
+    const payload = token.split('.')[1];
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0'))
+        .join('')
+    );
+    const claims = JSON.parse(json);
+    return { id: claims.id, email: claims.email, name: claims.name, plan: claims.plan };
+  } catch {
+    return null;
+  }
+}
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -92,6 +114,13 @@ export const useAuthStore = create<AuthState>()(
           set({ error: networkErrorMessage(err, 'Signup failed'), isLoading: false });
           return false;
         }
+      },
+
+      setSessionFromToken: (token) => {
+        const user = decodeTokenClaims(token);
+        if (!user) return false;
+        set({ token, user, error: null });
+        return true;
       },
 
       logout: () => {

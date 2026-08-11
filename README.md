@@ -175,6 +175,13 @@ Future engineers picking up the codebase should note the following features are 
     - Translates code blocks into interactive library canvas nodes, extracts variables, and establishes resource dependency connections.
     - Automatically structures layout coordinates via a grid spacing algorithm and broadcasts WebSocket signals to update active browser client workspaces instantly.
 
+21. **Social Login (Google & GitHub)**:
+    - Adds "Continue with Google" / "Continue with GitHub" as alternatives to email/password on the login screen, via a standard server-side OAuth 2.0 authorization-code flow (`apps/api/oauth.go`).
+    - Identities are stored in a dedicated `oauth_identities` table rather than on `users` directly, so a user can link multiple providers and future providers (SSO, magic-link, etc.) are additive rows rather than another `users` migration.
+    - Auto-links an OAuth sign-in to an existing password account only when the provider confirms the email is verified, avoiding an account-takeover vector; otherwise provisions a new account (with the same personal-team bootstrapping as password signup) on first login.
+    - Handles GitHub's private-email setting via a `/user/emails` fallback lookup, and hands the issued session token back to the frontend through a URL fragment (never a query param) so it's never logged or stored in browser history.
+    - **Scope note:** this covers the sign-in flow only. There is currently no account-management UI for viewing, adding, or unlinking connected providers after the fact — that's tracked as follow-up work, not part of this feature.
+
 ---
 
 ## Non-Implemented & Mocked Features (Roadmap)
@@ -214,6 +221,30 @@ This starts:
 - ubuntu_ssh_2 on port 2223 (representing Ansible server target 2)
 
 The Go backend runner automatically reads the private key from `sandbox/id_rsa` to execute commands against the containers.
+
+### Social Login (Google / GitHub) Setup
+
+Optional — email/password login works without this. To test "Continue with Google" / "Continue with GitHub" locally:
+
+1. Copy the example env file at the repo root:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Register an OAuth app with each provider you want to test:
+   - **Google** — [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials → Create Credentials → OAuth client ID (type: Web application). Set the authorized redirect URI to `http://localhost:8080/api/auth/google/callback`.
+   - **GitHub** — [GitHub Developer Settings](https://github.com/settings/developers) → OAuth Apps → New OAuth App. Set the authorization callback URL to `http://localhost:8080/api/auth/github/callback`.
+
+3. Fill in the four resulting values in `.env`:
+   ```
+   GOOGLE_CLIENT_ID=...
+   GOOGLE_CLIENT_SECRET=...
+   GITHUB_CLIENT_ID=...
+   GITHUB_CLIENT_SECRET=...
+   ```
+   `API_PUBLIC_URL` and `FRONTEND_URL` can stay at their defaults unless the app is reachable somewhere other than `localhost:8080`/`localhost:3000`.
+
+`.env` is git-ignored — never commit real Client Secrets. Docker Compose loads it automatically for the `api` service; if running the API directly via `go run .`, export the four variables in your shell instead, since only `docker compose`'s `env_file` reads `.env` automatically.
 
 ### Running the Full Stack (Frontend + Backend)
 
