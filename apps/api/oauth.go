@@ -546,6 +546,7 @@ func migrateUsersPasswordHashNullable() error {
 	if err != nil {
 		return err
 	}
+	defer rows.Close()
 
 	alreadyNullable := false
 	for rows.Next() {
@@ -553,14 +554,15 @@ func migrateUsersPasswordHashNullable() error {
 		var name, ctype string
 		var dflt sql.NullString
 		if err := rows.Scan(&cid, &name, &ctype, &notNull, &dflt, &pk); err != nil {
-			rows.Close()
 			return err
 		}
 		if name == "password_hash" && notNull == 0 {
 			alreadyNullable = true
 		}
 	}
-	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
 
 	if alreadyNullable {
 		return nil
