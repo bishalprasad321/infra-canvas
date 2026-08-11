@@ -83,7 +83,7 @@ func main() {
 	CREATE TABLE IF NOT EXISTS users (
 		id TEXT PRIMARY KEY,
 		email TEXT UNIQUE NOT NULL,
-		password_hash TEXT NOT NULL,
+		password_hash TEXT,
 		name TEXT NOT NULL,
 		plan TEXT NOT NULL DEFAULT 'FREE' CHECK (plan IN ('FREE', 'PRO', 'ENTERPRISE')),
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -194,6 +194,18 @@ func main() {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
 		FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+	);
+	CREATE TABLE IF NOT EXISTS oauth_identities (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		provider TEXT NOT NULL CHECK (provider IN ('google', 'github')),
+		provider_user_id TEXT NOT NULL,
+		email TEXT,
+		access_token TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(provider, provider_user_id),
+		UNIQUE(user_id, provider),
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 	);`
 	if _, err := db.Exec(schemaQuery); err != nil {
 		log.Fatalf("[DB] Failed to initialize schema: %v\n", err)
@@ -202,6 +214,9 @@ func main() {
 	_, _ = db.Exec("ALTER TABLE pipeline_runs ADD COLUMN project_id TEXT;")
 	_, _ = db.Exec("ALTER TABLE pipeline_runs ADD COLUMN user_id TEXT;")
 	_, _ = db.Exec("ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT 'FREE' CHECK (plan IN ('FREE', 'PRO', 'ENTERPRISE'));")
+	if err := migrateUsersPasswordHashNullable(); err != nil {
+		log.Fatalf("[DB] Failed to migrate users.password_hash to nullable: %v\n", err)
+	}
 	log.Println("[DB] Database initialized successfully.")
 
 	// Set up routing
@@ -219,6 +234,8 @@ func main() {
 	mux.HandleFunc("POST /api/auth/login", enableCORS(handleLogin))
 	mux.Handle("POST /api/auth/upgrade", AuthMiddleware(http.HandlerFunc(handleUpgradePlan)))
 	mux.Handle("GET /api/auth/me", AuthMiddleware(http.HandlerFunc(handleMe)))
+	mux.HandleFunc("GET /api/auth/{provider}/login", handleOAuthLogin)
+	mux.HandleFunc("GET /api/auth/{provider}/callback", handleOAuthCallback)
 	mux.HandleFunc("GET /api/workspace/{projectId}/sync", handleWorkspaceWebSocketSync)
 
 	// Team Routes
@@ -933,20 +950,8 @@ func handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create default personal team
-	teamID := fmt.Sprintf("team_%d", time.Now().UnixNano())
-	slug := "personal-" + userID
-	_, err = tx.Exec("INSERT INTO teams (id, name, slug, owner_id) VALUES (?, ?, ?, ?)", teamID, name+"'s Personal Workspace", slug, userID)
-	if err != nil {
-		http.Error(w, "Failed to create personal team: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Add membership
-	tmemID := fmt.Sprintf("tmem_%d", time.Now().UnixNano())
-	_, err = tx.Exec("INSERT INTO team_members (id, team_id, user_id, role) VALUES (?, ?, ?, ?)", tmemID, teamID, userID, "OWNER")
-	if err != nil {
-		http.Error(w, "Failed to join personal team: "+err.Error(), http.StatusInternalServerError)
+	if err := createPersonalTeam(tx, userID, name); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -979,7 +984,8 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userID, name, hash, plan string
+	var userID, name, plan string
+	var hash sql.NullString
 	err := db.QueryRow("SELECT id, name, password_hash, plan FROM users WHERE email = ?", email).Scan(&userID, &name, &hash, &plan)
 	if err == sql.ErrNoRows {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
@@ -989,7 +995,14 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !checkPasswordHash(payload.Password, hash) {
+	// Challenge #8: OAuth-only accounts have no password_hash at all — reject
+	// cleanly instead of crashing or comparing against an empty/invalid hash.
+	if !hash.Valid {
+		http.Error(w, "This account signs in with Google or GitHub — use the social sign-in button instead", http.StatusUnauthorized)
+		return
+	}
+
+	if !checkPasswordHash(payload.Password, hash.String) {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
