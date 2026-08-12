@@ -153,12 +153,6 @@ provider "aws" {
       version = "~> 5.0"
     }
   }
-
-  backend "s3" {
-    bucket = "infracanvas-state-bucket"
-    key    = "terraform.tfstate"
-    region = "${awsRegion}"
-  }
 }
 
 provider "aws" {
