@@ -1338,7 +1338,7 @@ function getNodeFiles(node: Node, allNodes: Node[], allEdges: Edge[]): PreviewFi
   const tech = node.data?.tech as string;
 
   if (node.id.startsWith('aws_instance.web_server') || node.id.startsWith('aws_security_group')) {
-    const { mainTf, variablesTf, outputsTf } = generateTerraformFiles(allNodes);
+    const { mainTf, variablesTf, outputsTf } = generateTerraformFiles(allNodes, allEdges);
     if (node.id.startsWith('aws_security_group')) {
       return [{ name: 'main.tf', content: mainTf, language: 'hcl' }];
     }
@@ -1718,6 +1718,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const [newTagKey, setNewTagKey] = useState('');
   const [newTagVal, setNewTagVal] = useState('');
   const [showAddTag, setShowAddTag] = useState(false);
+  const [activeVmTab, setActiveVmTab] = useState<'aws' | 'gcp' | 'azure'>('aws');
 
   const p = selectedNode?.data?.parameters as any || (selectedNode ? getDefaultParametersForNode(selectedNode.id) : {});
   const sg = p;
@@ -1863,121 +1864,323 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   {/* 1. TERRAFORM INSTANCE NODE PARAMETERS */}
                   {selectedNode.id.startsWith('aws_instance.web_server') && (
                     <>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Name</label>
-                        <input
-                          type="text"
-                          value={p.instanceName}
-                          onChange={(e) => handleParameterChange('instanceName', e.target.value)}
-                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">AMI ID</label>
-                          <input
-                            type="text"
-                            value={p.amiId}
-                            onChange={(e) => handleParameterChange('amiId', e.target.value)}
-                            placeholder="e.g. ami-0abcdef1234567890"
-                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Type</label>
-                          <div className="relative">
-                            <select
-                              value={p.instanceType}
-                              onChange={(e) => handleParameterChange('instanceType', e.target.value)}
-                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
-                            >
-                              <option value="t3.micro">t3.micro</option>
-                              <option value="t3.small">t3.small</option>
-                              <option value="t3.medium">t3.medium</option>
-                              <option value="t3.large">t3.large</option>
-                              <option value="m5.large">m5.large</option>
-                              <option value="m5.xlarge">m5.xlarge</option>
-                              <option value="c5.large">c5.large</option>
-                            </select>
-                            <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VPC Subnet ID</label>
-                        <input
-                          type="text"
-                          value={p.subnetId}
-                          onChange={(e) => handleParameterChange('subnetId', e.target.value)}
-                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-                        />
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-1 select-none">
-                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Root Volume Size</label>
-                          <span className="text-xs font-semibold text-foreground">{p.rootVolumeSize} GB</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="8"
-                          max="200"
-                          value={p.rootVolumeSize}
-                          onChange={(e) => handleParameterChange('rootVolumeSize', parseInt(e.target.value))}
-                          className="w-full accent-primary bg-muted h-1 rounded-lg appearance-none cursor-pointer"
-                        />
-                        <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1 select-none">
-                          <span>8 GB</span>
-                          <span>200 GB</span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Tags</label>
-                        <div className="flex flex-wrap gap-1.5 p-2 bg-muted border border-border rounded-lg">
-                          {p.tags.map((tag: any, idx: number) => (
-                            <span key={idx} className="inline-flex items-center gap-1 bg-card px-2 py-0.5 rounded text-[10px] text-foreground border border-border">
-                              {tag.key}: {tag.value}
-                              <button onClick={() => handleTagDelete(idx)} className="text-muted-foreground hover:text-red-400 transition-colors cursor-pointer">
-                                <Icon icon="lucide:x" className="text-[10px]" />
-                              </button>
-                            </span>
-                          ))}
-                          {!showAddTag ? (
-                            <button
-                              onClick={() => setShowAddTag(true)}
-                              className="text-[10px] text-primary hover:text-primary/90 font-semibold px-2 py-0.5 flex items-center gap-1 cursor-pointer"
-                            >
-                              <Icon icon="lucide:plus" className="text-xs" /> Add tag
-                            </button>
-                          ) : (
-                            <form onSubmit={handleTagAdd} className="flex items-center gap-1 w-full mt-1">
-                              <input
-                                type="text"
-                                placeholder="Key"
-                                value={newTagKey}
-                                onChange={(e) => setNewTagKey(e.target.value)}
-                                className="bg-card border border-border rounded px-1.5 py-0.5 text-[10px] w-1/2 text-foreground focus:outline-none"
-                              />
-                              <input
-                                type="text"
-                                placeholder="Value"
-                                value={newTagVal}
-                                onChange={(e) => setNewTagVal(e.target.value)}
-                                className="bg-card border border-border rounded px-1.5 py-0.5 text-[10px] w-1/2 text-foreground focus:outline-none"
-                              />
-                              <button type="submit" className="text-emerald-400 hover:text-emerald-300 cursor-pointer">
-                                <Icon icon="lucide:check" className="text-xs" />
-                              </button>
-                              <button type="button" onClick={() => setShowAddTag(false)} className="text-rose-400 hover:text-rose-300 cursor-pointer">
-                                <Icon icon="lucide:x" className="text-xs" />
-                              </button>
-                            </form>
+                      {/* Tabs Header */}
+                      <div className="flex border-b border-border mb-4">
+                        <button
+                          onClick={() => setActiveVmTab('aws')}
+                          className={clsx(
+                            "flex-1 pb-2 text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer border-b-2 text-center",
+                            activeVmTab === 'aws'
+                              ? "border-primary text-foreground"
+                              : "border-transparent text-muted-foreground hover:text-foreground"
                           )}
-                        </div>
+                        >
+                          AWS
+                        </button>
+                        <button
+                          onClick={() => setActiveVmTab('gcp')}
+                          className={clsx(
+                            "flex-1 pb-2 text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer border-b-2 text-center",
+                            activeVmTab === 'gcp'
+                              ? "border-primary text-foreground"
+                              : "border-transparent text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          GCP
+                        </button>
+                        <button
+                          onClick={() => setActiveVmTab('azure')}
+                          className={clsx(
+                            "flex-1 pb-2 text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer border-b-2 text-center",
+                            activeVmTab === 'azure'
+                              ? "border-primary text-foreground"
+                              : "border-transparent text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          Azure
+                        </button>
                       </div>
+
+                      {activeVmTab === 'aws' && (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Name</label>
+                            <input
+                              type="text"
+                              value={p.instanceName || ''}
+                              onChange={(e) => handleParameterChange('instanceName', e.target.value)}
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">AMI ID</label>
+                              <input
+                                type="text"
+                                value={p.amiId || ''}
+                                onChange={(e) => handleParameterChange('amiId', e.target.value)}
+                                placeholder="e.g. ami-0abcdef1234567890"
+                                className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Type</label>
+                              <div className="relative">
+                                <select
+                                  value={p.instanceType || 't3.micro'}
+                                  onChange={(e) => handleParameterChange('instanceType', e.target.value)}
+                                  className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                                >
+                                  <option value="t3.micro">t3.micro</option>
+                                  <option value="t3.small">t3.small</option>
+                                  <option value="t3.medium">t3.medium</option>
+                                  <option value="t3.large">t3.large</option>
+                                  <option value="m5.large">m5.large</option>
+                                  <option value="m5.xlarge">m5.xlarge</option>
+                                  <option value="c5.large">c5.large</option>
+                                </select>
+                                <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VPC Subnet ID</label>
+                            <input
+                              type="text"
+                              value={p.subnetId || ''}
+                              onChange={(e) => handleParameterChange('subnetId', e.target.value)}
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between mb-1 select-none">
+                              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Root Volume Size</label>
+                              <span className="text-xs font-semibold text-foreground">{p.rootVolumeSize || 50} GB</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="8"
+                              max="200"
+                              value={p.rootVolumeSize || 50}
+                              onChange={(e) => handleParameterChange('rootVolumeSize', parseInt(e.target.value))}
+                              className="w-full accent-primary bg-muted h-1 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1 select-none">
+                              <span>8 GB</span>
+                              <span>200 GB</span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Tags</label>
+                            <div className="flex flex-wrap gap-1.5 p-2 bg-muted border border-border rounded-lg">
+                              {(p.tags || []).map((tag: any, idx: number) => (
+                                <span key={idx} className="inline-flex items-center gap-1 bg-card px-2 py-0.5 rounded text-[10px] text-foreground border border-border">
+                                  {tag.key}: {tag.value}
+                                  <button onClick={() => handleTagDelete(idx)} className="text-muted-foreground hover:text-red-400 transition-colors cursor-pointer">
+                                    <Icon icon="lucide:x" className="text-[10px]" />
+                                  </button>
+                                </span>
+                              ))}
+                              {!showAddTag ? (
+                                <button
+                                  onClick={() => setShowAddTag(true)}
+                                  className="text-[10px] text-primary hover:text-primary/90 font-semibold px-2 py-0.5 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Icon icon="lucide:plus" className="text-xs" /> Add tag
+                                </button>
+                              ) : (
+                                <form onSubmit={handleTagAdd} className="flex items-center gap-1 w-full mt-1">
+                                  <input
+                                    type="text"
+                                    placeholder="Key"
+                                    value={newTagKey}
+                                    onChange={(e) => setNewTagKey(e.target.value)}
+                                    className="bg-card border border-border rounded px-1.5 py-0.5 text-[10px] w-1/2 text-foreground focus:outline-none"
+                                  />
+                                  <input
+                                    type="text"
+                                    placeholder="Value"
+                                    value={newTagVal}
+                                    onChange={(e) => setNewTagVal(e.target.value)}
+                                    className="bg-card border border-border rounded px-1.5 py-0.5 text-[10px] w-1/2 text-foreground focus:outline-none"
+                                  />
+                                  <button type="submit" className="text-emerald-400 hover:text-emerald-300 cursor-pointer">
+                                    <Icon icon="lucide:check" className="text-xs" />
+                                  </button>
+                                  <button type="button" onClick={() => setShowAddTag(false)} className="text-rose-400 hover:text-rose-300 cursor-pointer">
+                                    <Icon icon="lucide:x" className="text-xs" />
+                                  </button>
+                                </form>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {activeVmTab === 'gcp' && (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Name</label>
+                            <input
+                              type="text"
+                              value={p.gcpInstanceName || ''}
+                              onChange={(e) => handleParameterChange('gcpInstanceName', e.target.value)}
+                              placeholder="e.g. web-server"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Machine Type</label>
+                              <div className="relative">
+                                <select
+                                  value={p.gcpMachineType || 'e2-micro'}
+                                  onChange={(e) => handleParameterChange('gcpMachineType', e.target.value)}
+                                  className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                                >
+                                  <option value="e2-micro">e2-micro</option>
+                                  <option value="e2-small">e2-small</option>
+                                  <option value="e2-medium">e2-medium</option>
+                                  <option value="n2-standard-2">n2-standard-2</option>
+                                  <option value="n2-standard-4">n2-standard-4</option>
+                                </select>
+                                <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Image</label>
+                              <input
+                                type="text"
+                                value={p.gcpImage || 'ubuntu-os-cloud/ubuntu-2204-lts'}
+                                onChange={(e) => handleParameterChange('gcpImage', e.target.value)}
+                                placeholder="ubuntu-os-cloud/ubuntu-2204-lts"
+                                className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VPC Network</label>
+                            <input
+                              type="text"
+                              value={p.gcpNetwork || 'default'}
+                              onChange={(e) => handleParameterChange('gcpNetwork', e.target.value)}
+                              placeholder="default"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between mb-1 select-none">
+                              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Disk Size</label>
+                              <span className="text-xs font-semibold text-foreground">{p.gcpDiskSize || 50} GB</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="10"
+                              max="500"
+                              value={p.gcpDiskSize || 50}
+                              onChange={(e) => handleParameterChange('gcpDiskSize', parseInt(e.target.value))}
+                              className="w-full accent-primary bg-muted h-1 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1 select-none">
+                              <span>10 GB</span>
+                              <span>500 GB</span>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {activeVmTab === 'azure' && (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VM Name</label>
+                            <input
+                              type="text"
+                              value={p.azureVmName || ''}
+                              onChange={(e) => handleParameterChange('azureVmName', e.target.value)}
+                              placeholder="e.g. web-vm"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Size (SKU)</label>
+                              <div className="relative">
+                                <select
+                                  value={p.azureVmSize || 'Standard_B1s'}
+                                  onChange={(e) => handleParameterChange('azureVmSize', e.target.value)}
+                                  className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                                >
+                                  <option value="Standard_B1s">Standard_B1s</option>
+                                  <option value="Standard_B1ms">Standard_B1ms</option>
+                                  <option value="Standard_B2s">Standard_B2s</option>
+                                  <option value="Standard_D2s_v3">Standard_D2s_v3</option>
+                                </select>
+                                <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Publisher</label>
+                              <input
+                                type="text"
+                                value={p.azurePublisher || 'Canonical'}
+                                onChange={(e) => handleParameterChange('azurePublisher', e.target.value)}
+                                placeholder="Canonical"
+                                className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Offer</label>
+                              <input
+                                type="text"
+                                value={p.azureOffer || 'UbuntuServer'}
+                                onChange={(e) => handleParameterChange('azureOffer', e.target.value)}
+                                placeholder="UbuntuServer"
+                                className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">SKU</label>
+                              <input
+                                type="text"
+                                value={p.azureSku || '18.04-LTS'}
+                                onChange={(e) => handleParameterChange('azureSku', e.target.value)}
+                                placeholder="18.04-LTS"
+                                className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between mb-1 select-none">
+                              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">OS Disk Size</label>
+                              <span className="text-xs font-semibold text-foreground">{p.azureDiskSize || 50} GB</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="30"
+                              max="1024"
+                              value={p.azureDiskSize || 50}
+                              onChange={(e) => handleParameterChange('azureDiskSize', parseInt(e.target.value))}
+                              className="w-full accent-primary bg-muted h-1 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1 select-none">
+                              <span>30 GB</span>
+                              <span>1024 GB</span>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
 
@@ -4357,7 +4560,7 @@ function WorkspaceContent() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } else if (format === 'tf') {
-      await downloadTerraformZip(nodes);
+      await downloadTerraformZip(nodes, edges);
     } else if (format === 'json') {
       const k8sContent = {
         apiVersion: "apps/v1",

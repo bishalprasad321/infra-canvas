@@ -28,58 +28,95 @@ func CompileCanvas(nodes []CanvasNode, edges []CanvasEdge) ([]FileItem, error) {
 	}
 
 	if hasTerraform {
-		// Detect AWS target settings
-		isLiveAWS := false
-		awsRegion := "us-east-1"
+		// Find VM node ID
+		var vmNodeID string
 		for _, n := range nodes {
-			if strings.HasPrefix(n.ID, "aws_target") {
-				if n.Data.Environment == "aws" {
-					isLiveAWS = true
-				}
-				if n.Data.Region != "" {
-					awsRegion = n.Data.Region
-				}
+			if strings.HasPrefix(n.ID, "aws_instance") {
+				vmNodeID = n.ID
 				break
 			}
 		}
 
-		var mainTf string
-		if isLiveAWS {
-			mainTf = fmt.Sprintf(`terraform {
-  required_providers {
-    aws = {
+		// Find target nodes connected to the VM node
+		var connectedTargets []CanvasNode
+		if vmNodeID != "" {
+			for _, e := range edges {
+				if e.Target == vmNodeID {
+					for _, n := range nodes {
+						if n.ID == e.Source && strings.HasSuffix(n.Data.Tech, "Target") {
+							connectedTargets = append(connectedTargets, n)
+						}
+					}
+				}
+			}
+		}
+
+		// Fallback: check all target nodes on the canvas
+		if len(connectedTargets) == 0 {
+			for _, n := range nodes {
+				if strings.HasPrefix(n.ID, "aws_target") || strings.HasPrefix(n.ID, "gcp_target") || strings.HasPrefix(n.ID, "azure_target") {
+					connectedTargets = append(connectedTargets, n)
+				}
+			}
+		}
+
+		// Default fallback: AWS Target
+		if len(connectedTargets) == 0 {
+			connectedTargets = append(connectedTargets, CanvasNode{
+				ID: "aws_target_default",
+				Data: NodeData{
+					Tech:        "Target",
+					Environment: "localstack",
+					Region:      "us-east-1",
+				},
+			})
+		}
+
+		hasAws := false
+		hasGcp := false
+		hasAzure := false
+		for _, t := range connectedTargets {
+			if strings.HasPrefix(t.ID, "aws_target") {
+				hasAws = true
+			} else if strings.HasPrefix(t.ID, "gcp_target") {
+				hasGcp = true
+			} else if strings.HasPrefix(t.ID, "azure_target") {
+				hasAzure = true
+			}
+		}
+
+		var requiredProviders strings.Builder
+		var providers strings.Builder
+
+		if hasAws {
+			isLiveAWS := false
+			awsRegion := "us-east-1"
+			for _, t := range connectedTargets {
+				if strings.HasPrefix(t.ID, "aws_target") {
+					if t.Data.Environment == "aws" {
+						isLiveAWS = true
+					}
+					if t.Data.Region != "" {
+						awsRegion = t.Data.Region
+					}
+					break
+				}
+			}
+
+			requiredProviders.WriteString(`    aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-  }
-}
+`)
 
-provider "aws" {
+			if isLiveAWS {
+				providers.WriteString(fmt.Sprintf(`provider "aws" {
   region = "%s"
 }
-`, awsRegion)
-		} else {
-			mainTf = fmt.Sprintf(`terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
 
-  backend "s3" {
-    bucket                      = "infracanvas-state-bucket"
-    key                         = "terraform.tfstate"
-    region                      = "us-east-1"
-    endpoints                   = { s3 = "http://localhost:4566" }
-    use_path_style              = true
-    skip_credentials_validation = true
-    skip_metadata_api_check     = true
-    skip_requesting_account_id  = true
-  }
-}
-
-provider "aws" {
+`, awsRegion))
+			} else {
+				providers.WriteString(fmt.Sprintf(`provider "aws" {
   region                      = "%s"
   access_key                  = "test"
   secret_key                  = "test"
@@ -93,10 +130,94 @@ provider "aws" {
     s3  = "http://localhost:4566"
   }
 }
-`, awsRegion, awsRegion)
+
+`, awsRegion))
+			}
 		}
 
-		mainTf += `
+		if hasGcp {
+			gcpProjectID := "infracanvas-prod-12345"
+			gcpRegion := "us-central1"
+			gcpZone := "us-central1-a"
+			for _, t := range connectedTargets {
+				if strings.HasPrefix(t.ID, "gcp_target") {
+					if t.Data.ProjectId != "" {
+						gcpProjectID = t.Data.ProjectId
+					}
+					if t.Data.Region != "" {
+						gcpRegion = t.Data.Region
+					}
+					if t.Data.GcpZone != "" {
+						gcpZone = t.Data.GcpZone
+					}
+					break
+				}
+			}
+
+			requiredProviders.WriteString(`    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+`)
+
+			providers.WriteString(fmt.Sprintf(`provider "google" {
+  project = "%s"
+  region  = "%s"
+  zone    = "%s"
+}
+
+`, gcpProjectID, gcpRegion, gcpZone))
+		}
+
+		if hasAzure {
+			requiredProviders.WriteString(`    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.0"
+    }
+`)
+
+			providers.WriteString(`provider "azurerm" {
+  features {}
+}
+
+`)
+		}
+
+		var mainTf string
+		mainTf = fmt.Sprintf(`terraform {
+  required_providers {
+%s  }
+`, requiredProviders.String())
+
+		awsTargetLocal := false
+		for _, t := range connectedTargets {
+			if strings.HasPrefix(t.ID, "aws_target") && t.Data.Environment == "localstack" {
+				awsTargetLocal = true
+				break
+			}
+		}
+		if awsTargetLocal {
+			mainTf += `
+  backend "s3" {
+    bucket                      = "infracanvas-state-bucket"
+    key                         = "terraform.tfstate"
+    region                      = "us-east-1"
+    endpoints                   = { s3 = "http://localhost:4566" }
+    use_path_style              = true
+    skip_credentials_validation = true
+    skip_metadata_api_check     = true
+    skip_requesting_account_id  = true
+  }
+`
+		}
+
+		mainTf += fmt.Sprintf(`}
+
+%s`, providers.String())
+
+		var subnetBlock string
+		if hasAws && awsTargetLocal {
+			subnetBlock = `
 data "aws_vpc" "default" {
   default = true
 }
@@ -108,8 +229,90 @@ data "aws_subnets" "default" {
   }
 }
 `
+			mainTf += subnetBlock
+		}
 
 		var resources strings.Builder
+		var variablesTf strings.Builder
+		var outputsTfContent strings.Builder
+
+		variablesTf.WriteString("# Input variables for Terraform deployment\n\n")
+		outputsTfContent.WriteString("# Output values to retrieve after deployment\n\n")
+
+		if hasAws {
+			awsTargetNode := CanvasNode{}
+			for _, t := range connectedTargets {
+				if strings.HasPrefix(t.ID, "aws_target") {
+					awsTargetNode = t
+					break
+				}
+			}
+			awsRegionVal := "us-east-1"
+			if awsTargetNode.Data.Region != "" {
+				awsRegionVal = awsTargetNode.Data.Region
+			}
+			variablesTf.WriteString(fmt.Sprintf(`variable "aws_region" {
+  type        = string
+  default     = "%s"
+  description = "Target AWS region for deployment"
+}
+
+`, awsRegionVal))
+		}
+
+		if hasGcp {
+			gcpTarget := CanvasNode{}
+			for _, t := range connectedTargets {
+				if strings.HasPrefix(t.ID, "gcp_target") {
+					gcpTarget = t
+					break
+				}
+			}
+			gcpProjectID := "infracanvas-prod-12345"
+			gcpRegion := "us-central1"
+			gcpZone := "us-central1-a"
+			if gcpTarget.Data.ProjectId != "" {
+				gcpProjectID = gcpTarget.Data.ProjectId
+			}
+			if gcpTarget.Data.Region != "" {
+				gcpRegion = gcpTarget.Data.Region
+			}
+			if gcpTarget.Data.GcpZone != "" {
+				gcpZone = gcpTarget.Data.GcpZone
+			}
+
+			variablesTf.WriteString(fmt.Sprintf(`variable "gcp_project_id" {
+  type    = string
+  default = "%s"
+}
+
+variable "gcp_region" {
+  type    = string
+  default = "%s"
+}
+
+variable "gcp_zone" {
+  type    = string
+  default = "%s"
+}
+
+variable "gcp_ssh_pub_key" {
+  type    = string
+  default = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQC2R1m2hJc6eC+7737t8t8O1/Y2N5hDkK1aP4+rD2mZ6bJ9mF7C8F9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2= dummy-infracanvas-key"
+}
+
+`, gcpProjectID, gcpRegion, gcpZone))
+		}
+
+		if hasAzure {
+			variablesTf.WriteString(`variable "azure_ssh_pub_key" {
+  type    = string
+  default = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQC2R1m2hJc6eC+7737t8t8O1/Y2N5hDkK1aP4+rD2mZ6bJ9mF7C8F9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2= dummy-infracanvas-key"
+}
+
+`)
+		}
+
 		for _, n := range nodes {
 			if n.Data.Tech != "Terraform" {
 				continue
@@ -129,22 +332,41 @@ data "aws_subnets" "default" {
 					}
 					customCode = strings.ReplaceAll(customCode, "var."+k, escapedVal)
 				}
-				resources.WriteString(fmt.Sprintf("\n# Custom block: %s\n%s\n", n.Data.Label, customCode))
+				resources.WriteString(fmt.Sprintf("\n# Custom Node: %s\n%s\n", n.Data.Label, customCode))
 				continue
 			}
 
 			id := n.ID
 			if strings.HasPrefix(id, "aws_instance") {
-				name := getStringParam(p, "instanceName", n.Data.Label)
-				ami := getStringParam(p, "amiId", "ami-0c55b159cbfafe1f0")
-				instType := getStringParam(p, "instanceType", "t2.micro")
-				volSize := getIntParam(p, "rootVolumeSize", 20)
+				if hasAws {
+					name := getStringParam(p, "instanceName", n.Data.Label)
+					ami := getStringParam(p, "amiId", "ami-785db401")
+					instType := getStringParam(p, "instanceType", "t3.medium")
+					volSize := getIntParam(p, "rootVolumeSize", 50)
 
-				resources.WriteString(fmt.Sprintf(`
+					awsTargetNode := CanvasNode{}
+					for _, t := range connectedTargets {
+						if strings.HasPrefix(t.ID, "aws_target") {
+							awsTargetNode = t
+							break
+						}
+					}
+					awsEnv := "localstack"
+					if awsTargetNode.Data.Environment != "" {
+						awsEnv = awsTargetNode.Data.Environment
+					}
+					awsSubnetID := getStringParam(p, "subnetId", "subnet-0123456789abcdef0")
+
+					subnetIdExpr := fmt.Sprintf("\"%s\"", awsSubnetID)
+					if awsEnv == "localstack" {
+						subnetIdExpr = "tolist(data.aws_subnets.default.ids)[0]"
+					}
+
+					resources.WriteString(fmt.Sprintf(`
 resource "aws_instance" "%s" {
   ami           = "%s"
   instance_type = "%s"
-  subnet_id     = tolist(data.aws_subnets.default.ids)[0]
+  subnet_id     = %s
 
   root_block_device {
     volume_size = %d
@@ -154,9 +376,155 @@ resource "aws_instance" "%s" {
     Name = "%s"
   }
 }
-`, name, ami, instType, volSize, name))
+`, name, ami, instType, subnetIdExpr, volSize, name))
 
-			} else if strings.HasPrefix(id, "aws_security_group") {
+					outputsTfContent.WriteString(fmt.Sprintf(`output "%s_public_ip" {
+  value       = aws_instance.%s.public_ip
+  description = "Public IP address of the virtual machine"
+}
+
+`, name, name))
+				}
+
+				if hasGcp {
+					instanceName := getStringParam(p, "gcpInstanceName", getStringParam(p, "instanceName", "web-server"))
+					machineType := getStringParam(p, "gcpMachineType", "e2-micro")
+					diskSizeGb := getIntParam(p, "gcpDiskSize", getIntParam(p, "rootVolumeSize", 50))
+					gcpImage := getStringParam(p, "gcpImage", "ubuntu-os-cloud/ubuntu-2204-lts")
+
+					resources.WriteString(fmt.Sprintf(`
+resource "google_compute_network" "vpc_network" {
+  name                    = "infracanvas-vpc"
+  auto_create_subnetworks = false
+}
+
+resource "google_compute_subnetwork" "subnet" {
+  name          = "infracanvas-subnet"
+  ip_cidr_range = "10.10.1.0/24"
+  region        = var.gcp_region
+  network       = google_compute_network.vpc_network.id
+}
+
+resource "google_compute_instance" "vm_instance" {
+  name         = "%s"
+  machine_type = "%s"
+  zone         = var.gcp_zone
+
+  boot_disk {
+    initialize_params {
+      image = "%s"
+      size  = %d
+    }
+  }
+
+  network_interface {
+    subnetwork = google_compute_subnetwork.subnet.id
+    access_config {
+      // Ephemeral public IP for SSH access
+    }
+  }
+
+  metadata = {
+    ssh-keys = "ubuntu:${var.gcp_ssh_pub_key}"
+  }
+}
+`, instanceName, machineType, gcpImage, diskSizeGb))
+
+					outputsTfContent.WriteString(`output "gcp_instance_public_ip" {
+  value       = google_compute_instance.vm_instance.network_interface.0.access_config.0.nat_ip
+  description = "The public IP of the GCP VM instance"
+}
+
+`)
+				}
+
+				if hasAzure {
+					vmName := getStringParam(p, "azureVmName", getStringParam(p, "instanceName", "web-vm"))
+					vmSize := getStringParam(p, "azureVmSize", "Standard_B1s")
+					diskSizeGb := getIntParam(p, "azureDiskSize", getIntParam(p, "rootVolumeSize", 50))
+					publisher := getStringParam(p, "azurePublisher", "Canonical")
+					offer := getStringParam(p, "azureOffer", "UbuntuServer")
+					sku := getStringParam(p, "azureSku", "18.04-LTS")
+
+					resources.WriteString(fmt.Sprintf(`
+resource "azurerm_resource_group" "rg" {
+  name     = "infracanvas-rg"
+  location = "East US"
+}
+
+resource "azurerm_virtual_network" "vnet" {
+  name                = "infracanvas-vnet"
+  address_space       = ["10.0.0.0/16"]
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+}
+
+resource "azurerm_subnet" "subnet" {
+  name                 = "infracanvas-subnet"
+  resource_group_name  = azurerm_resource_group.rg.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.1.0/24"]
+}
+
+resource "azurerm_public_ip" "pip" {
+  name                = "%s-pip"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  allocation_method   = "Dynamic"
+}
+
+resource "azurerm_network_interface" "nic" {
+  name                = "%s-nic"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.subnet.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.pip.id
+  }
+}
+
+resource "azurerm_linux_virtual_machine" "vm" {
+  name                = "%s"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  size                = "%s"
+  admin_username      = "azureuser"
+  network_interface_ids = [
+    azurerm_network_interface.nic.id,
+  ]
+
+  admin_ssh_key {
+    username   = "azureuser"
+    public_key = var.azure_ssh_pub_key
+  }
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+    disk_size_gb         = %d
+  }
+
+  source_image_reference {
+    publisher = "%s"
+    offer     = "%s"
+    sku       = "%s"
+    version   = "latest"
+  }
+}
+`, vmName, vmName, vmName, vmSize, diskSizeGb, publisher, offer, sku))
+
+					outputsTfContent.WriteString(`output "azure_instance_public_ip" {
+  value       = azurerm_public_ip.pip.ip_address
+  description = "The public IP of the Azure VM instance"
+}
+
+`)
+				}
+
+			} else if strings.HasPrefix(id, "aws_security_group") && hasAws {
 				name := getStringParam(p, "sgName", n.Data.Label)
 				desc := getStringParam(p, "description", "Allows HTTP/HTTPS inbound & SSH access")
 				allowedCidr := getStringParam(p, "allowedCidr", "0.0.0.0/0")
@@ -191,7 +559,7 @@ resource "aws_security_group" "%s" {
 }
 `, name, name, desc, httpPort, httpPort, allowedCidr, httpsPort, httpsPort, allowedCidr))
 
-			} else if strings.HasPrefix(id, "aws_s3_bucket") {
+			} else if strings.HasPrefix(id, "aws_s3_bucket") && hasAws {
 				name := getStringParam(p, "bucketName", n.Data.Label)
 				resources.WriteString(fmt.Sprintf(`
 resource "aws_s3_bucket" "%s" {
@@ -200,7 +568,14 @@ resource "aws_s3_bucket" "%s" {
 }
 `, name, name))
 
-			} else if strings.HasPrefix(id, "aws_db_instance") {
+				outputsTfContent.WriteString(fmt.Sprintf(`output "%s_bucket_arn" {
+  value       = aws_s3_bucket.%s.arn
+  description = "ARN of the S3 bucket"
+}
+
+`, name, name))
+
+			} else if strings.HasPrefix(id, "aws_db_instance") && hasAws {
 				name := getStringParam(p, "dbName", n.Data.Label)
 				storage := getIntParam(p, "allocatedStorage", 20)
 				class := getStringParam(p, "instanceClass", "db.t3.micro")
@@ -221,7 +596,14 @@ resource "aws_db_instance" "%s" {
 }
 `, name, storage, name, ver, class, user, pass))
 
-			} else if strings.HasPrefix(id, "aws_vpc") {
+				outputsTfContent.WriteString(fmt.Sprintf(`output "%s_endpoint" {
+  value       = aws_db_instance.%s.endpoint
+  description = "Endpoint of the database instance"
+}
+
+`, name, name))
+
+			} else if strings.HasPrefix(id, "aws_vpc") && hasAws {
 				name := getStringParam(p, "vpcName", n.Data.Label)
 				cidr := getStringParam(p, "cidrBlock", "10.0.0.0/16")
 
@@ -235,7 +617,7 @@ resource "aws_vpc" "%s" {
 }
 `, name, cidr, name))
 
-			} else if strings.HasPrefix(id, "aws_subnet") {
+			} else if strings.HasPrefix(id, "aws_subnet") && hasAws {
 				name := getStringParam(p, "subnetName", n.Data.Label)
 				cidr := getStringParam(p, "cidrBlock", "10.0.1.0/24")
 				az := getStringParam(p, "availabilityZone", "us-east-1a")
@@ -255,10 +637,8 @@ resource "aws_subnet" "%s" {
 		}
 
 		files = append(files, FileItem{Path: "terraform/main.tf", Content: mainTf + resources.String()})
-		files = append(files, FileItem{Path: "terraform/variables.tf", Content: "# No variables declared"})
-		files = append(files, FileItem{Path: "terraform/outputs.tf", Content: `output "web_server_public_ip" {
-  value = "127.0.0.1"
-}`})
+		files = append(files, FileItem{Path: "terraform/variables.tf", Content: variablesTf.String()})
+		files = append(files, FileItem{Path: "terraform/outputs.tf", Content: outputsTfContent.String()})
 	}
 
 	if hasAnsible {
