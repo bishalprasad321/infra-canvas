@@ -22,6 +22,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/crypto/ssh"
 	_ "modernc.org/sqlite"
 )
 
@@ -1352,6 +1353,16 @@ func extractSecretsAndEnvironment(projectID string, canvasStr string) ([]string,
 		} else if provider == "SSH" {
 			extraEnv = append(extraEnv, "ANSIBLE_SSH_KEY_CONTENT="+string(decrypted))
 			secretsToMask = append(secretsToMask, string(decrypted))
+
+			// Derive SSH public key to pass as TF_VAR variables for GCP / Azure instances
+			if parsedKey, err := ssh.ParseRawPrivateKey(decrypted); err == nil {
+				if signer, err := ssh.NewSignerFromKey(parsedKey); err == nil {
+					pubKeyBytes := ssh.MarshalAuthorizedKey(signer.PublicKey())
+					pubKeyStr := strings.TrimSpace(string(pubKeyBytes))
+					extraEnv = append(extraEnv, "TF_VAR_gcp_ssh_pub_key="+pubKeyStr)
+					extraEnv = append(extraEnv, "TF_VAR_azure_ssh_pub_key="+pubKeyStr)
+				}
+			}
 		}
 	}
 

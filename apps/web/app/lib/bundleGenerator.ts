@@ -19,37 +19,243 @@ export interface TerraformFiles {
   outputsTf: string;
 }
 
-export function generateTerraformFiles(nodes: Node[]): TerraformFiles {
-  const targetNode = nodes.find(n => (n.data as any)?.tech === 'Target');
-  const isGcp = targetNode?.id.startsWith('gcp_target');
+export function generateTerraformFiles(nodes: Node[], edges: Edge[] = []): TerraformFiles {
+  const vmNode = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
+  let connectedTargets: Node[] = [];
+  if (vmNode) {
+    const incomingEdges = edges.filter(e => e.target === vmNode.id);
+    connectedTargets = incomingEdges.map(e => nodes.find(n => n.id === e.source)).filter(Boolean) as Node[];
+  }
+  // Fallback: search for any targets on the canvas
+  if (connectedTargets.length === 0) {
+    connectedTargets = nodes.filter(n => (n.data as any)?.tech === 'Target');
+  }
+  // Default fallback: AWS Target
+  if (connectedTargets.length === 0) {
+    connectedTargets = [{
+      id: 'aws_target_default',
+      data: { tech: 'Target', environment: 'localstack', region: 'us-east-1' }
+    } as any];
+  }
 
-  if (isGcp) {
-    const gcpRegion = ((targetNode?.data as any)?.region as string) || 'us-central1';
-    const gcpProjectId = ((targetNode?.data as any)?.projectId as string) || 'infracanvas-prod-12345';
-    const gcpZone = ((targetNode?.data as any)?.gcpZone as string) || 'us-central1-a';
+  const hasAws = connectedTargets.some(t => t.id.startsWith('aws_target'));
+  const hasGcp = connectedTargets.some(t => t.id.startsWith('gcp_target'));
+  const hasAzure = connectedTargets.some(t => t.id.startsWith('azure_target'));
 
-    const instanceNode = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
-    const parameters = (instanceNode?.data as any)?.parameters || {};
-    const instanceName = parameters.instanceName || 'web-server';
-    const machineType = parameters.instanceType || 'e2-micro';
-    const diskSizeGb = parameters.rootVolumeSize || 10;
+  let requiredProviders = '';
+  let providers = '';
 
-    const mainTf = `terraform {
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
+  if (hasAws) {
+    const awsTarget = connectedTargets.find(t => t.id.startsWith('aws_target'));
+    const awsRegion = ((awsTarget?.data as any)?.region as string) || 'us-east-1';
+    const environment = ((awsTarget?.data as any)?.environment as string) || 'localstack';
+
+    requiredProviders += `    aws = {
+      source  = "hashicorp/aws"
       version = "~> 5.0"
+    }\n`;
+
+    if (environment === 'localstack') {
+      providers += `provider "aws" {
+  region                      = "${awsRegion}"
+  access_key                  = "test"
+  secret_key                  = "test"
+  skip_credentials_validation = true
+  skip_metadata_api_check     = true
+  skip_requesting_account_id  = true
+  s3_use_path_style           = true
+
+  endpoints {
+    ec2 = "http://localhost:4566"
+    s3  = "http://localhost:4566"
+  }
+}\n\n`;
+    } else {
+      providers += `provider "aws" {
+  region = "${awsRegion}"
+}\n\n`;
     }
   }
-}
 
-provider "google" {
+  if (hasGcp) {
+    requiredProviders += `    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }\n`;
+
+    providers += `provider "google" {
   project = var.gcp_project_id
   region  = var.gcp_region
   zone    = var.gcp_zone
+}\n\n`;
+  }
+
+  if (hasAzure) {
+    requiredProviders += `    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.0"
+    }\n`;
+
+    providers += `provider "azurerm" {
+  features {}
+}\n\n`;
+  }
+
+  let providerBlock = `terraform {
+  required_providers {
+${requiredProviders}  }
+`;
+
+  const awsTarget = connectedTargets.find(t => t.id.startsWith('aws_target'));
+  if (awsTarget && ((awsTarget?.data as any)?.environment as string) === 'localstack') {
+    const awsRegion = ((awsTarget?.data as any)?.region as string) || 'us-east-1';
+    providerBlock += `
+  backend "s3" {
+    bucket                      = "infracanvas-state-bucket"
+    key                         = "terraform.tfstate"
+    region                      = "${awsRegion}"
+    endpoints                   = { s3 = "http://localhost:4566" }
+    use_path_style              = true
+    skip_credentials_validation = true
+    skip_metadata_api_check     = true
+    skip_requesting_account_id  = true
+  }
+`;
+  }
+
+  providerBlock += `}`;
+
+  const tfNodes = nodes.filter(n => (n.data as any)?.tech === 'Terraform');
+  let tfResourcesBlock = '';
+  let subnetBlock = '';
+  let variablesTf = '# Input variables for Terraform deployment\n\n';
+  let outputsTfContent = '# Output values to retrieve after deployment\n\n';
+
+  // Read AWS instance params if AWS is used
+  let awsInstanceType = 't3.medium';
+  const instanceNode = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
+  const p = (instanceNode?.data as any)?.parameters || {};
+  if (p.instanceType) {
+    awsInstanceType = p.instanceType;
+  }
+
+  if (hasAws) {
+    variablesTf += `variable "aws_region" {
+  type        = string
+  default     = "${awsTarget && ((awsTarget?.data as any)?.region as string) || 'us-east-1'}"
+  description = "Target AWS region for deployment"
 }
 
-resource "google_compute_network" "vpc_network" {
+variable "instance_type" {
+  type        = string
+  default     = "${awsInstanceType}"
+  description = "EC2 instance size"
+}\n\n`;
+  }
+
+  const dummySshKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQC2R1m2hJc6eC+7737t8t8O1/Y2N5hDkK1aP4+rD2mZ6bJ9mF7C8F9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2= dummy-infracanvas-key";
+
+  if (hasGcp) {
+    const gcpTarget = connectedTargets.find(t => t.id.startsWith('gcp_target'));
+    const gcpRegion = ((gcpTarget?.data as any)?.region as string) || 'us-central1';
+    const gcpZone = ((gcpTarget?.data as any)?.gcpZone as string) || 'us-central1-a';
+    const gcpProjectId = ((gcpTarget?.data as any)?.projectId as string) || 'infracanvas-prod-12345';
+
+    variablesTf += `variable "gcp_project_id" {
+  type    = string
+  default = "${gcpProjectId}"
+}
+
+variable "gcp_region" {
+  type    = string
+  default = "${gcpRegion}"
+}
+
+variable "gcp_zone" {
+  type    = string
+  default = "${gcpZone}"
+}
+
+variable "gcp_ssh_pub_key" {
+  type    = string
+  default = "${dummySshKey}"
+}\n\n`;
+  }
+
+  if (hasAzure) {
+    variablesTf += `variable "azure_ssh_pub_key" {
+  type    = string
+  default = "${dummySshKey}"
+}\n\n`;
+  }
+
+  tfNodes.forEach(node => {
+    const id = node.id;
+    const p = (node.data as any)?.parameters || {};
+
+    if (id.startsWith('aws_instance.web_server')) {
+      if (hasAws) {
+        const name = p.instanceName || 'web_server';
+        const ami = p.amiId || 'ami-785db401';
+        const type = p.instanceType || 't3.medium';
+        const rootVolume = p.rootVolumeSize || 50;
+        const tagsList = p.tags || [{ key: 'Environment', value: 'prod' }, { key: 'Role', value: 'web' }];
+        const tagLines = tagsList.map((t: any) => `${t.key} = "${t.value}"`).join('\n    ');
+
+        const awsTargetNode = connectedTargets.find(t => t.id.startsWith('aws_target'));
+        const awsEnv = ((awsTargetNode?.data as any)?.environment as string) || 'localstack';
+        const awsSubnetId = p.subnetId || 'subnet-0123456789abcdef0';
+        
+        let subnetIdExpr = `"${awsSubnetId}"`;
+        if (awsEnv === 'localstack') {
+          subnetBlock = `data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}`;
+          subnetIdExpr = 'tolist(data.aws_subnets.default.ids)[0]';
+        }
+
+        const hasSg = tfNodes.some(n => n.id.startsWith('aws_security_group'));
+        const sgLink = hasSg
+          ? `aws_security_group.${((tfNodes.find(n => n.id.startsWith('aws_security_group'))?.data) as any)?.parameters?.sgName || 'web_sg'}.id`
+          : 'aws_security_group.web_sg.id';
+
+        tfResourcesBlock += `resource "aws_instance" "${name}" {
+  ami           = "${ami}"
+  instance_type = "${type}"
+  subnet_id     = ${subnetIdExpr}
+
+  vpc_security_group_ids = [${sgLink}]
+
+  root_block_device {
+    volume_size = ${rootVolume}
+  }
+
+  tags = {
+    Name = "${name}"
+    ${tagLines}
+  }
+}\n\n`;
+
+        outputsTfContent += `output "${name}_public_ip" {
+  value       = aws_instance.${name}.public_ip
+  description = "Public IP address of the virtual machine"
+}\n\n`;
+      }
+
+      if (hasGcp) {
+        const instanceName = p.gcpInstanceName || p.instanceName || 'web-server';
+        const machineType = p.gcpMachineType || 'e2-micro';
+        const diskSizeGb = p.gcpDiskSize || p.rootVolumeSize || 50;
+        const gcpImage = p.gcpImage || 'ubuntu-os-cloud/ubuntu-2204-lts';
+
+        tfResourcesBlock += `resource "google_compute_network" "vpc_network" {
   name                    = "infracanvas-vpc"
   auto_create_subnetworks = false
 }
@@ -68,7 +274,7 @@ resource "google_compute_instance" "vm_instance" {
 
   boot_disk {
     initialize_params {
-      image = "ubuntu-os-cloud/ubuntu-2204-lts"
+      image = "${gcpImage}"
       size  = ${diskSizeGb}
     }
   }
@@ -81,143 +287,100 @@ resource "google_compute_instance" "vm_instance" {
   }
 
   metadata = {
-    ssh-keys = "ubuntu:\${file("~/.ssh/id_rsa.pub")}"
-  }
-}`;
-
-    const variablesTf = `variable "gcp_project_id" {
-  type    = string
-  default = "${gcpProjectId}"
-}
-
-variable "gcp_region" {
-  type    = string
-  default = "${gcpRegion}"
-}
-
-variable "gcp_zone" {
-  type    = string
-  default = "${gcpZone}"
-}`;
-
-    const outputsTf = `output "gcp_instance_public_ip" {
-  value       = google_compute_instance.vm_instance.network_interface.0.access_config.0.nat_ip
-  description = "The public IP of the GCP VM instance"
-}`;
-
-    return { mainTf, variablesTf, outputsTf };
-  }
-
-  const awsRegion = ((targetNode?.data as any)?.region as string) || 'us-east-1';
-  const environment = ((targetNode?.data as any)?.environment as string) || 'localstack';
-
-  const providerBlock = environment === 'localstack'
-    ? `terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-
-  backend "s3" {
-    bucket                      = "infracanvas-state-bucket"
-    key                         = "terraform.tfstate"
-    region                      = "${awsRegion}"
-    endpoints                   = { s3 = "http://localhost:4566" }
-    use_path_style              = true
-    skip_credentials_validation = true
-    skip_metadata_api_check     = true
-    skip_requesting_account_id  = true
-  }
-}
-
-provider "aws" {
-  region                      = "${awsRegion}"
-  access_key                  = "test"
-  secret_key                  = "test"
-  skip_credentials_validation = true
-  skip_metadata_api_check     = true
-  skip_requesting_account_id  = true
-  s3_use_path_style           = true
-
-  endpoints {
-    ec2 = "http://localhost:4566"
-    s3  = "http://localhost:4566"
-  }
-}`
-    : `terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = "${awsRegion}"
-}`;
-
-  const instanceNode = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
-  const parameters = (instanceNode?.data as any)?.parameters || DEFAULT_INSTANCE_PARAMS;
-  const { instanceName = 'web_server', amiId = 'ami-785db401', instanceType = 't3.medium', subnetId = 'subnet-0123456789abcdef0', rootVolumeSize = 50, tags = [] } = parameters;
-
-  const subnetBlock = environment === 'localstack'
-    ? `data "aws_vpc" "default" {
-  default = true
-}
-
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-}`
-    : '';
-  const subnetIdExpr = environment === 'localstack'
-    ? 'tolist(data.aws_subnets.default.ids)[0]'
-    : `"${subnetId}"`;
-
-  const tfNodes = nodes.filter(n => (n.data as any)?.tech === 'Terraform');
-  let tfResourcesBlock = '';
-
-  tfNodes.forEach(node => {
-    const id = node.id;
-    const p = (node.data as any)?.parameters || {};
-    
-    if (id.startsWith('aws_instance.web_server')) {
-      const name = p.instanceName || 'web_server';
-      const ami = p.amiId || 'ami-785db401';
-      const type = p.instanceType || 't3.medium';
-      const rootVolume = p.rootVolumeSize || 50;
-      const tagsList = p.tags || [{ key: 'Environment', value: 'prod' }, { key: 'Role', value: 'web' }];
-      const tagLines = tagsList.map((t: any) => `${t.key} = "${t.value}"`).join('\n    ');
-
-      // Check if a custom security group exists to link it, else default to aws_security_group.web_sg.id
-      const hasSg = tfNodes.some(n => n.id.startsWith('aws_security_group'));
-      const sgLink = hasSg
-        ? `aws_security_group.${((tfNodes.find(n => n.id.startsWith('aws_security_group'))?.data) as any)?.parameters?.sgName || 'web_sg'}.id`
-        : 'aws_security_group.web_sg.id';
-
-      tfResourcesBlock += `resource "aws_instance" "${name}" {
-  ami           = "${ami}"
-  instance_type = "${type}"
-  subnet_id     = ${subnetIdExpr}
-
-  vpc_security_group_ids = [${sgLink}]
-
-  root_block_device {
-    volume_size = ${rootVolume}
-  }
-
-  tags = {
-    Name = "${name}"
-    ${tagLines}
+    ssh-keys = "ubuntu:\${var.gcp_ssh_pub_key}"
   }
 }\n\n`;
+
+        outputsTfContent += `output "gcp_instance_public_ip" {
+  value       = google_compute_instance.vm_instance.network_interface.0.access_config.0.nat_ip
+  description = "The public IP of the GCP VM instance"
+}\n\n`;
+      }
+
+      if (hasAzure) {
+        const vmName = p.azureVmName || p.instanceName || 'web-vm';
+        const vmSize = p.azureVmSize || 'Standard_B1s';
+        const diskSizeGb = p.azureDiskSize || p.rootVolumeSize || 50;
+        const publisher = p.azurePublisher || 'Canonical';
+        const offer = p.azureOffer || 'UbuntuServer';
+        const sku = p.azureSku || '18.04-LTS';
+
+        tfResourcesBlock += `resource "azurerm_resource_group" "rg" {
+  name     = "infracanvas-rg"
+  location = "East US"
+}
+
+resource "azurerm_virtual_network" "vnet" {
+  name                = "infracanvas-vnet"
+  address_space       = ["10.0.0.0/16"]
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+}
+
+resource "azurerm_subnet" "subnet" {
+  name                 = "infracanvas-subnet"
+  resource_group_name  = azurerm_resource_group.rg.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.1.0/24"]
+}
+
+resource "azurerm_public_ip" "pip" {
+  name                = "${vmName}-pip"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  allocation_method   = "Dynamic"
+}
+
+resource "azurerm_network_interface" "nic" {
+  name                = "${vmName}-nic"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.subnet.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.pip.id
+  }
+}
+
+resource "azurerm_linux_virtual_machine" "vm" {
+  name                = "${vmName}"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  size                = "${vmSize}"
+  admin_username      = "azureuser"
+  network_interface_ids = [
+    azurerm_network_interface.nic.id,
+  ]
+
+  admin_ssh_key {
+    username   = "azureuser"
+    public_key = var.azure_ssh_pub_key
+  }
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+    disk_size_gb         = ${diskSizeGb}
+  }
+
+  source_image_reference {
+    publisher = "${publisher}"
+    offer     = "${offer}"
+    sku       = "${sku}"
+    version   = "latest"
+  }
+}
+\n\n`;
+
+        outputsTfContent += `output "azure_instance_public_ip" {
+  value       = azurerm_public_ip.pip.ip_address
+  description = "The public IP of the Azure VM instance"
+}\n\n`;
+      }
     }
-    else if (id.startsWith('aws_security_group')) {
+    else if (id.startsWith('aws_security_group') && hasAws) {
       const name = p.sgName || 'web_sg';
       const desc = p.description || 'Allows HTTP/HTTPS inbound & SSH access';
       const allowedCidr = p.allowedCidr || '0.0.0.0/0';
@@ -279,7 +442,7 @@ ${ingressRules}
   }
 }\n\n`;
     }
-    else if (id.startsWith('aws_s3_bucket')) {
+    else if (id.startsWith('aws_s3_bucket') && hasAws) {
       const name = p.bucketName || 'infracanvas-user-bucket';
       const forceDestroy = p.forceDestroy !== false;
       const versioning = p.versioningEnabled !== false;
@@ -296,7 +459,7 @@ resource "aws_s3_bucket_versioning" "${name}_versioning" {
   }
 }\n\n`;
     }
-    else if (id.startsWith('aws_db_instance')) {
+    else if (id.startsWith('aws_db_instance') && hasAws) {
       const name = p.dbName || 'appdb';
       const storage = p.allocatedStorage || 20;
       const instanceClass = p.instanceClass || 'db.t3.micro';
@@ -315,7 +478,7 @@ resource "aws_s3_bucket_versioning" "${name}_versioning" {
   skip_final_snapshot = true
 }\n\n`;
     }
-    else if (id.startsWith('aws_vpc')) {
+    else if (id.startsWith('aws_vpc') && hasAws) {
       const name = p.vpcName || 'app_vpc';
       const cidr = p.cidrBlock || '10.0.0.0/16';
       const dns = p.enableDnsHostnames !== false;
@@ -328,7 +491,7 @@ resource "aws_s3_bucket_versioning" "${name}_versioning" {
   }
 }\n\n`;
     }
-    else if (id.startsWith('aws_subnet')) {
+    else if (id.startsWith('aws_subnet') && hasAws) {
       const name = p.subnetName || 'app_subnet_1a';
       const vpc = p.vpcId || 'aws_vpc.app_vpc.id';
       const cidr = p.cidrBlock || '10.0.1.0/24';
@@ -348,62 +511,12 @@ resource "aws_s3_bucket_versioning" "${name}_versioning" {
     else if ((node.data as any)?.isCustom && (node.data as any)?.tech === 'Terraform') {
       let customCode = (node.data as any).rawCode || '';
       const params = (node.data as any).parameters || {};
-      
-      Object.entries(params).forEach(([key, val]) => {
-        const escapedKey = key.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-        const reVarUsage = new RegExp(`var\\.${escapedKey}\\b`, 'g');
-        const reVarInterpolation = new RegExp(`\\$\\{var\\.${escapedKey}\\}`, 'g');
-        
-        let stringValue = typeof val === 'string' ? `"${val}"` : `${val}`;
-        customCode = customCode.replace(reVarInterpolation, `${val}`);
-        customCode = customCode.replace(reVarUsage, stringValue);
+      Object.keys(params).forEach(key => {
+        customCode = customCode.replace(new RegExp(`var\\.${key}`, 'g'), `"${params[key]}"`);
       });
-      
-      tfResourcesBlock += `# Custom block: ${node.data.label}\n${customCode}\n\n`;
+      tfResourcesBlock += `# Custom Node: ${node.data?.label || id}\n${customCode}\n\n`;
     }
   });
-
-  // If EC2 exists but no Security Group node is present, append default web_sg
-  const hasEc2Node = tfNodes.some(n => n.id.startsWith('aws_instance.web_server'));
-  const hasSgNode = tfNodes.some(n => n.id.startsWith('aws_security_group'));
-  if (hasEc2Node && !hasSgNode) {
-    const sgNodeLocal = nodes.find(n => n.id.startsWith('aws_security_group'));
-    const sgParams = (sgNodeLocal?.data?.parameters as any) || DEFAULT_SG_PARAMS;
-    const { sgName: sgNameParam = 'web_sg', httpPort = 80, httpsPort = 443, sshEnabled = true, allowedCidr = '0.0.0.0/0' } = sgParams;
-
-    tfResourcesBlock += `resource "aws_security_group" "${sgNameParam}" {
-  name        = "${sgNameParam}"
-  description = "Allows HTTP/HTTPS inbound & SSH access"
-
-  ingress {
-    from_port   = ${httpPort}
-    to_port     = ${httpPort}
-    protocol    = "tcp"
-    cidr_blocks = ["${allowedCidr}"]
-  }
-
-  ingress {
-    from_port   = ${httpsPort}
-    to_port     = ${httpsPort}
-    protocol    = "tcp"
-    cidr_blocks = ["${allowedCidr}"]
-  }${sshEnabled ? `
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["${allowedCidr}"]
-  }` : ''}
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}\n\n`;
-  }
 
   const mainTf = `# Generated by InfraFlow Visual Orchestration Platform
 # Project: Project Alpha - Web-Server-Orchestration
@@ -414,39 +527,17 @@ ${subnetBlock}
 
 ${tfResourcesBlock}`;
 
-  const variablesTf = `# Input variables for Terraform deployment
-
-variable "aws_region" {
-  type        = string
-  default     = "us-east-1"
-  description = "Target AWS region for deployment"
-}
-
-variable "instance_type" {
-  type        = string
-  default     = "${instanceType}"
-  description = "EC2 instance size"
-}`;
-
-  let outputsTfContent = `# Output values to retrieve after deployment\n\n`;
   tfNodes.forEach(node => {
     const id = node.id;
     const p = (node.data as any)?.parameters || {};
-    if (id.startsWith('aws_instance.web_server')) {
-      const name = p.instanceName || 'web_server';
-      outputsTfContent += `output "${name}_public_ip" {
-  value       = aws_instance.${name}.public_ip
-  description = "Public IP address of the virtual machine"
-}\n\n`;
-    }
-    else if (id.startsWith('aws_s3_bucket')) {
+    if (id.startsWith('aws_s3_bucket') && hasAws) {
       const name = p.bucketName || 'infracanvas-user-bucket';
       outputsTfContent += `output "${name}_bucket_arn" {
   value       = aws_s3_bucket.${name}.arn
   description = "ARN of the S3 bucket"
 }\n\n`;
     }
-    else if (id.startsWith('aws_db_instance')) {
+    else if (id.startsWith('aws_db_instance') && hasAws) {
       const name = p.dbName || 'appdb';
       outputsTfContent += `output "${name}_endpoint" {
   value       = aws_db_instance.${name}.endpoint
@@ -455,19 +546,12 @@ variable "instance_type" {
     }
   });
 
-  if (outputsTfContent.trim() === '# Output values to retrieve after deployment') {
-    outputsTfContent += `output "web_server_public_ip" {
-  value       = aws_instance.${instanceName}.public_ip
-  description = "Public IP address of the web server"
-}`;
-  }
-
   return { mainTf, variablesTf, outputsTf: outputsTfContent };
 }
 
-export async function downloadTerraformZip(nodes: Node[]): Promise<void> {
+export async function downloadTerraformZip(nodes: Node[], edges: Edge[] = []): Promise<void> {
   const JSZip = (await import('jszip')).default;
-  const { mainTf, variablesTf, outputsTf } = generateTerraformFiles(nodes);
+  const { mainTf, variablesTf, outputsTf } = generateTerraformFiles(nodes, edges);
   const zip = new JSZip();
   zip.file('main.tf', mainTf);
   zip.file('variables.tf', variablesTf);
@@ -494,7 +578,7 @@ export function generateBundleFiles(nodes: Node[], edges: Edge[]): FileItem[] {
   const files: FileItem[] = [];
 
   if (hasTerraform) {
-    const { mainTf, variablesTf, outputsTf } = generateTerraformFiles(nodes);
+    const { mainTf, variablesTf, outputsTf } = generateTerraformFiles(nodes, edges);
     files.push(
       { path: 'terraform/main.tf', name: 'main.tf', language: 'HCL', icon: 'lucide:file', iconColor: 'text-primary', lines: countLines(mainTf), size: getSizeKb(mainTf), content: mainTf },
       { path: 'terraform/variables.tf', name: 'variables.tf', language: 'HCL', icon: 'lucide:file', iconColor: 'text-muted-foreground', lines: countLines(variablesTf), size: getSizeKb(variablesTf), content: variablesTf },
