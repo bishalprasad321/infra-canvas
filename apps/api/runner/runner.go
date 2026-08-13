@@ -217,7 +217,8 @@ func RunPipeline(
 			content := strings.TrimPrefix(kv, "GOOGLE_CREDENTIALS_CONTENT=")
 			gcpCredsFilePath = filepath.Join(runDir, "gcp-creds-temp.json")
 			_ = os.WriteFile(gcpCredsFilePath, []byte(content), 0600)
-			extraEnv[i] = "GOOGLE_CREDENTIALS=" + gcpCredsFilePath
+			extraEnv[i] = "GOOGLE_CREDENTIALS=" + content
+			extraEnv = append(extraEnv, "GOOGLE_APPLICATION_CREDENTIALS=" + gcpCredsFilePath)
 			break
 		}
 	}
