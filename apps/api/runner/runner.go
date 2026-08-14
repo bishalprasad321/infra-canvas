@@ -488,21 +488,32 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 		emit("\n=========================================")
 		emit("[PHASE 01] Cloud Infrastructure Provisioning")
 		emit("=========================================\n")
+		if isDocker {
+			mainTfPath := filepath.Join(tfDir, "main.tf")
+			isLocalStack := false
+			if content, err := os.ReadFile(mainTfPath); err == nil {
+				if strings.Contains(string(content), "infracanvas-state-bucket") {
+					isLocalStack = true
+				}
+			}
+			if !isLocalStack && !strings.Contains(strings.Join(tfEnv, " "), "AWS_SECRET_ACCESS_KEY=") {
+				isLocalStack = true
+			}
 
-		if isDocker && !strings.Contains(strings.Join(tfEnv, " "), "AWS_SECRET_ACCESS_KEY=") {
-			emit("[RUNNER] Ensuring LocalStack S3 state bucket exists...")
-			_ = spawnCommand("curl", []string{"-X", "PUT", fmt.Sprintf("http://%s:4566/infracanvas-state-bucket", localstackHost)}, runDir, nil, redactor, logChan)
+			if isLocalStack {
+				emit("[RUNNER] Ensuring LocalStack S3 state bucket exists...")
+				_ = spawnCommand("curl", []string{"-X", "PUT", fmt.Sprintf("http://%s:4566/infracanvas-state-bucket", localstackHost)}, runDir, nil, redactor, logChan)
 
-			emit("[RUNNER] Pre-registering dummy AMI in LocalStack...")
-			if amiID, err := registerLocalStackAMI(localstackHost); err != nil {
-				emit(fmt.Sprintf("[RUNNER] Warning: AMI pre-registration failed: %v", err))
-			} else {
-				emit(fmt.Sprintf("[RUNNER] Registered LocalStack AMI: %s — patching main.tf", amiID))
-				mainTfPath := filepath.Join(tfDir, "main.tf")
-				if content, err := os.ReadFile(mainTfPath); err == nil {
-					re := regexp.MustCompile(`ami\s*=\s*"[^"]*"`)
-					patched := re.ReplaceAllString(string(content), fmt.Sprintf(`ami = "%s"`, amiID))
-					_ = os.WriteFile(mainTfPath, []byte(patched), 0644)
+				emit("[RUNNER] Pre-registering dummy AMI in LocalStack...")
+				if amiID, err := registerLocalStackAMI(localstackHost); err != nil {
+					emit(fmt.Sprintf("[RUNNER] Warning: AMI pre-registration failed: %v", err))
+				} else {
+					emit(fmt.Sprintf("[RUNNER] Registered LocalStack AMI: %s — patching main.tf", amiID))
+					if content, err := os.ReadFile(mainTfPath); err == nil {
+						re := regexp.MustCompile(`ami\s*=\s*"[^"]*"`)
+						patched := re.ReplaceAllString(string(content), fmt.Sprintf(`ami = "%s"`, amiID))
+						_ = os.WriteFile(mainTfPath, []byte(patched), 0644)
+					}
 				}
 			}
 		}

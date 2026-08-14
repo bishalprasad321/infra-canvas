@@ -204,10 +204,10 @@ variable "gcp_ssh_pub_key" {
 
         const awsTargetNode = connectedTargets.find(t => t.id.startsWith('aws_target'));
         const awsEnv = ((awsTargetNode?.data as any)?.environment as string) || 'localstack';
-        const awsSubnetId = p.subnetId || 'subnet-0123456789abcdef0';
-        
-        let subnetIdExpr = `"${awsSubnetId}"`;
-        if (awsEnv === 'localstack') {
+        let subnetLine = '';
+        if (p.subnetId) {
+          subnetLine = `\n  subnet_id     = "${p.subnetId}"`;
+        } else if (awsEnv === 'localstack') {
           subnetBlock = `data "aws_vpc" "default" {
   default = true
 }
@@ -218,20 +218,17 @@ data "aws_subnets" "default" {
     values = [data.aws_vpc.default.id]
   }
 }`;
-          subnetIdExpr = 'tolist(data.aws_subnets.default.ids)[0]';
+          subnetLine = `\n  subnet_id     = tolist(data.aws_subnets.default.ids)[0]`;
         }
 
         const hasSg = tfNodes.some(n => n.id.startsWith('aws_security_group'));
-        const sgLink = hasSg
-          ? `aws_security_group.${((tfNodes.find(n => n.id.startsWith('aws_security_group'))?.data) as any)?.parameters?.sgName || 'web_sg'}.id`
-          : 'aws_security_group.web_sg.id';
+        const sgLine = hasSg
+          ? `\n  vpc_security_group_ids = [aws_security_group.${((tfNodes.find(n => n.id.startsWith('aws_security_group'))?.data) as any)?.parameters?.sgName || 'web_sg'}.id]`
+          : '';
 
         tfResourcesBlock += `resource "aws_instance" "${name}" {
   ami           = "${ami}"
-  instance_type = "${type}"
-  subnet_id     = ${subnetIdExpr}
-
-  vpc_security_group_ids = [${sgLink}]
+  instance_type = "${type}"${subnetLine}${sgLine}
 
   root_block_device {
     volume_size = ${rootVolume}
