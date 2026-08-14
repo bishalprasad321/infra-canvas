@@ -518,7 +518,10 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 			}
 		}
 
-		if err := spawnCommand("terraform", []string{"init"}, tfDir, tfEnv, redactor, logChan); err != nil {
+		// Clean up previous backend state pointer to avoid "Unsetting previously set backend s3" init errors when switching targets
+		_ = os.Remove(filepath.Join(tfDir, ".terraform", "terraform.tfstate"))
+
+		if err := spawnCommand("terraform", []string{"init", "-reconfigure", "-input=false"}, tfDir, tfEnv, redactor, logChan); err != nil {
 			emit(fmt.Sprintf("[ERROR] Terraform init failed: %v", err))
 			emitSliceStatus(tfNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
