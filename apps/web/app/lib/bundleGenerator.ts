@@ -20,17 +20,10 @@ export interface TerraformFiles {
 }
 
 export function generateTerraformFiles(nodes: Node[], edges: Edge[] = []): TerraformFiles {
-  const vmNode = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
-  let connectedTargets: Node[] = [];
-  if (vmNode) {
-    const incomingEdges = edges.filter(e => e.target === vmNode.id);
-    connectedTargets = incomingEdges.map(e => nodes.find(n => n.id === e.source)).filter(Boolean) as Node[];
-  }
-  // Fallback: search for any targets on the canvas
-  if (connectedTargets.length === 0) {
-    connectedTargets = nodes.filter(n => (n.data as any)?.tech === 'Target');
-  }
-  // Default fallback: AWS Target
+  // Collect all Target nodes present on the canvas
+  let connectedTargets: Node[] = nodes.filter(n => (n.data as any)?.tech === 'Target' || n.id.startsWith('aws_target') || n.id.startsWith('gcp_target') || n.id.startsWith('azure_target'));
+
+  // Default fallback if no target node exists on canvas
   if (connectedTargets.length === 0) {
     connectedTargets = [{
       id: 'aws_target_default',

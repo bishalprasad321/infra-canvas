@@ -28,35 +28,11 @@ func CompileCanvas(nodes []CanvasNode, edges []CanvasEdge) ([]FileItem, error) {
 	}
 
 	if hasTerraform {
-		// Find VM node ID
-		var vmNodeID string
-		for _, n := range nodes {
-			if strings.HasPrefix(n.ID, "aws_instance") {
-				vmNodeID = n.ID
-				break
-			}
-		}
-
-		// Find target nodes connected to the VM node
+		// Collect all Target nodes present on the canvas
 		var connectedTargets []CanvasNode
-		if vmNodeID != "" {
-			for _, e := range edges {
-				if e.Target == vmNodeID {
-					for _, n := range nodes {
-						if n.ID == e.Source && strings.HasSuffix(n.Data.Tech, "Target") {
-							connectedTargets = append(connectedTargets, n)
-						}
-					}
-				}
-			}
-		}
-
-		// Fallback: check all target nodes on the canvas
-		if len(connectedTargets) == 0 {
-			for _, n := range nodes {
-				if strings.HasPrefix(n.ID, "aws_target") || strings.HasPrefix(n.ID, "gcp_target") || strings.HasPrefix(n.ID, "azure_target") {
-					connectedTargets = append(connectedTargets, n)
-				}
+		for _, n := range nodes {
+			if strings.HasSuffix(n.Data.Tech, "Target") || strings.HasPrefix(n.ID, "aws_target") || strings.HasPrefix(n.ID, "gcp_target") || strings.HasPrefix(n.ID, "azure_target") {
+				connectedTargets = append(connectedTargets, n)
 			}
 		}
 
@@ -363,10 +339,22 @@ variable "gcp_ssh_pub_key" {
 						subnetLine = "\n  subnet_id     = tolist(data.aws_subnets.default.ids)[0]"
 					}
 
+					var sgLine string
+					for _, other := range nodes {
+						if strings.HasPrefix(other.ID, "aws_security_group") {
+							sgName := "web_sg"
+							if otherP := other.Data.Parameters; otherP != nil {
+								sgName = getStringParam(otherP, "sgName", "web_sg")
+							}
+							sgLine = fmt.Sprintf("\n  vpc_security_group_ids = [aws_security_group.%s.id]", sgName)
+							break
+						}
+					}
+
 					resources.WriteString(fmt.Sprintf(`
 resource "aws_instance" "%s" {
   ami           = "%s"
-  instance_type = "%s"%s
+  instance_type = "%s"%s%s
 
   root_block_device {
     volume_size = %d
@@ -376,7 +364,7 @@ resource "aws_instance" "%s" {
     Name = "%s"
   }
 }
-`, name, ami, instType, subnetLine, volSize, name))
+`, name, ami, instType, subnetLine, sgLine, volSize, name))
 
 					outputsTfContent.WriteString(fmt.Sprintf(`output "%s_public_ip" {
   value       = aws_instance.%s.public_ip
@@ -525,7 +513,7 @@ resource "azurerm_linux_virtual_machine" "vm" {
 				}
 
 			} else if strings.HasPrefix(id, "aws_security_group") && hasAws {
-				name := getStringParam(p, "sgName", n.Data.Label)
+				name := getStringParam(p, "sgName", "web_sg")
 				desc := getStringParam(p, "description", "Allows HTTP/HTTPS inbound & SSH access")
 				allowedCidr := getStringParam(p, "allowedCidr", "0.0.0.0/0")
 				httpPort := getIntParam(p, "httpPort", 80)
