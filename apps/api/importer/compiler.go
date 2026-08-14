@@ -355,18 +355,18 @@ variable "gcp_ssh_pub_key" {
 					if awsTargetNode.Data.Environment != "" {
 						awsEnv = awsTargetNode.Data.Environment
 					}
-					awsSubnetID := getStringParam(p, "subnetId", "subnet-0123456789abcdef0")
-
-					subnetIdExpr := fmt.Sprintf("\"%s\"", awsSubnetID)
-					if awsEnv == "localstack" {
-						subnetIdExpr = "tolist(data.aws_subnets.default.ids)[0]"
+					var subnetLine string
+					userSubnetID := getStringParam(p, "subnetId", "")
+					if userSubnetID != "" {
+						subnetLine = fmt.Sprintf("\n  subnet_id     = \"%s\"", userSubnetID)
+					} else if awsEnv == "localstack" {
+						subnetLine = "\n  subnet_id     = tolist(data.aws_subnets.default.ids)[0]"
 					}
 
 					resources.WriteString(fmt.Sprintf(`
 resource "aws_instance" "%s" {
   ami           = "%s"
-  instance_type = "%s"
-  subnet_id     = %s
+  instance_type = "%s"%s
 
   root_block_device {
     volume_size = %d
@@ -376,7 +376,7 @@ resource "aws_instance" "%s" {
     Name = "%s"
   }
 }
-`, name, ami, instType, subnetIdExpr, volSize, name))
+`, name, ami, instType, subnetLine, volSize, name))
 
 					outputsTfContent.WriteString(fmt.Sprintf(`output "%s_public_ip" {
   value       = aws_instance.%s.public_ip
