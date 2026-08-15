@@ -27,6 +27,7 @@ import Tooltip from '../components/Tooltip';
 import CustomNodeModal from '../components/CustomNodeModal';
 import { ProjectSettingsModal } from '../components/ProjectSettingsModal';
 import { CredentialManagerTab } from '../components/CredentialManagerModal';
+import { InputWithVariablePicker } from '../components/VariablePicker';
 import { generateAnsibleYAML } from '../lib/exportYaml';
 import { downloadZipBundle, downloadTerraformZip, generateBundleFiles, generateTerraformFiles } from '../lib/bundleGenerator';
 import { DEFAULT_INSTANCE_PARAMS, DEFAULT_SG_PARAMS } from '../lib/terraformDefaults';
@@ -60,6 +61,7 @@ interface LibraryNode {
   rawCode?: string;
   codeType?: 'tf' | 'yml' | 'yaml';
   parameters?: Record<string, any>;
+  outputs?: string[];
 }
 
 // --- HELPER SUB-COMPONENTS ---
@@ -1462,10 +1464,11 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
                           <div>
                             <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VPC Subnet ID</label>
-                            <input
+                            <InputWithVariablePicker
+                              nodes={nodes}
+                              onValueChange={(val) => handleParameterChange('subnetId', val)}
                               type="text"
                               value={p.subnetId || ''}
-                              onChange={(e) => handleParameterChange('subnetId', e.target.value)}
                               className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
                             />
                           </div>
@@ -1743,10 +1746,11 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
                       <div>
                         <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Allowed CIDR</label>
-                        <input
+                        <InputWithVariablePicker
+                          nodes={nodes}
+                          onValueChange={(val) => handleParameterChange('allowedCidr', val)}
                           type="text"
                           value={p.allowedCidr || '0.0.0.0/0'}
-                          onChange={(e) => handleParameterChange('allowedCidr', e.target.value)}
                           className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
                         />
                       </div>
@@ -2982,7 +2986,8 @@ const LIBRARY_NODES: LibraryNode[] = [
     icon: 'lucide:server',
     title: 'Virtual Machine (EC2)',
     description: 'Provisions a high-performance VM instance with security groups.',
-    category: 'Provisioning & Cloud'
+    category: 'Provisioning & Cloud',
+    outputs: ['public_ip', 'private_ip', 'id', 'ssh_user']
   },
   {
     id: 'aws_security_group',
@@ -2990,7 +2995,8 @@ const LIBRARY_NODES: LibraryNode[] = [
     icon: 'lucide:shield',
     title: 'Firewall (Security Group)',
     description: 'Configures stateful firewall rules to allow traffic.',
-    category: 'Provisioning & Cloud'
+    category: 'Provisioning & Cloud',
+    outputs: ['sg_id', 'sg_name']
   },
   {
     id: 'aws_s3_bucket',
@@ -2998,7 +3004,8 @@ const LIBRARY_NODES: LibraryNode[] = [
     icon: 'lucide:hard-drive',
     title: 'Object Storage (S3)',
     description: 'Provisions a secure cloud object storage bucket.',
-    category: 'Provisioning & Cloud'
+    category: 'Provisioning & Cloud',
+    outputs: ['bucket_name', 'bucket_arn']
   },
   {
     id: 'aws_db_instance',
@@ -3006,7 +3013,8 @@ const LIBRARY_NODES: LibraryNode[] = [
     icon: 'lucide:database',
     title: 'Relational Database (RDS)',
     description: 'Deploys a PostgreSQL database instance.',
-    category: 'Provisioning & Cloud'
+    category: 'Provisioning & Cloud',
+    outputs: ['endpoint', 'port', 'db_name', 'username']
   },
   {
     id: 'aws_vpc',
@@ -3014,7 +3022,8 @@ const LIBRARY_NODES: LibraryNode[] = [
     icon: 'lucide:network',
     title: 'Virtual Network (VPC)',
     description: 'Creates a custom virtual private cloud network.',
-    category: 'Provisioning & Cloud'
+    category: 'Provisioning & Cloud',
+    outputs: ['vpc_id', 'cidr_block']
   },
   {
     id: 'aws_subnet',
@@ -3022,7 +3031,8 @@ const LIBRARY_NODES: LibraryNode[] = [
     icon: 'lucide:split',
     title: 'Network Subnet',
     description: 'Allocates a specific subnet in a VPC.',
-    category: 'Provisioning & Cloud'
+    category: 'Provisioning & Cloud',
+    outputs: ['subnet_id', 'availability_zone']
   },
   // Ansible Nodes
   {

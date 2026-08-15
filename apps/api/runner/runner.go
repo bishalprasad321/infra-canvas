@@ -73,6 +73,38 @@ func extractRepositoryConfig(canvasJSON string) RepositoryConfig {
 	return cfg
 }
 
+// isSandbox parses the canvas JSON and determines if the current deployment targets the sandbox environment.
+func isSandbox(canvasJSON string) bool {
+	var canvas struct {
+		Nodes []struct {
+			ID   string                 `json:"id"`
+			Data map[string]interface{} `json:"data"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal([]byte(canvasJSON), &canvas); err != nil {
+		return false
+	}
+
+	hasCloudTarget := false
+	for _, node := range canvas.Nodes {
+		if strings.HasPrefix(node.ID, "aws_target") {
+			hasCloudTarget = true
+			if params, ok := node.Data["parameters"].(map[string]interface{}); ok {
+				if env, ok := params["environment"].(string); ok && env == "localstack" {
+					return true
+				}
+			}
+			if env, ok := node.Data["environment"].(string); ok && env == "localstack" {
+				return true
+			}
+		} else if strings.HasPrefix(node.ID, "gcp_target") {
+			hasCloudTarget = true
+		}
+	}
+	// If there's no cloud target node (only Ansible nodes), it's a sandbox run.
+	return !hasCloudTarget
+}
+
 // registerLocalStackAMI registers a dummy AMI in LocalStack and returns the assigned AMI ID.
 // LocalStack 3.x does not pre-seed any AMIs, so Terraform fails with "couldn't find resource"
 // unless we register one before running terraform apply.
@@ -202,6 +234,7 @@ func RunPipeline(
 	onComplete func(status string, logs string),
 ) {
 	isDocker := os.Getenv("IS_DOCKER") == "true"
+	isSandboxRun := isSandbox(canvasJSON)
 	runDir := "/app/data/workspace/current"
 	if !isDocker {
 		runDir = "./data/workspace/current"
@@ -226,15 +259,17 @@ func RunPipeline(
 		defer os.Remove(gcpCredsFilePath)
 	}
 
-	// Write SSH PEM private key if present
+	// Write SSH PEM private key if present (only when NOT targeting the local sandbox)
 	var sshKeyFilePath string
-	for i, kv := range extraEnv {
-		if strings.HasPrefix(kv, "ANSIBLE_SSH_KEY_CONTENT=") {
-			content := strings.TrimPrefix(kv, "ANSIBLE_SSH_KEY_CONTENT=")
-			sshKeyFilePath = filepath.Join(runDir, "ansible-ssh-key-temp.pem")
-			_ = os.WriteFile(sshKeyFilePath, []byte(content), 0600)
-			extraEnv[i] = "ANSIBLE_SSH_KEY_PATH=" + sshKeyFilePath
-			break
+	if !isSandboxRun {
+		for i, kv := range extraEnv {
+			if strings.HasPrefix(kv, "ANSIBLE_SSH_KEY_CONTENT=") {
+				content := strings.TrimPrefix(kv, "ANSIBLE_SSH_KEY_CONTENT=")
+				sshKeyFilePath = filepath.Join(runDir, "ansible-ssh-key-temp.pem")
+				_ = os.WriteFile(sshKeyFilePath, []byte(content), 0600)
+				extraEnv[i] = "ANSIBLE_SSH_KEY_PATH=" + sshKeyFilePath
+				break
+			}
 		}
 	}
 	if sshKeyFilePath != "" {
@@ -410,7 +445,7 @@ func RunPipeline(
 			content = strings.ReplaceAll(content, "http://localhost:4566", fmt.Sprintf("http://%s:4566", localstackHost))
 		}
 
-		if file.Path == "ansible/hosts.ini" && isDocker {
+		if file.Path == "ansible/hosts.ini" && isSandboxRun && isDocker {
 			if !hasTfNodes {
 				content = strings.ReplaceAll(`[webservers]
 ubuntu_ssh_1 ansible_host=ubuntu_ssh_1 ansible_port=22 ansible_user=ubuntu
@@ -424,14 +459,34 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 			}
 		}
 
-		// Inject custom SSH key path into hosts.ini if ANSIBLE_SSH_KEY_PATH is present
-		if file.Path == "ansible/hosts.ini" && sshKeyFilePath != "" {
-			// Find [all:vars] or append it
-			if !strings.Contains(content, "[all:vars]") {
-				content += "\n\n[all:vars]\n"
+		// Inject custom SSH key path and username into hosts.ini if ANSIBLE_SSH_KEY_PATH is present
+		if file.Path == "ansible/hosts.ini" {
+			if !isSandboxRun {
+				var customSshUser string
+				for _, kv := range extraEnv {
+					if strings.HasPrefix(kv, "ANSIBLE_SSH_USER=") {
+						customSshUser = strings.TrimPrefix(kv, "ANSIBLE_SSH_USER=")
+						break
+					}
+				}
+				if customSshUser != "" {
+					reUser := regexp.MustCompile(`ansible_user=[a-zA-Z0-9_-]+`)
+					content = reUser.ReplaceAllString(content, "ansible_user="+customSshUser)
+				}
 			}
-			content += fmt.Sprintf("ansible_ssh_private_key_file=%s\n", sshKeyFilePath)
-			content += "ansible_ssh_common_args='-o StrictHostKeyChecking=no'\n"
+
+			if sshKeyFilePath != "" {
+				// Ensure content ends with a newline before appending new variables
+				if !strings.HasSuffix(content, "\n") {
+					content += "\n"
+				}
+				// Find [all:vars] or append it
+				if !strings.Contains(content, "[all:vars]") {
+					content += "\n[all:vars]\n"
+				}
+				content += fmt.Sprintf("ansible_ssh_private_key_file=%s\n", sshKeyFilePath)
+				content += "ansible_ssh_common_args='-o StrictHostKeyChecking=no'\n"
+			}
 		}
 
 		if file.Path == "ansible/playbook.yml" {
@@ -589,6 +644,13 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 					}
 				}
 			}
+		}
+
+		// Invoke dynamic parameter passing hydrator bridge
+		if err := HydrateDynamicParameters(runDir, "terraform"); err != nil {
+			emit(fmt.Sprintf("[WARNING] Hydration of dynamic parameters failed: %v", err))
+		} else {
+			emit("[RUNNER] Hydrated all dynamic variable parameter expressions successfully")
 		}
 
 		emitSliceStatus(tfNodeIDs, "completed")

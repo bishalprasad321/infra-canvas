@@ -1351,14 +1351,30 @@ func extractSecretsAndEnvironment(projectID string, canvasStr string) ([]string,
 				secretsToMask = append(secretsToMask, creds.PrivateKey)
 			}
 		} else if provider == "SSH" {
-			extraEnv = append(extraEnv, "ANSIBLE_SSH_KEY_CONTENT="+string(decrypted))
-			secretsToMask = append(secretsToMask, string(decrypted))
+			keyContent := string(decrypted)
+			sshUser := "ubuntu"
+
+			var sshPayload struct {
+				PrivateKey string `json:"private_key"`
+				SSHUser    string `json:"ssh_user"`
+			}
+			if err := json.Unmarshal(decrypted, &sshPayload); err == nil && sshPayload.PrivateKey != "" {
+				keyContent = sshPayload.PrivateKey
+				if sshPayload.SSHUser != "" {
+					sshUser = sshPayload.SSHUser
+				}
+			}
+
+			extraEnv = append(extraEnv, "ANSIBLE_SSH_KEY_CONTENT="+keyContent)
+			extraEnv = append(extraEnv, "ANSIBLE_SSH_USER="+sshUser)
+			secretsToMask = append(secretsToMask, keyContent)
 
 			// Derive SSH public key to pass as TF_VAR variables for GCP / Azure instances
-			if parsedKey, err := ssh.ParseRawPrivateKey(decrypted); err == nil {
+			if parsedKey, err := ssh.ParseRawPrivateKey([]byte(keyContent)); err == nil {
 				if signer, err := ssh.NewSignerFromKey(parsedKey); err == nil {
 					pubKeyBytes := ssh.MarshalAuthorizedKey(signer.PublicKey())
 					pubKeyStr := strings.TrimSpace(string(pubKeyBytes))
+					extraEnv = append(extraEnv, "TF_VAR_aws_ssh_pub_key="+pubKeyStr)
 					extraEnv = append(extraEnv, "TF_VAR_gcp_ssh_pub_key="+pubKeyStr)
 					extraEnv = append(extraEnv, "TF_VAR_azure_ssh_pub_key="+pubKeyStr)
 				}
