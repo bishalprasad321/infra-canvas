@@ -182,6 +182,18 @@ Future engineers picking up the codebase should note the following features are 
     - Handles GitHub's private-email setting via a `/user/emails` fallback lookup, and hands the issued session token back to the frontend through a URL fragment (never a query param) so it's never logged or stored in browser history.
     - **Scope note:** this covers the sign-in flow only. There is currently no account-management UI for viewing, adding, or unlinking connected providers after the fact — that's tracked as follow-up work, not part of this feature.
 
+22. **AES-256-GCM Credential Vault & Multi-Cloud Targets**:
+    - Secures AWS Access Keys, GCP Service Account JSON keys, and SSH Private Keys in SQLite using GCM symmetric encryption.
+    - Implements safe masking previews (fingerprints) on REST APIs and UI drawers.
+    - Mounts credential registers inside the Project Settings sidebar and parameters selectors in the Inspector Panel.
+    - Rewrites the pipeline runner to inject temporary private keys/SA JSON files with `0600` permissions and stream-scrub outputs for credentials masking.
+
+23. **Dynamic Node Parameter Passing & Hydration**:
+    - Visual node variable connections and output metadata schemas.
+    - Reusable `InputWithVariablePicker` input wrapper component for the Inspector Panel.
+    - Dynamic HCL outputs generation compiler for both AWS and GCP node types.
+    - Post-provisioning backend Go runner hydrator that queries Terraform outputs and executes dynamic parameter replacements recursively on configuration files before setup starts.
+
 ---
 
 ## Non-Implemented & Mocked Features (Roadmap)

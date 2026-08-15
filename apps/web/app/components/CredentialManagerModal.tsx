@@ -33,6 +33,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
 
   // GCP/SSH Raw Private Key Data
   const [rawTextData, setRawTextData] = useState<string>('');
+  const [sshUser, setSshUser] = useState<string>('ubuntu');
 
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -75,6 +76,15 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
         accessKeyId: awsAccessKey.trim(),
         secretAccessKey: awsSecretKey.trim(),
         region: awsRegion.trim()
+      });
+    } else if (provider === 'SSH') {
+      if (!rawTextData.trim()) {
+        setFeedbackMsg({ type: 'error', text: 'SSH private key is required.' });
+        return;
+      }
+      payloadData = JSON.stringify({
+        private_key: rawTextData.trim(),
+        ssh_user: sshUser.trim() || 'ubuntu'
       });
     } else {
       if (!rawTextData.trim()) {
@@ -278,15 +288,27 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
               )}
 
               {provider === 'SSH' && (
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">SSH PEM Private Key content</label>
-                  <textarea
-                    rows={6}
-                    value={rawTextData}
-                    onChange={(e) => setRawTextData(e.target.value)}
-                    placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs font-mono text-slate-300 outline-none resize-none"
-                  />
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">SSH Username</label>
+                    <input
+                      type="text"
+                      value={sshUser}
+                      onChange={(e) => setSshUser(e.target.value)}
+                      placeholder="ubuntu"
+                      className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none focus:border-cyan-500/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">SSH PEM Private Key content</label>
+                    <textarea
+                      rows={6}
+                      value={rawTextData}
+                      onChange={(e) => setRawTextData(e.target.value)}
+                      placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
+                      className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs font-mono text-slate-300 outline-none resize-none focus:border-cyan-500/50"
+                    />
+                  </div>
                 </div>
               )}
 
@@ -363,6 +385,7 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
 
   // GCP/SSH Raw Private Key Data
   const [rawTextData, setRawTextData] = useState<string>('');
+  const [sshUser, setSshUser] = useState<string>('ubuntu');
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
@@ -404,6 +427,15 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
         accessKeyId: awsAccessKey.trim(),
         secretAccessKey: awsSecretKey.trim(),
         region: awsRegion.trim()
+      });
+    } else if (provider === 'SSH') {
+      if (!rawTextData.trim()) {
+        setFeedbackMsg({ type: 'error', text: 'SSH private key is required.' });
+        return;
+      }
+      payloadData = JSON.stringify({
+        private_key: rawTextData.trim(),
+        ssh_user: sshUser.trim() || 'ubuntu'
       });
     } else {
       if (!rawTextData.trim()) {
@@ -584,15 +616,27 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
             )}
 
             {provider === 'SSH' && (
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">SSH PEM Private Key content</label>
-                <textarea
-                  rows={6}
-                  value={rawTextData}
-                  onChange={(e) => setRawTextData(e.target.value)}
-                  placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs font-mono text-slate-300 outline-none resize-none"
-                />
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">SSH Username</label>
+                  <input
+                    type="text"
+                    value={sshUser}
+                    onChange={(e) => setSshUser(e.target.value)}
+                    placeholder="ubuntu"
+                    className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none focus:border-cyan-500/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">SSH PEM Private Key content</label>
+                  <textarea
+                    rows={6}
+                    value={rawTextData}
+                    onChange={(e) => setRawTextData(e.target.value)}
+                    placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
+                    className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs font-mono text-slate-300 outline-none resize-none focus:border-cyan-500/50"
+                  />
+                </div>
               </div>
             )}
 

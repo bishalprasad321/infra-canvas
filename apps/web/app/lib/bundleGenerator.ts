@@ -119,6 +119,7 @@ ${requiredProviders}  }
   providerBlock += `}`;
 
   const tfNodes = nodes.filter(n => (n.data as any)?.tech === 'Terraform');
+  const dummySshKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQC2R1m2hJc6eC+7737t8t8O1/Y2N5hDkK1aP4+rD2mZ6bJ9mF7C8F9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2= dummy-infracanvas-key";
   let tfResourcesBlock = '';
   let subnetBlock = '';
   let variablesTf = '# Input variables for Terraform deployment\n\n';
@@ -143,10 +144,14 @@ variable "instance_type" {
   type        = string
   default     = "${awsInstanceType}"
   description = "EC2 instance size"
+}
+
+variable "aws_ssh_pub_key" {
+  type    = string
+  default = "${dummySshKey}"
 }\n\n`;
   }
 
-  const dummySshKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQC2R1m2hJc6eC+7737t8t8O1/Y2N5hDkK1aP4+rD2mZ6bJ9mF7C8F9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2= dummy-infracanvas-key";
 
   if (hasGcp) {
     const gcpTarget = connectedTargets.find(t => t.id.startsWith('gcp_target'));
@@ -219,9 +224,15 @@ data "aws_subnets" "default" {
           ? `\n  vpc_security_group_ids = [aws_security_group.${((tfNodes.find(n => n.id.startsWith('aws_security_group'))?.data) as any)?.parameters?.sgName || 'web_sg'}.id]`
           : '';
 
-        tfResourcesBlock += `resource "aws_instance" "${name}" {
+        tfResourcesBlock += `resource "aws_key_pair" "infracanvas_key" {
+  key_name   = "infracanvas-deploy-key"
+  public_key = var.aws_ssh_pub_key
+}
+
+resource "aws_instance" "${name}" {
   ami           = "${ami}"
   instance_type = "${type}"${subnetLine}${sgLine}
+  key_name      = aws_key_pair.infracanvas_key.key_name
 
   root_block_device {
     volume_size = ${rootVolume}
@@ -537,6 +548,90 @@ ${tfResourcesBlock}`;
 }\n\n`;
     }
   });
+
+  // Dynamic parameters HCL output resolver
+  const getDynamicHclOutputExpr = (node: Node, outputKey: string, isGcp: boolean): string => {
+    const p = (node.data as any)?.parameters || {};
+    const id = node.id;
+    
+    if (isGcp) {
+      if (id.startsWith('aws_instance.web_server')) {
+        if (outputKey === 'public_ip') return `google_compute_instance.vm_instance.network_interface.0.access_config.0.nat_ip`;
+        if (outputKey === 'private_ip') return `google_compute_instance.vm_instance.network_interface.0.network_ip`;
+        if (outputKey === 'id') return `google_compute_instance.vm_instance.instance_id`;
+        if (outputKey === 'ssh_user') return `"ubuntu"`;
+      }
+      return '';
+    }
+
+    if (id.startsWith('aws_instance.web_server')) {
+      const name = p.instanceName || 'web_server';
+      if (outputKey === 'public_ip') return `aws_instance.${name}.public_ip`;
+      if (outputKey === 'private_ip') return `aws_instance.${name}.private_ip`;
+      if (outputKey === 'id') return `aws_instance.${name}.id`;
+      if (outputKey === 'ssh_user') return `"ubuntu"`;
+    }
+    if (id.startsWith('aws_security_group')) {
+      const name = p.sgName || 'web_sg';
+      if (outputKey === 'sg_id') return `aws_security_group.${name}.id`;
+      if (outputKey === 'sg_name') return `aws_security_group.${name}.name`;
+    }
+    if (id.startsWith('aws_s3_bucket')) {
+      const name = p.bucketName || 'infracanvas-user-bucket';
+      if (outputKey === 'bucket_name') return `aws_s3_bucket.${name}.id`;
+      if (outputKey === 'bucket_arn') return `aws_s3_bucket.${name}.arn`;
+    }
+    if (id.startsWith('aws_db_instance')) {
+      const name = p.dbName || 'appdb';
+      if (outputKey === 'endpoint') return `aws_db_instance.${name}.endpoint`;
+      if (outputKey === 'port') return `aws_db_instance.${name}.port`;
+      if (outputKey === 'db_name') return `aws_db_instance.${name}.db_name`;
+      if (outputKey === 'username') return `aws_db_instance.${name}.username`;
+    }
+    if (id.startsWith('aws_vpc')) {
+      const name = p.vpcName || 'app_vpc';
+      if (outputKey === 'vpc_id') return `aws_vpc.${name}.id`;
+      if (outputKey === 'cidr_block') return `aws_vpc.${name}.cidr_block`;
+    }
+    if (id.startsWith('aws_subnet')) {
+      const name = p.subnetName || 'app_subnet';
+      if (outputKey === 'subnet_id') return `aws_subnet.${name}.id`;
+      if (outputKey === 'availability_zone') return `aws_subnet.${name}.availability_zone`;
+    }
+    return '';
+  };
+
+  // Scan all node parameters for dynamic variable references of format {{ nodes.node_name.output_key }}
+  const dynamicOutputs: string[] = [];
+  const regex = /{{\s*(?:nodes\.)?([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_-]+)\s*}}/g;
+  const serialized = JSON.stringify(nodes.map(n => n.data));
+  const scanned = new Set<string>();
+  let match;
+
+  while ((match = regex.exec(serialized)) !== null) {
+    const nodeVarName = match[1];
+    const outputKey = match[2];
+    
+    const referencedNode = nodes.find(n => n.id.replace(/\./g, '_') === nodeVarName);
+    if (referencedNode) {
+      const uniqueKey = `${referencedNode.id}_${outputKey}`;
+      if (!scanned.has(uniqueKey)) {
+        scanned.add(uniqueKey);
+        
+        const expr = getDynamicHclOutputExpr(referencedNode, outputKey, hasGcp);
+        if (expr) {
+          dynamicOutputs.push(`output "${nodeVarName}_${outputKey}" {
+  value       = ${expr}
+  description = "Dynamic parameter output for ${nodeVarName}"
+}`);
+        }
+      }
+    }
+  }
+
+  if (dynamicOutputs.length > 0) {
+    outputsTfContent += '\n\n' + dynamicOutputs.join('\n\n') + '\n';
+  }
 
   return { mainTf, variablesTf, outputsTf: outputsTfContent };
 }

@@ -93,6 +93,13 @@ func Fingerprint(provider string, rawData []byte) string {
 		}
 	} else if provider == "SSH" {
 		keyStr := string(rawData)
+		var sshPayload struct {
+			PrivateKey string `json:"private_key"`
+			SSHUser    string `json:"ssh_user"`
+		}
+		if err := json.Unmarshal(rawData, &sshPayload); err == nil && sshPayload.PrivateKey != "" {
+			keyStr = sshPayload.PrivateKey
+		}
 		lines := strings.Split(keyStr, "\n")
 		for _, line := range lines {
 			if strings.Contains(line, "BEGIN") {
