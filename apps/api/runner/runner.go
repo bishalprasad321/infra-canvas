@@ -454,7 +454,7 @@ ubuntu_ssh_2 ansible_host=ubuntu_ssh_2 ansible_port=22 ansible_user=ubuntu
 [all__COLON__vars]
 ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 			} else {
-				re := regexp.MustCompile(`aws_instance\.[a-zA-Z0-9_-]+\.public_ip`)
+				re := regexp.MustCompile(`(?:aws_instance\.[a-zA-Z0-9_-]+\.public_ip|google_compute_instance\.[a-zA-Z0-9_-]+\.public_ip|azurerm_public_ip\.pip\.ip_address|{{\s*(?:nodes\.)?[a-zA-Z0-9_-]+\.public_ip\s*}})`)
 				content = re.ReplaceAllString(content, "ubuntu_ssh_1")
 			}
 		}
