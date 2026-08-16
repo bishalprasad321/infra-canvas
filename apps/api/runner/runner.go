@@ -94,10 +94,49 @@ func registerLocalStackAMI(localstackHost string) (string, error) {
 	return string(m[1]), nil
 }
 
+// SecretRedactor masks sensitive credentials values inside log lines
+type SecretRedactor struct {
+	secrets []string
+}
+
+func (sr *SecretRedactor) Scrub(line string) string {
+	if sr == nil {
+		return line
+	}
+	for _, s := range sr.secrets {
+		s = strings.TrimSpace(s)
+		if len(s) > 5 {
+			line = strings.ReplaceAll(line, s, "***REDACTED***")
+		}
+	}
+	return line
+}
+
+func mergeEnvironments(base []string, overrides []string) []string {
+	envMap := make(map[string]string)
+	for _, kv := range base {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+	for _, kv := range overrides {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+	var merged []string
+	for k, v := range envMap {
+		merged = append(merged, fmt.Sprintf("%s=%s", k, v))
+	}
+	return merged
+}
+
 // Spawns a command, scans output line-by-line, and streams it with timestamps to logChan
-func spawnCommand(name string, args []string, dir string, env []string, logChan chan<- string) error {
+func spawnCommand(name string, args []string, dir string, env []string, redactor *SecretRedactor, logChan chan<- string) error {
 	ts := time.Now().Format("2006-01-02 15:04:05.000")
-	logChan <- fmt.Sprintf("[%s] [RUNNER] Executing: %s %s\n", ts, name, strings.Join(args, " "))
+	logChan <- fmt.Sprintf("[%s] [RUNNER] Executing: %s %s\n", ts, name, redactor.Scrub(strings.Join(args, " ")))
 
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
@@ -105,7 +144,6 @@ func spawnCommand(name string, args []string, dir string, env []string, logChan 
 		cmd.Env = append(os.Environ(), env...)
 	}
 
-	// Combine stdout and stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -119,7 +157,6 @@ func spawnCommand(name string, args []string, dir string, env []string, logChan 
 		return err
 	}
 
-	// Stream outputs concurrently
 	outputChan := make(chan string)
 	scan := func(r io.Reader) {
 		scanner := bufio.NewScanner(r)
@@ -134,16 +171,14 @@ func spawnCommand(name string, args []string, dir string, env []string, logChan 
 	go scan(stdout)
 	go scan(stderr)
 
-	// Wait for readers in a goroutine and close outputChan
 	go func() {
 		_ = cmd.Wait()
 		close(outputChan)
 	}()
 
-	// Read from outputChan, prefix with timestamp, and send to logChan
 	for line := range outputChan {
 		tsLine := time.Now().Format("2006-01-02 15:04:05.000")
-		logChan <- fmt.Sprintf("[%s] %s\n", tsLine, line)
+		logChan <- fmt.Sprintf("[%s] %s\n", tsLine, redactor.Scrub(line))
 	}
 
 	state := cmd.ProcessState
@@ -159,6 +194,8 @@ func RunPipeline(
 	files []FileItem,
 	action string,
 	autoDestroy bool,
+	extraEnv []string,
+	secretsToMask []string,
 	logChan chan<- string,
 	onNodeStatus func(nodeId, status string),
 	onStatusChange func(status string),
@@ -171,6 +208,39 @@ func RunPipeline(
 	}
 	accumulatedLogs := ""
 
+	redactor := &SecretRedactor{secrets: secretsToMask}
+
+	// Write GCP credentials JSON if present
+	var gcpCredsFilePath string
+	for i, kv := range extraEnv {
+		if strings.HasPrefix(kv, "GOOGLE_CREDENTIALS_CONTENT=") {
+			content := strings.TrimPrefix(kv, "GOOGLE_CREDENTIALS_CONTENT=")
+			gcpCredsFilePath = filepath.Join(runDir, "gcp-creds-temp.json")
+			_ = os.WriteFile(gcpCredsFilePath, []byte(content), 0600)
+			extraEnv[i] = "GOOGLE_CREDENTIALS=" + content
+			extraEnv = append(extraEnv, "GOOGLE_APPLICATION_CREDENTIALS=" + gcpCredsFilePath)
+			break
+		}
+	}
+	if gcpCredsFilePath != "" {
+		defer os.Remove(gcpCredsFilePath)
+	}
+
+	// Write SSH PEM private key if present
+	var sshKeyFilePath string
+	for i, kv := range extraEnv {
+		if strings.HasPrefix(kv, "ANSIBLE_SSH_KEY_CONTENT=") {
+			content := strings.TrimPrefix(kv, "ANSIBLE_SSH_KEY_CONTENT=")
+			sshKeyFilePath = filepath.Join(runDir, "ansible-ssh-key-temp.pem")
+			_ = os.WriteFile(sshKeyFilePath, []byte(content), 0600)
+			extraEnv[i] = "ANSIBLE_SSH_KEY_PATH=" + sshKeyFilePath
+			break
+		}
+	}
+	if sshKeyFilePath != "" {
+		defer os.Remove(sshKeyFilePath)
+	}
+
 	// Helper to emit logs with prepended timestamps
 	emit := func(msg string) {
 		lines := strings.Split(msg, "\n")
@@ -179,7 +249,7 @@ func RunPipeline(
 			if i == len(lines)-1 && line == "" {
 				break
 			}
-			tsLine := fmt.Sprintf("[%s] %s\n", time.Now().Format("2006-01-02 15:04:05.000"), line)
+			tsLine := fmt.Sprintf("[%s] %s\n", time.Now().Format("2006-01-02 15:04:05.000"), redactor.Scrub(line))
 			formattedMsg += tsLine
 		}
 		accumulatedLogs += formattedMsg
@@ -188,8 +258,6 @@ func RunPipeline(
 
 	defer func() {
 		close(logChan)
-		// We preserve runDir to keep terraform state and cached providers.
-		// No global RemoveAll(runDir) here.
 	}()
 
 	emit(fmt.Sprintf("[RUNNER] Starting pipeline run %s (Action: %s, Auto-Cleanup: %t)", runID, action, autoDestroy))
@@ -199,7 +267,6 @@ func RunPipeline(
 		localstackHost = "localstack"
 	}
 
-	// Parse canvas dynamically to check which phases to execute based on node.data.tech
 	var canvas struct {
 		Nodes []struct {
 			ID   string `json:"id"`
@@ -240,14 +307,12 @@ func RunPipeline(
 		hasK8sNodes = true
 	}
 
-	// Safe wrapper so nil onNodeStatus doesn't panic
 	emitNodeStatus := func(nodeId, status string) {
 		if onNodeStatus != nil {
 			onNodeStatus(nodeId, status)
 		}
 	}
 
-	// Emit statuses for a slice of node IDs
 	emitSliceStatus := func(ids []string, status string) {
 		for _, id := range ids {
 			emitNodeStatus(id, status)
@@ -265,13 +330,15 @@ func RunPipeline(
 	if verboseMode {
 		tfEnv = append(tfEnv, "TF_LOG=INFO")
 	}
+	if len(extraEnv) > 0 {
+		tfEnv = mergeEnvironments(tfEnv, extraEnv)
+	}
 	tfDir := filepath.Join(runDir, "terraform")
 
 	// ==========================================
 	// ACTION: DESTROY
 	// ==========================================
 	if action == "destroy" {
-		// Emit all nodes pending; non-TF nodes have no destroy phase, resolve immediately
 		emitSliceStatus(allNodeIDs, "pending")
 		emitSliceStatus(targetNodeIDs, "completed")
 		emitSliceStatus(sourceNodeIDs, "completed")
@@ -283,7 +350,6 @@ func RunPipeline(
 			emit("[PHASE DESTROY] AWS Teardown (Terraform)")
 			emit("=========================================\n")
 
-			// Wrap logChan so destroy output drives individual node running→completed transitions
 			var tfDestroyWg sync.WaitGroup
 			tfDestroyWg.Add(1)
 			tfDestroyWrapped := make(chan string, 200)
@@ -300,7 +366,7 @@ func RunPipeline(
 					}
 				}
 			}()
-			destroyErr := spawnCommand("terraform", []string{"destroy", "-auto-approve"}, tfDir, tfEnv, tfDestroyWrapped)
+			destroyErr := spawnCommand("terraform", []string{"destroy", "-auto-approve"}, tfDir, tfEnv, redactor, tfDestroyWrapped)
 			close(tfDestroyWrapped)
 			tfDestroyWg.Wait()
 
@@ -324,11 +390,9 @@ func RunPipeline(
 	// ==========================================
 	// ACTION: DEPLOY (DEFAULT)
 	// ==========================================
-	// Mark all nodes pending; target nodes have no execution phase so they complete immediately
 	emitSliceStatus(allNodeIDs, "pending")
 	emitSliceStatus(targetNodeIDs, "completed")
 
-	// 1. Write the code bundle files to disk
 	for _, file := range files {
 		fullPath := filepath.Join(runDir, file.Path)
 		dirPath := filepath.Dir(fullPath)
@@ -360,6 +424,16 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 			}
 		}
 
+		// Inject custom SSH key path into hosts.ini if ANSIBLE_SSH_KEY_PATH is present
+		if file.Path == "ansible/hosts.ini" && sshKeyFilePath != "" {
+			// Find [all:vars] or append it
+			if !strings.Contains(content, "[all:vars]") {
+				content += "\n\n[all:vars]\n"
+			}
+			content += fmt.Sprintf("ansible_ssh_private_key_file=%s\n", sshKeyFilePath)
+			content += "ansible_ssh_common_args='-o StrictHostKeyChecking=no'\n"
+		}
+
 		if file.Path == "ansible/playbook.yml" {
 			appDir := filepath.Join(runDir, "app")
 			content = strings.ReplaceAll(content, "__APP_SRC_DIR__", appDir)
@@ -373,7 +447,6 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 		emit(fmt.Sprintf("[COMPILER] Created %s", file.Path))
 	}
 
-	// Phase 0: Source Code (Clone Repository)
 	repoConfig := extractRepositoryConfig(canvasJSON)
 	if repoConfig.Present && repoConfig.URL != "" {
 		emit("\n=========================================")
@@ -387,11 +460,10 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 			branch = "main"
 		}
 		appDir := filepath.Join(runDir, "app")
-		// Clean app dir if it exists to refresh clone
 		_ = os.RemoveAll(appDir)
 
 		cloneArgs := []string{"clone", "--branch", branch, "--depth", "1", repoConfig.URL, appDir}
-		if err := spawnCommand("git", cloneArgs, runDir, nil, logChan); err != nil {
+		if err := spawnCommand("git", cloneArgs, runDir, nil, redactor, logChan); err != nil {
 			emit(fmt.Sprintf("[ERROR] Failed to clone repository %s (branch %s): %v", repoConfig.URL, branch, err))
 			emitSliceStatus(sourceNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
@@ -405,8 +477,6 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 		emit("\n[PHASE 00] Skipped (No Code Repository node present on canvas)")
 	}
 
-	// Ensure the app directory exists so Ansible's copy module doesn't throw a fatal error
-	// in case the git clone phase was skipped.
 	appDir := filepath.Join(runDir, "app")
 	if !fileExists(appDir) {
 		_ = os.MkdirAll(appDir, 0755)
@@ -416,38 +486,48 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 	// Phase 1: Terraform (Provisioning)
 	if hasTfNodes && fileExists(filepath.Join(tfDir, "main.tf")) {
 		emit("\n=========================================")
-		emit("[PHASE 01] AWS Provisioning (LocalStack)")
+		emit("[PHASE 01] Cloud Infrastructure Provisioning")
 		emit("=========================================\n")
-
-		// Pre-create S3 state bucket in LocalStack
 		if isDocker {
-			emit("[RUNNER] Ensuring LocalStack S3 state bucket exists...")
-			_ = spawnCommand("curl", []string{"-X", "PUT", fmt.Sprintf("http://%s:4566/infracanvas-state-bucket", localstackHost)}, runDir, nil, logChan)
+			mainTfPath := filepath.Join(tfDir, "main.tf")
+			isLocalStack := false
+			if content, err := os.ReadFile(mainTfPath); err == nil {
+				if strings.Contains(string(content), "infracanvas-state-bucket") {
+					isLocalStack = true
+				}
+			}
+			if !isLocalStack && !strings.Contains(strings.Join(tfEnv, " "), "AWS_SECRET_ACCESS_KEY=") {
+				isLocalStack = true
+			}
 
-			// LocalStack 3.x has no pre-seeded AMIs — register a dummy one and patch main.tf
-			emit("[RUNNER] Pre-registering dummy AMI in LocalStack...")
-			if amiID, err := registerLocalStackAMI(localstackHost); err != nil {
-				emit(fmt.Sprintf("[RUNNER] Warning: AMI pre-registration failed: %v", err))
-			} else {
-				emit(fmt.Sprintf("[RUNNER] Registered LocalStack AMI: %s — patching main.tf", amiID))
-				mainTfPath := filepath.Join(tfDir, "main.tf")
-				if content, err := os.ReadFile(mainTfPath); err == nil {
-					re := regexp.MustCompile(`ami\s*=\s*"[^"]*"`)
-					patched := re.ReplaceAllString(string(content), fmt.Sprintf(`ami = "%s"`, amiID))
-					_ = os.WriteFile(mainTfPath, []byte(patched), 0644)
+			if isLocalStack {
+				emit("[RUNNER] Ensuring LocalStack S3 state bucket exists...")
+				_ = spawnCommand("curl", []string{"-X", "PUT", fmt.Sprintf("http://%s:4566/infracanvas-state-bucket", localstackHost)}, runDir, nil, redactor, logChan)
+
+				emit("[RUNNER] Pre-registering dummy AMI in LocalStack...")
+				if amiID, err := registerLocalStackAMI(localstackHost); err != nil {
+					emit(fmt.Sprintf("[RUNNER] Warning: AMI pre-registration failed: %v", err))
+				} else {
+					emit(fmt.Sprintf("[RUNNER] Registered LocalStack AMI: %s — patching main.tf", amiID))
+					if content, err := os.ReadFile(mainTfPath); err == nil {
+						re := regexp.MustCompile(`ami\s*=\s*"[^"]*"`)
+						patched := re.ReplaceAllString(string(content), fmt.Sprintf(`ami = "%s"`, amiID))
+						_ = os.WriteFile(mainTfPath, []byte(patched), 0644)
+					}
 				}
 			}
 		}
 
-		// Nodes stay "pending" during init; per-resource status is driven by apply log output
-		if err := spawnCommand("terraform", []string{"init"}, tfDir, tfEnv, logChan); err != nil {
+		// Clean up previous backend state pointer to avoid "Unsetting previously set backend s3" init errors when switching targets
+		_ = os.Remove(filepath.Join(tfDir, ".terraform", "terraform.tfstate"))
+
+		if err := spawnCommand("terraform", []string{"init", "-reconfigure", "-input=false"}, tfDir, tfEnv, redactor, logChan); err != nil {
 			emit(fmt.Sprintf("[ERROR] Terraform init failed: %v", err))
 			emitSliceStatus(tfNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
 
-		// Wrap logChan so apply output drives individual node running→completed transitions
 		var tfWg sync.WaitGroup
 		tfWg.Add(1)
 		tfWrapped := make(chan string, 200)
@@ -464,7 +544,7 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 				}
 			}
 		}()
-		applyErr := spawnCommand("terraform", []string{"apply", "-auto-approve"}, tfDir, tfEnv, tfWrapped)
+		applyErr := spawnCommand("terraform", []string{"apply", "-auto-approve"}, tfDir, tfEnv, redactor, tfWrapped)
 		close(tfWrapped)
 		tfWg.Wait()
 		if applyErr != nil {
@@ -474,24 +554,38 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 			return
 		}
 
-		// Resolve public IP in hosts.ini for production mode
-		if !isDocker {
-			hostsPath := filepath.Join(runDir, "ansible", "hosts.ini")
-			if fileExists(hostsPath) {
-				hostsBytes, err := os.ReadFile(hostsPath)
-				if err == nil {
-					hostsContent := string(hostsBytes)
-					cmd := exec.Command("terraform", "output", "-raw", "web_server_public_ip")
-					cmd.Dir = tfDir
-					cmd.Env = append(os.Environ(), tfEnv...)
-					if out, err := cmd.Output(); err == nil {
-						publicIP := strings.TrimSpace(string(out))
-						if publicIP != "" && !strings.Contains(publicIP, "No outputs") {
-							re := regexp.MustCompile(`aws_instance\.[a-zA-Z0-9_-]+\.public_ip`)
-							hostsContent = re.ReplaceAllString(hostsContent, publicIP)
-							_ = os.WriteFile(hostsPath, []byte(hostsContent), 0644)
-							emit(fmt.Sprintf("[RUNNER] Resolved production hosts.ini: replaced placeholder with public IP %s", publicIP))
-						}
+		// Resolve public IP in hosts.ini from Terraform outputs
+		hostsPath := filepath.Join(runDir, "ansible", "hosts.ini")
+		if fileExists(hostsPath) {
+			hostsBytes, err := os.ReadFile(hostsPath)
+			if err == nil {
+				hostsContent := string(hostsBytes)
+				
+				// Resolve AWS Public IP
+				cmdAws := exec.Command("terraform", "output", "-raw", "web_server_public_ip")
+				cmdAws.Dir = tfDir
+				cmdAws.Env = append(os.Environ(), tfEnv...)
+				if out, err := cmdAws.Output(); err == nil {
+					publicIP := strings.TrimSpace(string(out))
+					if publicIP != "" && !strings.Contains(publicIP, "No outputs") {
+						re := regexp.MustCompile(`aws_instance\.[a-zA-Z0-9_-]+\.public_ip`)
+						hostsContent = re.ReplaceAllString(hostsContent, publicIP)
+						_ = os.WriteFile(hostsPath, []byte(hostsContent), 0644)
+						emit(fmt.Sprintf("[RUNNER] Resolved AWS public IP: %s", publicIP))
+					}
+				}
+
+				// Resolve GCP Public IP
+				cmdGcp := exec.Command("terraform", "output", "-raw", "gcp_instance_public_ip")
+				cmdGcp.Dir = tfDir
+				cmdGcp.Env = append(os.Environ(), tfEnv...)
+				if out, err := cmdGcp.Output(); err == nil {
+					publicIP := strings.TrimSpace(string(out))
+					if publicIP != "" && !strings.Contains(publicIP, "No outputs") {
+						re := regexp.MustCompile(`google_compute_instance\.[a-zA-Z0-9_-]+\.public_ip`)
+						hostsContent = re.ReplaceAllString(hostsContent, publicIP)
+						_ = os.WriteFile(hostsPath, []byte(hostsContent), 0644)
+						emit(fmt.Sprintf("[RUNNER] Resolved GCP public IP: %s", publicIP))
 					}
 				}
 			}
@@ -508,50 +602,44 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 	emit(fmt.Sprintf("[RUNNER_DEBUG] ansibleDir=%s, playbook exists=%t", ansibleDir, fileExists(filepath.Join(ansibleDir, "playbook.yml"))))
 	if hasAnsibleNodes && fileExists(filepath.Join(ansibleDir, "playbook.yml")) {
 		emit("\n=========================================")
-		emit("[PHASE 02] Server Configuration (Ansible Sandbox)")
+		emit("[PHASE 02] Server Configuration (Ansible)")
 		emit("=========================================\n")
 
-		keySourcePath := "/app/sandbox/id_rsa"
-		if !fileExists(keySourcePath) {
-			keySourcePath = "../../sandbox/id_rsa"
+		var activeKeyPath string
+		if sshKeyFilePath != "" {
+			activeKeyPath = sshKeyFilePath
+		} else {
+			// Sandbox fallback
+			keySourcePath := "/app/sandbox/id_rsa"
+			if !fileExists(keySourcePath) {
+				keySourcePath = "../../sandbox/id_rsa"
+			}
+			if fileExists(keySourcePath) {
+				tmpKeyPath := fmt.Sprintf("/tmp/id_rsa_%s", runID)
+				keyData, _ := os.ReadFile(keySourcePath)
+				_ = os.WriteFile(tmpKeyPath, keyData, 0600)
+				defer os.Remove(tmpKeyPath)
+				activeKeyPath = tmpKeyPath
+			}
 		}
 
-		if !fileExists(keySourcePath) {
-			emit(fmt.Sprintf("[ERROR] Sandbox private SSH key not found at %s. Ensure sandbox files exist.", keySourcePath))
+		if activeKeyPath == "" {
+			emit("[ERROR] Private SSH key not found. Ensure keys are configured.")
 			emitSliceStatus(ansibleNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
 			return
 		}
-
-		tmpKeyPath := fmt.Sprintf("/tmp/id_rsa_%s", runID)
-		keyData, err := os.ReadFile(keySourcePath)
-		if err != nil {
-			emit(fmt.Sprintf("[ERROR] Failed to read private key: %v", err))
-			emitSliceStatus(ansibleNodeIDs, "failed")
-			onComplete("FAILED", accumulatedLogs)
-			return
-		}
-		if err := os.WriteFile(tmpKeyPath, keyData, 0600); err != nil {
-			emit(fmt.Sprintf("[ERROR] Failed to write temp private key: %v", err))
-			emitSliceStatus(ansibleNodeIDs, "failed")
-			onComplete("FAILED", accumulatedLogs)
-			return
-		}
-		defer func() {
-			_ = os.Remove(tmpKeyPath)
-		}()
 
 		ansibleArgs := []string{
 			"-i", "hosts.ini",
 			"playbook.yml",
-			"--private-key=" + tmpKeyPath,
+			"--private-key=" + activeKeyPath,
 			"--ssh-common-args=-o StrictHostKeyChecking=no",
 		}
 		if verboseMode {
 			ansibleArgs = append(ansibleArgs, "-vvv")
 		}
 
-		// Wrap logChan: each "TASK [" marker advances to the next ansible node
 		ansibleIdx := 0
 		var ansibleWg sync.WaitGroup
 		ansibleWg.Add(1)
@@ -571,7 +659,7 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 				}
 			}
 		}()
-		ansibleErr := spawnCommand("ansible-playbook", ansibleArgs, ansibleDir, nil, ansibleWrapped)
+		ansibleErr := spawnCommand("ansible-playbook", ansibleArgs, ansibleDir, mergeEnvironments(nil, extraEnv), redactor, ansibleWrapped)
 		close(ansibleWrapped)
 		ansibleWg.Wait()
 		if ansibleErr != nil {
@@ -600,7 +688,7 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 			kubectlArgs = append(kubectlArgs, "--v=6")
 		}
 
-		if err := spawnCommand("kubectl", kubectlArgs, k8sDir, nil, logChan); err != nil {
+		if err := spawnCommand("kubectl", kubectlArgs, k8sDir, mergeEnvironments(nil, extraEnv), redactor, logChan); err != nil {
 			emit(fmt.Sprintf("[ERROR] kubectl apply failed: %v", err))
 			emitSliceStatus(k8sNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
@@ -612,7 +700,6 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 		emitSliceStatus(k8sNodeIDs, "completed")
 	}
 
-	// Optional Ephemeral Clean-up
 	if autoDestroy && hasTfNodes && fileExists(filepath.Join(tfDir, "main.tf")) {
 		if onStatusChange != nil {
 			onStatusChange("CLEANUP")
@@ -620,7 +707,7 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 		emit("\n=========================================")
 		emit("[PHASE CLEANUP] Ephemeral Auto-Destruction")
 		emit("=========================================\n")
-		_ = spawnCommand("terraform", []string{"destroy", "-auto-approve"}, tfDir, tfEnv, logChan)
+		_ = spawnCommand("terraform", []string{"destroy", "-auto-approve"}, tfDir, tfEnv, redactor, logChan)
 	}
 
 	emit("\n[RUNNER] Pipeline execution completed successfully!")

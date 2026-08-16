@@ -18,9 +18,11 @@ import (
 
 	"api/importer"
 	"api/runner"
+	"api/vault"
 
 	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/crypto/ssh"
 	_ "modernc.org/sqlite"
 )
 
@@ -206,6 +208,21 @@ func main() {
 		UNIQUE(provider, provider_user_id),
 		UNIQUE(user_id, provider),
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+	);
+	CREATE TABLE IF NOT EXISTS cloud_credentials (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		provider TEXT NOT NULL CHECK (provider IN ('AWS', 'GCP', 'SSH')),
+		name TEXT NOT NULL,
+		encrypted_data BLOB NOT NULL,
+		nonce BLOB NOT NULL,
+		auth_tag BLOB NOT NULL,
+		key_fingerprint TEXT NOT NULL,
+		created_by TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+		FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
 	);`
 	if _, err := db.Exec(schemaQuery); err != nil {
 		log.Fatalf("[DB] Failed to initialize schema: %v\n", err)
@@ -251,6 +268,9 @@ func main() {
 	mux.Handle("GET /api/projects/{id}/canvas", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetCanvasState))))
 	mux.Handle("PUT /api/projects/{id}/canvas", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleUpdateCanvasState))))
 	mux.Handle("POST /api/projects/{id}/import", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleImport))))
+	mux.Handle("GET /api/projects/{id}/credentials", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetProjectCredentials))))
+	mux.Handle("POST /api/projects/{id}/credentials", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleCreateProjectCredential))))
+	mux.Handle("DELETE /api/projects/{id}/credentials/{credId}", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleDeleteProjectCredential))))
 	mux.Handle("GET /api/projects/{id}/members", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetProjectMembers))))
 	mux.Handle("POST /api/projects/{id}/members", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleAddProjectMember))))
 	mux.Handle("PUT /api/projects/{id}/members/{userId}", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleUpdateProjectMemberRole))))
@@ -324,7 +344,7 @@ func enableCORS(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func handleOptions(w http.ResponseWriter, r *http.Request) {
+func handleOptions(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -523,8 +543,10 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 
+		extraEnv, secretsToMask := extractSecretsAndEnvironment(projectID, canvasStr)
+
 		// Start executing runner
-		runner.RunPipeline(runID, canvasStr, payload.Files, "deploy", payload.AutoDestroy, logChan, func(nodeId, status string) {
+		runner.RunPipeline(runID, canvasStr, payload.Files, "deploy", payload.AutoDestroy, extraEnv, secretsToMask, logChan, func(nodeId, status string) {
 			broadcastNodeStatus(runID, nodeId, status)
 		}, func(status string) {
 			broadcastToTracker(runID, "status_change", status)
@@ -787,7 +809,9 @@ func handleDestroy(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 
-		runner.RunPipeline(runID, canvasStr, nil, "destroy", false, logChan, func(nodeId, status string) {
+		extraEnv, secretsToMask := extractSecretsAndEnvironment(projectID, canvasStr)
+
+		runner.RunPipeline(runID, canvasStr, nil, "destroy", false, extraEnv, secretsToMask, logChan, func(nodeId, status string) {
 			broadcastNodeStatus(runID, nodeId, status)
 		}, nil, func(finalStatus string, logs string) {
 			tracker.Lock()
@@ -1283,3 +1307,95 @@ func handleUpgradePlan(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 }
+
+func extractSecretsAndEnvironment(projectID string, canvasStr string) ([]string, []string) {
+	var extraEnv []string
+	var secretsToMask []string
+
+	loadCredential := func(credID string) {
+		var provider, name string
+		var encryptedData, nonce, authTag []byte
+		err := db.QueryRow("SELECT provider, name, encrypted_data, nonce, auth_tag FROM cloud_credentials WHERE id = ? AND project_id = ?", credID, projectID).Scan(
+			&provider, &name, &encryptedData, &nonce, &authTag)
+		if err != nil {
+			log.Printf("[VAULT] Warning: Failed to load credential %s: %v\n", credID, err)
+			return
+		}
+
+		decrypted, err := vault.Decrypt(encryptedData, nonce, authTag)
+		if err != nil {
+			log.Printf("[VAULT] Error: Failed to decrypt credential %s: %v\n", credID, err)
+			return
+		}
+
+		if provider == "AWS" {
+			var creds struct {
+				AccessKeyID     string `json:"accessKeyId"`
+				SecretAccessKey string `json:"secretAccessKey"`
+				Region          string `json:"region"`
+			}
+			if err := json.Unmarshal(decrypted, &creds); err == nil {
+				extraEnv = append(extraEnv, "AWS_ACCESS_KEY_ID="+creds.AccessKeyID)
+				extraEnv = append(extraEnv, "AWS_SECRET_ACCESS_KEY="+creds.SecretAccessKey)
+				if creds.Region != "" {
+					extraEnv = append(extraEnv, "AWS_DEFAULT_REGION="+creds.Region)
+				}
+				secretsToMask = append(secretsToMask, creds.AccessKeyID, creds.SecretAccessKey)
+			}
+		} else if provider == "GCP" {
+			extraEnv = append(extraEnv, "GOOGLE_CREDENTIALS_CONTENT="+string(decrypted))
+			var creds struct {
+				PrivateKey string `json:"private_key"`
+			}
+			if err := json.Unmarshal(decrypted, &creds); err == nil && creds.PrivateKey != "" {
+				secretsToMask = append(secretsToMask, creds.PrivateKey)
+			}
+		} else if provider == "SSH" {
+			extraEnv = append(extraEnv, "ANSIBLE_SSH_KEY_CONTENT="+string(decrypted))
+			secretsToMask = append(secretsToMask, string(decrypted))
+
+			// Derive SSH public key to pass as TF_VAR variables for GCP / Azure instances
+			if parsedKey, err := ssh.ParseRawPrivateKey(decrypted); err == nil {
+				if signer, err := ssh.NewSignerFromKey(parsedKey); err == nil {
+					pubKeyBytes := ssh.MarshalAuthorizedKey(signer.PublicKey())
+					pubKeyStr := strings.TrimSpace(string(pubKeyBytes))
+					extraEnv = append(extraEnv, "TF_VAR_gcp_ssh_pub_key="+pubKeyStr)
+					extraEnv = append(extraEnv, "TF_VAR_azure_ssh_pub_key="+pubKeyStr)
+				}
+			}
+		}
+	}
+
+	var canvasStruct struct {
+		Nodes []struct {
+			ID   string `json:"id"`
+			Data struct {
+				Parameters   map[string]interface{} `json:"parameters"`
+				CredentialID string                 `json:"credentialId"`
+				SshKeyID     string                 `json:"sshKeyId"`
+			} `json:"data"`
+		} `json:"nodes"`
+	}
+	_ = json.Unmarshal([]byte(canvasStr), &canvasStruct)
+
+	for _, n := range canvasStruct.Nodes {
+		if n.Data.CredentialID != "" {
+			loadCredential(n.Data.CredentialID)
+		}
+		if n.Data.SshKeyID != "" {
+			loadCredential(n.Data.SshKeyID)
+		}
+		if cid, ok := n.Data.Parameters["credentialId"].(string); ok && cid != "" {
+			loadCredential(cid)
+		}
+		if cid, ok := n.Data.Parameters["credentialSource"].(string); ok && cid != "" {
+			loadCredential(cid)
+		}
+		if cid, ok := n.Data.Parameters["sshKeyId"].(string); ok && cid != "" {
+			loadCredential(cid)
+		}
+	}
+
+	return extraEnv, secretsToMask
+}
+
