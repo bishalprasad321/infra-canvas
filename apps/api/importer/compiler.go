@@ -663,7 +663,7 @@ resource "aws_subnet" "%s" {
 				pkgs := getStringParam(p, "packages", "nginx, curl, git")
 				pkgList := strings.Split(pkgs, ",")
 				tasks.WriteString(fmt.Sprintf(`    - name: Install system packages
-      ansible.builtin.apt:
+      ansible.builtin.package:
         name:
 `))
 				for _, pkg := range pkgList {
@@ -688,13 +688,46 @@ resource "aws_subnet" "%s" {
 
 			} else if strings.HasPrefix(id, "open-port") {
 				port := getStringParam(p, "port", "80")
-				tasks.WriteString(fmt.Sprintf(`    - name: Open Port in UFW
+				tasks.WriteString(fmt.Sprintf(`    # Ensure firewall package is installed
+    - name: Install UFW (Debian)
+      ansible.builtin.package:
+        name: ufw
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    # Open Port in UFW (Debian/Ubuntu)
+    - name: Open Port %s in UFW (Debian)
       ansible.builtin.ufw:
         rule: allow
         port: "%s"
         proto: tcp
+      when: ansible_os_family == 'Debian'
+      ignore_errors: yes
 
-`, port))
+    - name: Install firewalld (RedHat)
+      ansible.builtin.package:
+        name: firewalld
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    - name: Ensure firewalld is running (RedHat)
+      ansible.builtin.service:
+        name: firewalld
+        state: started
+        enabled: yes
+      when: ansible_os_family == 'RedHat'
+
+    # Open Port in firewalld (RedHat/Amazon Linux)
+    - name: Open Port %s in firewalld (RedHat)
+      ansible.builtin.firewalld:
+        port: "%s/tcp"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      when: ansible_os_family == 'RedHat'
+      ignore_errors: yes
+
+`, port, port, port, port))
 
 			} else if strings.HasPrefix(id, "git_clone") {
 				repo := getStringParam(p, "repoUrl", "")

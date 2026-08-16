@@ -76,6 +76,7 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
       ansible.builtin.shell: |
         mkdir -p /etc/dpkg/dpkg.cfg.d
         echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/force-unsafe-io
+      when: ansible_os_family == 'Debian'
       ignore_errors: yes
 
     # Clean up any stuck apt/dpkg locks if active
@@ -85,19 +86,21 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         rm -f /var/lib/dpkg/lock-frontend
         rm -f /var/lib/dpkg/lock
         rm -f /var/lib/apt/lists/lock
+      when: ansible_os_family == 'Debian'
       ignore_errors: yes
 
     # Check for interrupted dpkg state
     - name: Check for interrupted dpkg state
       ansible.builtin.shell: dpkg -l | grep -E '^i[^i]'
       register: dpkg_check
+      when: ansible_os_family == 'Debian'
       failed_when: false
       changed_when: false
 
     # Fix interrupted dpkg states only when needed
     - name: Fix interrupted dpkg states
       ansible.builtin.shell: dpkg --configure -a
-      when: dpkg_check.rc == 0
+      when: ansible_os_family == 'Debian' and (dpkg_check.rc is defined and dpkg_check.rc == 0)
       ignore_errors: yes
 
 \n`;
@@ -118,25 +121,40 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
 
     // Map each visual node to its corresponding Ansible YAML block
     if (id.startsWith('update-packages') || label.includes('Update Packages')) {
-      tasksString += `    # Update apt cache and upgrade packages
-    - name: Update apt cache and upgrade packages
+      tasksString += `    # Update cache and upgrade packages
+    - name: Update apt cache and upgrade packages (Debian)
       ansible.builtin.apt:
         update_cache: yes
-        upgrade: dist\n\n`;
+        upgrade: dist
+      when: ansible_os_family == 'Debian'
+
+    - name: Update yum cache and upgrade packages (RedHat)
+      ansible.builtin.yum:
+        update_cache: yes
+        name: "*"
+        state: latest
+      when: ansible_os_family == 'RedHat'\n\n`;
     } 
     else if (id.startsWith('nginx') || label.includes('Install Nginx')) {
       tasksString += `    # Install Nginx Web Server
     - name: Install Nginx Web Server
-      ansible.builtin.apt:
+      ansible.builtin.package:
         name: nginx
         state: present\n\n`;
     } 
     else if (id.startsWith('nodejs') || label.includes('Install Node.js')) {
-      tasksString += `    # Install xz-utils dependency
-    - name: Install xz-utils
-      ansible.builtin.apt:
+      tasksString += `    # Install xz dependency
+    - name: Install xz-utils (Debian)
+      ansible.builtin.package:
         name: xz-utils
         state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Install xz (RedHat)
+      ansible.builtin.package:
+        name: xz
+        state: present
+      when: ansible_os_family == 'RedHat'
 
     # Download Node.js precompiled package
     - name: Download Node.js precompiled package
@@ -155,12 +173,34 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
     }
     else if (id.startsWith('postgresql') || label.includes('Postgres') || label.includes('PostgreSQL')) {
       tasksString += `    # Install PostgreSQL and psycopg2
-    - name: Install PostgreSQL and python3-psycopg2
+    - name: Install PostgreSQL and python3-psycopg2 (Debian)
       ansible.builtin.apt:
         name:
           - postgresql
           - python3-psycopg2
-        state: present\n\n`;
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Install PostgreSQL and python3-psycopg2 (RedHat)
+      ansible.builtin.dnf:
+        name:
+          - postgresql-server
+          - python3-psycopg2
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    - name: Initialize PostgreSQL database (RedHat)
+      ansible.builtin.command: postgresql-setup --initdb
+      args:
+        creates: /var/lib/pgsql/data/PG_VERSION
+      when: ansible_os_family == 'RedHat'
+      ignore_errors: yes
+
+    - name: Ensure PostgreSQL is running and enabled
+      ansible.builtin.service:
+        name: postgresql
+        state: started
+        enabled: yes\n\n`;
 
       const dbUser = (node.data as any).dbUser || p.dbUser || '{{ db_user }}';
       const dbPass = (node.data as any).dbPass || p.dbPass || '{{ db_pass }}';
@@ -173,18 +213,43 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
     }
     else if (id.startsWith('open-port') || label.includes('Open Port')) {
       const port = (node.data as any).port || p.port || '{{ port_number }}';
-      tasksString += `    # Ensure UFW is installed
-    - name: Install UFW
-      ansible.builtin.apt:
+      tasksString += `    # Ensure firewall package is installed
+    - name: Install UFW (Debian)
+      ansible.builtin.package:
         name: ufw
         state: present
+      when: ansible_os_family == 'Debian'
 
     # Open Port ${port} in UFW
-    - name: Open Port ${port} in UFW
+    - name: Open Port ${port} in UFW (Debian)
       ansible.builtin.ufw:
         rule: allow
         port: "${port}"
         proto: tcp
+      when: ansible_os_family == 'Debian'
+      ignore_errors: yes
+
+    - name: Install firewalld (RedHat)
+      ansible.builtin.package:
+        name: firewalld
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    - name: Ensure firewalld is running (RedHat)
+      ansible.builtin.service:
+        name: firewalld
+        state: started
+        enabled: yes
+      when: ansible_os_family == 'RedHat'
+
+    # Open Port ${port} in firewalld
+    - name: Open Port ${port} in firewalld (RedHat)
+      ansible.builtin.firewalld:
+        port: "${port}/tcp"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      when: ansible_os_family == 'RedHat'
       ignore_errors: yes\n\n`;
     }
     else if (id.startsWith('deploy-node-app') || label.includes('Deploy Node App')) {
@@ -240,9 +305,9 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
       const state = p.state || 'present';
       const packagesList = packagesStr.split(',').map((item: string) => `          - ${item.trim()}`).join('\n');
       
-      tasksString += `    # Install apt packages
+      tasksString += `    # Install system packages
     - name: Install specified system packages
-      ansible.builtin.apt:
+      ansible.builtin.package:
         name:
 \n${packagesList}
         state: ${state}\n\n`;
