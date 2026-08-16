@@ -1474,6 +1474,17 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                           </div>
 
                           <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Security Group ID</label>
+                            <InputWithVariablePicker
+                              nodes={nodes}
+                              onValueChange={(val) => handleParameterChange('securityGroupId', val)}
+                              type="text"
+                              value={p.securityGroupId || ''}
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div>
                             <div className="flex items-center justify-between mb-1 select-none">
                               <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Root Volume Size</label>
                               <span className="text-xs font-semibold text-foreground">{p.rootVolumeSize || 50} GB</span>
@@ -1755,6 +1766,17 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                         />
                       </div>
 
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VPC Link ID</label>
+                        <InputWithVariablePicker
+                          nodes={nodes}
+                          onValueChange={(val) => handleParameterChange('vpcId', val)}
+                          type="text"
+                          value={p.vpcId || ''}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+
                       <div className="flex items-center justify-between bg-muted border border-border rounded-lg px-3 py-2.5">
                         <div>
                           <p className="text-xs font-semibold text-foreground">Enable SSH Access</p>
@@ -1881,6 +1903,28 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                           />
                         </div>
                       </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VPC Security Group IDs</label>
+                        <InputWithVariablePicker
+                          nodes={nodes}
+                          onValueChange={(val) => handleParameterChange('vpcSecurityGroupIds', val)}
+                          type="text"
+                          value={p.vpcSecurityGroupIds || ''}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">DB Subnet Group Name</label>
+                        <InputWithVariablePicker
+                          nodes={nodes}
+                          onValueChange={(val) => handleParameterChange('dbSubnetGroupName', val)}
+                          type="text"
+                          value={p.dbSubnetGroupName || ''}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
                     </>
                   )}
 
@@ -1976,6 +2020,34 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   {selectedNode.data.tech === 'Ansible' && (
                     <div className="space-y-4">
                       <p className="text-[11px] text-muted-foreground">Ansible playbooks support variable binding using `{`{ variable }`}`. Click `{`{x}`}` to convert hardcoded values to variables.</p>
+                      
+                      {/* Connection Settings */}
+                      <div className="bg-muted/40 border border-border rounded-xl p-3 space-y-3">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                          <Icon icon="lucide:settings" className="text-primary text-xs" /> Target Connection Settings
+                        </span>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Target Host IP</label>
+                          <InputWithVariablePicker
+                            nodes={nodes}
+                            onValueChange={(val) => handleParameterChange('ansibleHost', val)}
+                            type="text"
+                            value={p.ansibleHost || ''}
+                            placeholder="e.g. 127.0.0.1 or {{ nodes.web_server.public_ip }}"
+                            className="w-full bg-muted border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Target SSH User</label>
+                          <input
+                            type="text"
+                            value={p.ansibleUser || 'ubuntu'}
+                            onChange={(e) => handleParameterChange('ansibleUser', e.target.value)}
+                            placeholder="e.g. ubuntu or ec2-user"
+                            className="w-full bg-muted border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all font-mono"
+                          />
+                        </div>
+                      </div>
                       
                       {nodeLabel.includes('Open Port') && (
                         <div>
@@ -2795,6 +2867,7 @@ function getDefaultParametersForNode(nodeId: string): any {
       amiId: 'ami-785db401',
       instanceType: 't3.medium',
       subnetId: 'subnet-0123456789abcdef0',
+      securityGroupId: '',
       rootVolumeSize: 50,
       tags: [
         { key: 'Environment', value: 'prod' },
@@ -2805,6 +2878,7 @@ function getDefaultParametersForNode(nodeId: string): any {
   if (nodeId.startsWith('aws_security_group')) {
     return {
       sgName: 'web_sg',
+      vpcId: '',
       description: 'Allows HTTP/HTTPS inbound & SSH access',
       ingressPorts: '80, 443, 22'
     };
@@ -2823,7 +2897,9 @@ function getDefaultParametersForNode(nodeId: string): any {
       instanceClass: 'db.t3.micro',
       username: 'dbadmin',
       password: 'SuperSecurePassword123!',
-      engineVersion: '14.1'
+      engineVersion: '14.1',
+      vpcSecurityGroupIds: '',
+      dbSubnetGroupName: ''
     };
   }
   if (nodeId.startsWith('aws_vpc')) {
@@ -2846,34 +2922,44 @@ function getDefaultParametersForNode(nodeId: string): any {
   if (nodeId.startsWith('apt_install')) {
     return {
       packages: 'curl, git, jq',
-      state: 'present'
+      state: 'present',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('create_user')) {
     return {
       username: 'deployer',
       shell: '/bin/bash',
-      createHome: true
+      createHome: true,
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('systemd_service')) {
     return {
       serviceName: 'nginx',
       state: 'started',
-      enabled: true
+      enabled: true,
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('git_clone')) {
     return {
       repoUrl: 'https://github.com/infracanvas/sample-app.git',
       destPath: '/var/www/app',
-      branch: 'main'
+      branch: 'main',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('shell_command')) {
     return {
       command: 'echo "hello infrastructure"',
-      chdir: '/tmp'
+      chdir: '/tmp',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('file_copy')) {
@@ -2881,24 +2967,56 @@ function getDefaultParametersForNode(nodeId: string): any {
       srcPath: 'config.json',
       destPath: '/var/www/app/config.json',
       owner: 'www-data',
-      mode: '0644'
+      mode: '0644',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('open-port')) {
     return {
-      port: '80'
+      port: '80',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('postgresql')) {
     return {
       dbUser: 'postgres',
-      dbPass: 'postgres'
+      dbPass: 'postgres',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('deploy-node-app')) {
     return {
       startCommand: 'npm start',
-      appPort: '3000'
+      appPort: '3000',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
+    };
+  }
+  if (nodeId.startsWith('update-packages')) {
+    return {
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
+    };
+  }
+  if (nodeId.startsWith('nginx')) {
+    return {
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
+    };
+  }
+  if (nodeId.startsWith('nodejs')) {
+    return {
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
+    };
+  }
+  if (nodeId.startsWith('copy-env')) {
+    return {
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   // Kubernetes Nodes
