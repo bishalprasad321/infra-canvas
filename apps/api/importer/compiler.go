@@ -332,11 +332,55 @@ variable "gcp_ssh_pub_key" {
 						awsEnv = awsTargetNode.Data.Environment
 					}
 					var subnetLine string
+					autoSubnetBlock := ""
 					userSubnetID := getStringParam(p, "subnetId", "")
 					if userSubnetID != "" {
 						subnetLine = fmt.Sprintf("\n  subnet_id     = \"%s\"", userSubnetID)
-					} else if awsEnv == "localstack" {
-						subnetLine = "\n  subnet_id     = tolist(data.aws_subnets.default.ids)[0]"
+					} else {
+						firstSubnet := ""
+						for _, other := range nodes {
+							if strings.HasPrefix(other.ID, "aws_subnet") {
+								subnetName := getStringParam(other.Data.Parameters, "subnetName", other.Data.Label)
+								firstSubnet = fmt.Sprintf("aws_subnet.%s.id", subnetName)
+								break
+							}
+						}
+						if firstSubnet != "" {
+							subnetLine = fmt.Sprintf("\n  subnet_id     = %s", firstSubnet)
+						} else {
+							var firstVpc *CanvasNode
+							for idx, other := range nodes {
+								if strings.HasPrefix(other.ID, "aws_vpc") {
+									firstVpc = &nodes[idx]
+									break
+								}
+							}
+							if firstVpc != nil {
+								vpcName := getStringParam(firstVpc.Data.Parameters, "vpcName", firstVpc.Data.Label)
+								autoSubnetBlock = fmt.Sprintf(`
+resource "aws_subnet" "infracanvas_auto_subnet" {
+  vpc_id                  = aws_vpc.%s.id
+  cidr_block              = "10.0.1.0/24"
+  map_public_ip_on_launch = true
+  tags = {
+    Name = "%s-auto-subnet"
+  }
+}
+
+resource "aws_route_table_association" "infracanvas_auto_subnet_assoc" {
+  subnet_id      = aws_subnet.infracanvas_auto_subnet.id
+  route_table_id = aws_route_table.%s_rt.id
+}
+`, vpcName, vpcName, vpcName)
+								subnetLine = "\n  subnet_id     = aws_subnet.infracanvas_auto_subnet.id"
+							} else if awsEnv == "localstack" {
+								subnetLine = "\n  subnet_id     = tolist(data.aws_subnets.default.ids)[0]"
+							}
+						}
+					}
+
+					if autoSubnetBlock != "" {
+						resources.WriteString(autoSubnetBlock)
 					}
 
 					var sgLine string
@@ -519,10 +563,35 @@ resource "azurerm_linux_virtual_machine" "vm" {
 				httpPort := getIntParam(p, "httpPort", 80)
 				httpsPort := getIntParam(p, "httpsPort", 443)
 
+				vpcRefLine := ""
+				// Find incoming edge from VPC to Security Group
+				for _, e := range edges {
+					if e.Target == id && strings.HasPrefix(e.Source, "aws_vpc") {
+						for _, vpcNode := range nodes {
+							if vpcNode.ID == e.Source {
+								vpcName := getStringParam(vpcNode.Data.Parameters, "vpcName", vpcNode.Data.Label)
+								vpcRefLine = fmt.Sprintf("\n  vpc_id      = aws_vpc.%s.id", vpcName)
+								break
+							}
+						}
+						break
+					}
+				}
+				// If no incoming edge but at least one VPC exists, use it
+				if vpcRefLine == "" {
+					for _, vpcNode := range nodes {
+						if strings.HasPrefix(vpcNode.ID, "aws_vpc") {
+							vpcName := getStringParam(vpcNode.Data.Parameters, "vpcName", vpcNode.Data.Label)
+							vpcRefLine = fmt.Sprintf("\n  vpc_id      = aws_vpc.%s.id", vpcName)
+							break
+						}
+					}
+				}
+
 				resources.WriteString(fmt.Sprintf(`
 resource "aws_security_group" "%s" {
   name        = "%s"
-  description = "%s"
+  description = "%s"%s
 
   ingress {
     from_port   = %d
@@ -536,6 +605,13 @@ resource "aws_security_group" "%s" {
     to_port     = %d
     protocol    = "tcp"
     cidr_blocks = ["%s"]
+  }
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
@@ -545,7 +621,7 @@ resource "aws_security_group" "%s" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
-`, name, name, desc, httpPort, httpPort, allowedCidr, httpsPort, httpsPort, allowedCidr))
+`, name, name, desc, vpcRefLine, httpPort, httpPort, allowedCidr, httpsPort, httpsPort, allowedCidr))
 
 			} else if strings.HasPrefix(id, "aws_s3_bucket") && hasAws {
 				name := getStringParam(p, "bucketName", n.Data.Label)
@@ -603,16 +679,66 @@ resource "aws_vpc" "%s" {
     Name = "%s"
   }
 }
-`, name, cidr, name))
+
+resource "aws_internet_gateway" "%s_igw" {
+  vpc_id = aws_vpc.%s.id
+  tags = {
+    Name = "%s_igw"
+  }
+}
+
+resource "aws_route_table" "%s_rt" {
+  vpc_id = aws_vpc.%s.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.%s_igw.id
+  }
+
+  tags = {
+    Name = "%s_rt"
+  }
+}
+`, name, cidr, name, name, name, name, name, name, name, name))
 
 			} else if strings.HasPrefix(id, "aws_subnet") && hasAws {
 				name := getStringParam(p, "subnetName", n.Data.Label)
 				cidr := getStringParam(p, "cidrBlock", "10.0.1.0/24")
 				az := getStringParam(p, "availabilityZone", "us-east-1a")
 
+				vpcRef := "data.aws_vpc.default.id"
+				vpcNameForRt := ""
+
+				// Find incoming edge from VPC to subnet
+				for _, e := range edges {
+					if e.Target == id && strings.HasPrefix(e.Source, "aws_vpc") {
+						for _, vpcNode := range nodes {
+							if vpcNode.ID == e.Source {
+								vpcName := getStringParam(vpcNode.Data.Parameters, "vpcName", vpcNode.Data.Label)
+								vpcRef = fmt.Sprintf("aws_vpc.%s.id", vpcName)
+								vpcNameForRt = vpcName
+								break
+							}
+						}
+						break
+					}
+				}
+
+				// If no incoming edge but at least one VPC exists, use it
+				if vpcRef == "data.aws_vpc.default.id" {
+					for _, vpcNode := range nodes {
+						if strings.HasPrefix(vpcNode.ID, "aws_vpc") {
+							vpcName := getStringParam(vpcNode.Data.Parameters, "vpcName", vpcNode.Data.Label)
+							vpcRef = fmt.Sprintf("aws_vpc.%s.id", vpcName)
+							vpcNameForRt = vpcName
+							break
+						}
+					}
+				}
+
 				resources.WriteString(fmt.Sprintf(`
 resource "aws_subnet" "%s" {
-  vpc_id                  = data.aws_vpc.default.id
+  vpc_id                  = %s
   cidr_block              = "%s"
   availability_zone       = "%s"
   map_public_ip_on_launch = true
@@ -620,7 +746,16 @@ resource "aws_subnet" "%s" {
     Name = "%s"
   }
 }
-`, name, cidr, az, name))
+`, name, vpcRef, cidr, az, name))
+
+				if vpcNameForRt != "" {
+					resources.WriteString(fmt.Sprintf(`
+resource "aws_route_table_association" "%s_assoc" {
+  subnet_id      = aws_subnet.%s.id
+  route_table_id = aws_route_table.%s_rt.id
+}
+`, name, name, vpcNameForRt))
+				}
 			}
 		}
 
