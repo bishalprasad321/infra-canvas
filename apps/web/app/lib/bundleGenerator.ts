@@ -235,6 +235,11 @@ variable "gcp_ssh_pub_key" {
   tags = {
     Name = "${vpcName}-auto-subnet"
   }
+}
+
+resource "aws_route_table_association" "infracanvas_auto_subnet_assoc" {
+  subnet_id      = aws_subnet.infracanvas_auto_subnet.id
+  route_table_id = aws_route_table.${vpcName}_rt.id
 }`;
                 subnetLine = `\n  subnet_id     = aws_subnet.infracanvas_auto_subnet.id`;
               } else {
@@ -511,12 +516,22 @@ resource "azurerm_linux_virtual_machine" "vm" {
         }
       }
 
+      let hasSshRule = ingressRules.includes('from_port   = 22') || ingressRules.includes('from_port = 22') || ingressRules.includes('from_port   = 22\n') || ingressRules.includes('from_port = 22\n');
+      let sshRuleStr = '';
+      if (!hasSshRule) {
+        sshRuleStr = `\n  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }\n`;
+      }
+
       tfResourcesBlock += `resource "aws_security_group" "${name}" {
   name        = "${name}"
   description = "${desc}"${vpcLine}
 
-${ingressRules}
-
+${ingressRules}${sshRuleStr}
   egress {
     from_port   = 0
     to_port     = 0
@@ -598,15 +613,42 @@ resource "aws_s3_bucket_versioning" "${name}_versioning" {
   tags = {
     Name = "${name}"
   }
+}
+
+resource "aws_internet_gateway" "${name}_igw" {
+  vpc_id = aws_vpc.${name}.id
+  tags = {
+    Name = "${name}_igw"
+  }
+}
+
+resource "aws_route_table" "${name}_rt" {
+  vpc_id = aws_vpc.${name}.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.${name}_igw.id
+  }
+
+  tags = {
+    Name = "${name}_rt"
+  }
 }\n\n`;
     }
     else if (id.startsWith('aws_subnet') && hasAws) {
       const name = p.subnetName || 'app_subnet_1a';
       let vpc = '';
+      let vpcNameForRt = '';
       if (p.vpcId) {
         const vpcVal = p.vpcId.trim();
         if (vpcVal.startsWith('aws_vpc.') || vpcVal.startsWith('var.')) {
           vpc = vpcVal;
+          if (vpcVal.startsWith('aws_vpc.')) {
+            const parts = vpcVal.split('.');
+            if (parts.length > 1) {
+              vpcNameForRt = parts[1];
+            }
+          }
         } else {
           vpc = `"${vpcVal}"`;
         }
@@ -617,11 +659,17 @@ resource "aws_s3_bucket_versioning" "${name}_versioning" {
           const vpcNode = nodes.find(n => n.id === incomingVpcEdges[0].source);
           const vpcName = ((vpcNode?.data as any)?.parameters?.vpcName) || 'app_vpc';
           vpc = `aws_vpc.${vpcName}.id`;
+          vpcNameForRt = vpcName;
         } else {
           // Fallback to first VPC found or placeholder
           const firstVpc = tfNodes.find(n => n.id.startsWith('aws_vpc'));
-          const vpcName = ((firstVpc?.data as any)?.parameters?.vpcName) || 'app_vpc';
-          vpc = `aws_vpc.${vpcName}.id`;
+          if (firstVpc) {
+            const vpcName = ((firstVpc?.data as any)?.parameters?.vpcName) || 'app_vpc';
+            vpc = `aws_vpc.${vpcName}.id`;
+            vpcNameForRt = vpcName;
+          } else {
+            vpc = "data.aws_vpc.default.id";
+          }
         }
       }
       const cidr = p.cidrBlock || '10.0.1.0/24';
@@ -637,6 +685,13 @@ resource "aws_s3_bucket_versioning" "${name}_versioning" {
     Name = "${name}"
   }
 }\n\n`;
+
+      if (vpcNameForRt) {
+        tfResourcesBlock += `resource "aws_route_table_association" "${name}_assoc" {
+  subnet_id      = aws_subnet.${name}.id
+  route_table_id = aws_route_table.${vpcNameForRt}_rt.id
+}\n\n`;
+      }
     }
     else if ((node.data as any)?.isCustom && (node.data as any)?.tech === 'Terraform') {
       let customCode = (node.data as any).rawCode || '';
@@ -825,34 +880,36 @@ export function generateBundleFiles(nodes: Node[], edges: Edge[]): FileItem[] {
       (e.source.startsWith('aws_instance') || e.source.startsWith('google_compute_instance') || e.source.startsWith('gcp_target') || e.source.startsWith('azure_linux'))
     );
 
+    const sshUser = startParams.ansibleUser || 'ubuntu';
+
     if (incomingVmEdges.length > 0) {
       const vmNode = nodes.find(n => n.id === incomingVmEdges[0].source);
       const vmParams = (vmNode?.data as any)?.parameters || {};
       const vmName = vmParams.instanceName || 'web_server';
       if (vmNode?.id.startsWith('aws_instance')) {
-        hostLine = `web_server_1 ansible_host=aws_instance.${vmName}.public_ip ansible_user=ubuntu`;
+        hostLine = `web_server_1 ansible_host=aws_instance.${vmName}.public_ip ansible_user=${sshUser}`;
       } else if (vmNode?.id.startsWith('google_compute_instance') || vmNode?.id.startsWith('gcp_target')) {
-        hostLine = `web_server_1 ansible_host=google_compute_instance.${vmName}.public_ip ansible_user=ubuntu`;
+        hostLine = `web_server_1 ansible_host=google_compute_instance.${vmName}.public_ip ansible_user=${sshUser}`;
       } else {
-        hostLine = `web_server_1 ansible_host=azurerm_public_ip.pip.ip_address ansible_user=azureuser`;
+        const azureUser = startParams.ansibleUser || 'azureuser';
+        hostLine = `web_server_1 ansible_host=azurerm_public_ip.pip.ip_address ansible_user=${azureUser}`;
       }
     } else if (startParams.ansibleHost) {
       const hostVal = startParams.ansibleHost.trim();
-      const hostUser = startParams.ansibleUser || 'ubuntu';
-      hostLine = `web_server_1 ansible_host=${hostVal} ansible_user=${hostUser}`;
+      hostLine = `web_server_1 ansible_host=${hostVal} ansible_user=${sshUser}`;
     } else {
       // Fallback to first VM on canvas
       const fallbackVm = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
       if (fallbackVm) {
         const vmParams = (fallbackVm.data as any)?.parameters || {};
         const vmName = vmParams.instanceName || 'web_server';
-        hostLine = `web_server_1 ansible_host=aws_instance.${vmName}.public_ip ansible_user=ubuntu`;
+        hostLine = `web_server_1 ansible_host=aws_instance.${vmName}.public_ip ansible_user=${sshUser}`;
       } else {
         const fallbackGcp = nodes.find(n => n.id.startsWith('gcp_target'));
         if (fallbackGcp) {
-          hostLine = `web_server_1 ansible_host=google_compute_instance.web_server.public_ip ansible_user=ubuntu`;
+          hostLine = `web_server_1 ansible_host=google_compute_instance.web_server.public_ip ansible_user=${sshUser}`;
         } else {
-          hostLine = `web_server_1 ansible_host=127.0.0.1 ansible_user=ubuntu`;
+          hostLine = `web_server_1 ansible_host=127.0.0.1 ansible_user=${sshUser}`;
         }
       }
     }
