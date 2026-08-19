@@ -211,10 +211,10 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-[#131A30] border border-slate-800 rounded-2xl shadow-2xl w-[600px] max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+      <div className="bg-secondary border border-border rounded-2xl shadow-2xl w-[600px] max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/30">
+        <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-slate-900/30">
           <div>
             <h3 className="text-lg font-heading font-bold text-white">Project Settings</h3>
             <p className="text-xs text-slate-400">Configure visibility, collaborators, and dashboard settings.</p>
@@ -228,7 +228,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         </div>
 
         {/* Tab Selector */}
-        <div className="px-6 border-b border-slate-800 flex gap-4 bg-slate-900/10 text-sm">
+        <div className="px-6 border-b border-border flex gap-4 bg-slate-900/10 text-sm">
           <button
             onClick={() => setActiveTab('general')}
             className={`py-3 border-b-2 font-medium transition-all cursor-pointer ${
@@ -284,7 +284,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
                   onChange={(e) => setName(e.target.value)}
                   disabled={!isAdmin}
                   required
-                  className="w-full px-3 py-2 bg-slate-955/40 border border-slate-800 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-primary transition-all disabled:opacity-50"
+                  className="w-full px-3 py-2 bg-slate-955/40 border border-border rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-primary transition-all disabled:opacity-50"
                   placeholder="e.g. Production Cluster Setup"
                 />
               </div>
@@ -296,7 +296,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
                   onChange={(e) => setDescription(e.target.value)}
                   disabled={!isAdmin}
                   rows={3}
-                  className="w-full px-3 py-2 bg-slate-955/40 border border-slate-800 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-primary transition-all disabled:opacity-50 resize-none"
+                  className="w-full px-3 py-2 bg-slate-955/40 border border-border rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-primary transition-all disabled:opacity-50 resize-none"
                   placeholder="Configure AWS infrastructure deploying EC2 instances..."
                 />
               </div>
@@ -307,7 +307,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
                   value={visibility}
                   onChange={(e) => setVisibility(e.target.value)}
                   disabled={!isAdmin}
-                  className="w-full px-3 py-2 bg-slate-955/40 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-primary transition-all disabled:opacity-50 cursor-pointer"
+                  className="w-full px-3 py-2 bg-slate-955/40 border border-border rounded-lg text-white focus:outline-none focus:border-primary transition-all disabled:opacity-50 cursor-pointer"
                 >
                   <option value="PRIVATE">Private (Only selected members)</option>
                   <option value="TEAM">Team (Accessible to team organization members)</option>
@@ -316,7 +316,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
               </div>
 
               {isAdmin ? (
-                <div className="pt-4 flex justify-end gap-3 border-t border-slate-800">
+                <div className="pt-4 flex justify-end gap-3 border-t border-border">
                   <button
                     type="button"
                     onClick={onClose}
@@ -348,7 +348,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
               
               {/* Add Member form for Admin */}
               {isAdmin && (
-                <form onSubmit={handleInvite} className="bg-slate-900/30 p-4 border border-slate-800/80 rounded-xl space-y-3">
+                <form onSubmit={handleInvite} className="bg-slate-900/30 p-4 border border-border/80 rounded-xl space-y-3">
                   <h4 className="text-sm font-semibold text-white">Add Collaborator</h4>
                   <div className="flex gap-2">
                     <input
@@ -357,12 +357,12 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
                       onChange={(e) => setInviteEmail(e.target.value)}
                       required
                       placeholder="user@infracanvas.com"
-                      className="flex-1 px-3 py-1.5 bg-slate-955/50 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-primary transition-all text-sm"
+                      className="flex-1 px-3 py-1.5 bg-slate-955/50 border border-border rounded-lg text-white focus:outline-none focus:border-primary transition-all text-sm"
                     />
                     <select
                       value={inviteRole}
                       onChange={(e) => setInviteRole(e.target.value)}
-                      className="px-3 py-1.5 bg-slate-955/50 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-primary transition-all text-sm cursor-pointer"
+                      className="px-3 py-1.5 bg-slate-955/50 border border-border rounded-lg text-white focus:outline-none focus:border-primary transition-all text-sm cursor-pointer"
                     >
                       <option value="VIEWER">Viewer</option>
                       <option value="EDITOR">Editor</option>
@@ -388,7 +388,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
                 ) : members.length === 0 ? (
                   <div className="py-6 text-center text-sm text-slate-400">No collaborators added.</div>
                 ) : (
-                  <div className="divide-y divide-slate-800 border border-slate-800 rounded-xl overflow-hidden bg-slate-955/10">
+                  <div className="divide-y divide-slate-800 border border-border rounded-xl overflow-hidden bg-slate-955/10">
                     {members.map((m) => {
                       const initials = m.user_name ? m.user_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() : '?';
                       const isOwner = m.user_id === projectDetails?.created_by;
@@ -414,7 +414,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
                                 <select
                                   value={m.role}
                                   onChange={(e) => handleRoleChange(m.user_id, e.target.value)}
-                                  className="px-2 py-1 bg-slate-800 border border-slate-700 rounded text-xs text-white focus:outline-none cursor-pointer"
+                                  className="px-2 py-1 bg-slate-800 border border-border rounded text-xs text-white focus:outline-none cursor-pointer"
                                 >
                                   <option value="VIEWER">Viewer</option>
                                   <option value="EDITOR">Editor</option>
@@ -429,7 +429,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
                                 </button>
                               </>
                             ) : (
-                              <span className="px-2 py-1 bg-slate-800 text-slate-400 text-xs font-semibold rounded uppercase tracking-wider border border-slate-700">
+                              <span className="px-2 py-1 bg-slate-800 text-slate-400 text-xs font-semibold rounded uppercase tracking-wider border border-border">
                                 {m.role}
                               </span>
                             )}
@@ -471,7 +471,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
                   />
                 </div>
 
-                <div className="pt-2 flex justify-end border-t border-slate-800">
+                <div className="pt-2 flex justify-end border-t border-border">
                   <button
                     type="submit"
                     disabled={loading || deleteConfirm !== projectDetails?.name}

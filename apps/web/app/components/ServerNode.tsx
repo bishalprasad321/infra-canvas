@@ -38,7 +38,7 @@ export default function ServerNode({ id, data }: { id: string, data: { label: st
       />
 
       {/* NODE CONTENT - Themed card style */}
-      <div className="relative px-4 py-3 bg-slate-800/60 border border-slate-700/80 hover:border-slate-600 rounded-lg min-w-[180px] shadow-md hover:shadow-lg transition-all duration-200 backdrop-blur-sm group">
+      <div className="relative px-4 py-3 bg-slate-800/60 border border-border/80 hover:border-input rounded-lg min-w-[180px] shadow-md hover:shadow-lg transition-all duration-200 backdrop-blur-sm group">
         
         {/* Settings icon - apprars on group hover */}
         <button 
