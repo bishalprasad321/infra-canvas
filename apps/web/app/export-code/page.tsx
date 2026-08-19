@@ -158,7 +158,7 @@ const CodeViewer: React.FC<CodeViewerProps> = ({ selectedFile, isCopied, onCopy 
       </div>
 
       {/* Code View Area */}
-      <div className="flex-1 overflow-y-auto p-6 font-mono text-xs text-muted-foreground leading-relaxed bg-[#080B11]">
+      <div className="flex-1 overflow-y-auto p-6 font-mono text-xs text-muted-foreground leading-relaxed bg-background">
         <pre className="whitespace-pre-wrap break-all">
           <code>{highlightCode(selectedFile.content, selectedFile.language)}</code>
         </pre>

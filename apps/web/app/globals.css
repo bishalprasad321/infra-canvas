@@ -2,23 +2,23 @@
 @import "./animations.css";
 
 :root {
-  --background: #0B0F19;
+  --background: #07080B;
   --foreground: #FFFFFF;
-  --primary: #7C3AED;
+  --primary: #6366F1;
   --primary-foreground: #FFFFFF;
-  --secondary: #161F30;
+  --secondary: #12141C;
   --secondary-foreground: #FFFFFF;
-  --tertiary: #06B6D4;
-  --muted: #111827;
+  --tertiary: #F59E0B;
+  --muted: #0F1015;
   --muted-foreground: #94A3B8;
-  --accent: #161F30;
+  --accent: #12141C;
   --accent-foreground: #FFFFFF;
-  --card: #111827;
+  --card: #0D0F16;
   --card-foreground: #FFFFFF;
-  --destructive: #F59E0B;
-  --border: #1E293B;
-  --input: #374151;
-  --ring: #06B6D4;
+  --destructive: #EF4444;
+  --border: #1E2233;
+  --input: #242838;
+  --ring: #6366F1;
   --radius: 0.75rem;
 }
 

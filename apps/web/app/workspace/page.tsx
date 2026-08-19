@@ -174,11 +174,11 @@ const Header: React.FC<HeaderProps> = ({
             <div 
               key={`${c.id}-${idx}`} 
               className="h-8 w-8 rounded-full border-2 overflow-hidden relative flex items-center justify-center text-[10px] font-bold text-white uppercase select-none cursor-pointer"
-              style={{ backgroundColor: c.color, borderColor: '#0A0F1D' }}
+              style={{ backgroundColor: c.color, borderColor: '#07080B' }}
               title={`${c.name} (Collaborator)`}
             >
               {c.name.slice(0, 2)}
-              <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-emerald-500 border border-slate-900"></span>
+              <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-emerald-500 border border-border/80"></span>
             </div>
           ))}
           {collaborators.length === 0 && (
@@ -405,7 +405,7 @@ const NodeCard: React.FC<NodeCardProps> = ({ node, onAddNode, isReadOnly = false
       className={clsx(
         "group border border-border rounded-xl p-3 transition-all transform select-none",
         isReadOnly
-          ? "bg-muted/30 opacity-40 cursor-not-allowed border-slate-800"
+          ? "bg-muted/30 opacity-40 cursor-not-allowed border-border"
           : "bg-muted/60 hover:bg-muted cursor-grab hover:cursor-grabbing hover:shadow-lg hover:-translate-y-0.5",
         !isReadOnly && hoverBorderClass
       )}
@@ -902,7 +902,7 @@ const CodeBlock: React.FC<{ file: PreviewFile }> = ({ file }) => {
           {copied ? 'Copied!' : 'Copy'}
         </button>
       </div>
-      <div className="flex-1 bg-[#080B11] border border-border rounded-lg p-3 overflow-auto font-mono text-[11px] text-muted-foreground leading-relaxed">
+      <div className="flex-1 bg-background border border-border rounded-lg p-3 overflow-auto font-mono text-[11px] text-muted-foreground leading-relaxed">
         <pre className="whitespace-pre-wrap break-all"><code>{highlighted}</code></pre>
       </div>
     </div>
@@ -3488,13 +3488,13 @@ function WorkspaceCanvas({ deployStatus, peerCursors = {}, handleMouseMove }: Wo
         selectionOnDrag={activeTool === 'select'}
         deleteKeyCode={isReadOnly ? null : ['Backspace', 'Delete']}
       >
-        <Background color="#242F41" gap={24} size={1} />
+        <Background color="#232A3D" gap={24} size={1} />
         <Controls showInteractive={false} className="!bg-card !border-border !text-foreground" />
       </ReactFlow>
 
       {nodes.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 p-6 select-none animate-in fade-in zoom-in duration-300">
-          <div className="max-w-md w-full bg-slate-900/80 border border-slate-700/50 backdrop-blur-md rounded-2xl p-6 text-center shadow-2xl flex flex-col items-center gap-4">
+          <div className="max-w-md w-full bg-slate-900/80 border border-border backdrop-blur-md rounded-2xl p-6 text-center shadow-2xl flex flex-col items-center gap-4">
             <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-lg">
               <Icon icon="lucide:layers" className="text-white text-2xl animate-pulse" />
             </div>
@@ -4290,9 +4290,9 @@ function WorkspaceContent() {
 
           {/* Terminal Drawer */}
           {isTerminalOpen && (
-            <div className="absolute bottom-0 left-0 w-full h-72 bg-[#05080E]/95 border-t border-border z-30 flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
+            <div className="absolute bottom-0 left-0 w-full h-72 bg-background/95 border-t border-border z-30 flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
               {/* Terminal Header */}
-              <div className="h-10 px-4 border-b border-border bg-[#0C121D]/90 flex items-center justify-between select-none">
+              <div className="h-10 px-4 border-b border-border bg-card/90 flex items-center justify-between select-none">
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                     <Icon icon="lucide:terminal" className="text-primary text-xs" />
@@ -4381,7 +4381,7 @@ export default function WorkspacePage() {
     <div className="h-screen w-full bg-background text-foreground flex flex-col relative font-sans overflow-hidden">
       <ReactFlowProvider>
         <Suspense fallback={
-          <div className="min-h-screen w-full bg-[#0A0F1D] flex items-center justify-center text-slate-400">
+          <div className="min-h-screen w-full bg-background flex items-center justify-center text-slate-400">
             <Icon icon="lucide:loader-2" className="animate-spin text-2xl text-primary" />
           </div>
         }>

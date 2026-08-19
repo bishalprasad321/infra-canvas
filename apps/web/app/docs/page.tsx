@@ -24,21 +24,21 @@ export default function DocsPage() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col font-sans overflow-x-hidden selection:bg-cyan-500/35 selection:text-white">
+    <div className="min-h-screen w-full bg-background text-slate-100 flex flex-col font-sans overflow-x-hidden selection:bg-primary/35 selection:text-white">
       {/* BACKGROUND GRADIENTS */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950"></div>
-        <div className="absolute left-1/4 top-10 h-72 w-72 rounded-full bg-cyan-500/10 blur-3xl"></div>
+        <div className="absolute left-1/4 top-10 h-72 w-72 rounded-full bg-primary/10 blur-3xl"></div>
         <div className="absolute bottom-10 right-1/4 h-96 w-96 rounded-full bg-primary/5 blur-3xl"></div>
       </div>
 
       {/* HEADER */}
-      <header className="sticky top-0 z-20 border-b border-slate-800 bg-slate-950/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-20 border-b border-border bg-slate-950/80 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 lg:px-10">
           <div className="flex items-center gap-4">
             <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-800 bg-slate-900 shadow-md">
-                <div className="h-4 w-4 rounded-md bg-gradient-to-br from-primary to-cyan-500"></div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-slate-900 shadow-md">
+                <div className="h-4 w-4 rounded-md bg-gradient-to-br from-primary to-amber-500"></div>
               </div>
               <div>
                 <p className="text-sm font-semibold tracking-wide text-white">OrchestrateOS</p>
@@ -59,7 +59,7 @@ export default function DocsPage() {
                 <ProfileMenu variant="compact" />
               </>
             ) : (
-              <Link href="/login" className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md hover:bg-slate-800 transition">
+              <Link href="/login" className="rounded-lg border border-border bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md hover:bg-slate-800 transition">
                 Sign In
               </Link>
             )}
@@ -70,7 +70,7 @@ export default function DocsPage() {
       {/* MAIN LAYOUT */}
       <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 px-6 py-8 lg:px-10">
         {/* SIDEBAR NAVIGATION */}
-        <aside className="hidden w-64 shrink-0 lg:block border-r border-slate-800/80 pr-8">
+        <aside className="hidden w-64 shrink-0 lg:block border-r border-border/80 pr-8">
           <nav className="sticky top-28 flex flex-col gap-6">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Getting Started</p>
@@ -78,7 +78,7 @@ export default function DocsPage() {
                 <li>
                   <button
                     onClick={() => setActiveSection('intro')}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'intro' ? 'bg-cyan-500/10 text-cyan-400 font-medium' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100'}`}
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'intro' ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
                   >
                     <Icon icon="lucide:book-open" className="text-base" />
                     Introduction
@@ -87,7 +87,7 @@ export default function DocsPage() {
                 <li>
                   <button
                     onClick={() => setActiveSection('install')}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'install' ? 'bg-cyan-500/10 text-cyan-400 font-medium' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100'}`}
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'install' ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
                   >
                     <Icon icon="lucide:download" className="text-base" />
                     Installation Guide
@@ -102,7 +102,7 @@ export default function DocsPage() {
                 <li>
                   <button
                     onClick={() => setActiveSection('auth')}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'auth' ? 'bg-cyan-500/10 text-cyan-400 font-medium' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100'}`}
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'auth' ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
                   >
                     <Icon icon="lucide:key-round" className="text-base" />
                     Authentication
@@ -111,7 +111,7 @@ export default function DocsPage() {
                 <li>
                   <button
                     onClick={() => setActiveSection('projects')}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'projects' ? 'bg-cyan-500/10 text-cyan-400 font-medium' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100'}`}
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'projects' ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
                   >
                     <Icon icon="lucide:folder-git-2" className="text-base" />
                     Projects CRUD
@@ -120,7 +120,7 @@ export default function DocsPage() {
                 <li>
                   <button
                     onClick={() => setActiveSection('import')}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'import' ? 'bg-cyan-500/10 text-cyan-400 font-medium' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100'}`}
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'import' ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
                   >
                     <Icon icon="lucide:upload-cloud" className="text-base" />
                     Importing Code
@@ -129,7 +129,7 @@ export default function DocsPage() {
                 <li>
                   <button
                     onClick={() => setActiveSection('deploy')}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'deploy' ? 'bg-cyan-500/10 text-cyan-400 font-medium' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100'}`}
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'deploy' ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
                   >
                     <Icon icon="lucide:play-circle" className="text-base" />
                     Deploy & Runs
@@ -150,19 +150,19 @@ export default function DocsPage() {
                 The OrchestrateOS Command-Line Interface (`infracanvas`) is a powerful tool designed to integrate visual configuration layouts directly with native infrastructure-as-code manifests. With the CLI, platform teams can synchronize local directories, query workspace settings, and stream deployment pipelines from their local terminals or CI/CD pipelines.
               </p>
 
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-md">
+              <div className="rounded-2xl border border-border bg-slate-900/60 p-6 backdrop-blur-md">
                 <h3 className="text-base font-semibold text-white">Main Capabilities</h3>
                 <ul className="mt-4 space-y-3 text-sm text-slate-400">
                   <li className="flex items-start gap-3">
-                    <Icon icon="lucide:check-circle-2" className="text-cyan-500 mt-0.5 shrink-0 text-base" />
+                    <Icon icon="lucide:check-circle-2" className="text-primary mt-0.5 shrink-0 text-base" />
                     <span><strong>Code Reverse-Parsing</strong>: Recursively parse Terraform HCL, Ansible YAML, and Kubernetes manifests into canvas visual blocks.</span>
                   </li>
                   <li className="flex items-start gap-3">
-                    <Icon icon="lucide:check-circle-2" className="text-cyan-500 mt-0.5 shrink-0 text-base" />
+                    <Icon icon="lucide:check-circle-2" className="text-primary mt-0.5 shrink-0 text-base" />
                     <span><strong>Live WebSocket Sync</strong>: Sync changes locally and see the browser visual canvas update in real-time.</span>
                   </li>
                   <li className="flex items-start gap-3">
-                    <Icon icon="lucide:check-circle-2" className="text-cyan-500 mt-0.5 shrink-0 text-base" />
+                    <Icon icon="lucide:check-circle-2" className="text-primary mt-0.5 shrink-0 text-base" />
                     <span><strong>Deployment Logs Stream</strong>: Pipe pipeline output straight to terminal stdout.</span>
                   </li>
                 </ul>
@@ -171,7 +171,7 @@ export default function DocsPage() {
               <div className="pt-4">
                 <button
                   onClick={() => setActiveSection('install')}
-                  className="rounded-xl bg-cyan-500 hover:bg-cyan-400 px-6 py-3.5 text-sm font-semibold text-slate-950 transition flex items-center gap-2"
+                  className="rounded-xl bg-primary hover:bg-primary/90 px-6 py-3.5 text-sm font-semibold text-slate-950 transition flex items-center gap-2"
                 >
                   Proceed to Installation
                   <Icon icon="lucide:arrow-right" />
@@ -189,9 +189,9 @@ export default function DocsPage() {
               </p>
 
               {/* DOWNLOAD GATE */}
-              <div className="rounded-2xl border border-cyan-500/30 bg-cyan-950/10 p-6 backdrop-blur-md">
+              <div className="rounded-2xl border border-primary/30 bg-primary/10 p-6 backdrop-blur-md">
                 <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     <Icon icon="lucide:download-cloud" className="text-2xl" />
                   </div>
                   <div>
@@ -205,7 +205,7 @@ export default function DocsPage() {
                     <a
                       href={downloadLinks.windows}
                       download
-                      className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900 px-4 py-3.5 text-sm font-medium hover:bg-slate-800 hover:border-slate-700 transition"
+                      className="flex items-center justify-between rounded-xl border border-border bg-slate-900 px-4 py-3.5 text-sm font-medium hover:bg-slate-800 hover:border-border transition"
                     >
                       <span className="flex items-center gap-2">
                         <Icon icon="logos:microsoft-windows" className="text-base" />
@@ -216,7 +216,7 @@ export default function DocsPage() {
                     <a
                       href={downloadLinks.macosSilicon}
                       download
-                      className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900 px-4 py-3.5 text-sm font-medium hover:bg-slate-800 hover:border-slate-700 transition"
+                      className="flex items-center justify-between rounded-xl border border-border bg-slate-900 px-4 py-3.5 text-sm font-medium hover:bg-slate-800 hover:border-border transition"
                     >
                       <span className="flex items-center gap-2">
                         <Icon icon="logos:apple" className="text-base text-white" />
@@ -227,7 +227,7 @@ export default function DocsPage() {
                     <a
                       href={downloadLinks.macosIntel}
                       download
-                      className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900 px-4 py-3.5 text-sm font-medium hover:bg-slate-800 hover:border-slate-700 transition"
+                      className="flex items-center justify-between rounded-xl border border-border bg-slate-900 px-4 py-3.5 text-sm font-medium hover:bg-slate-800 hover:border-border transition"
                     >
                       <span className="flex items-center gap-2">
                         <Icon icon="logos:apple" className="text-base" />
@@ -238,7 +238,7 @@ export default function DocsPage() {
                     <a
                       href={downloadLinks.linux}
                       download
-                      className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900 px-4 py-3.5 text-sm font-medium hover:bg-slate-800 hover:border-slate-700 transition"
+                      className="flex items-center justify-between rounded-xl border border-border bg-slate-900 px-4 py-3.5 text-sm font-medium hover:bg-slate-800 hover:border-border transition"
                     >
                       <span className="flex items-center gap-2">
                         <Icon icon="logos:linux-tux" className="text-base" />
@@ -248,12 +248,12 @@ export default function DocsPage() {
                     </a>
                   </div>
                 ) : (
-                  <div className="mt-6 flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-800 bg-slate-950 p-6 text-center">
+                  <div className="mt-6 flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-slate-950 p-6 text-center">
                     <Icon icon="lucide:lock" className="text-slate-600 text-3xl mb-2" />
                     <p className="text-sm text-slate-400 mb-4">You must be logged in to download compiled binaries.</p>
                     <Link
                       href="/login"
-                      className="rounded-lg bg-cyan-500 hover:bg-cyan-400 px-5 py-2.5 text-xs font-semibold text-slate-950 transition"
+                      className="rounded-lg bg-primary hover:bg-primary/90 px-5 py-2.5 text-xs font-semibold text-slate-950 transition"
                     >
                       Sign In to Download
                     </Link>
@@ -263,22 +263,22 @@ export default function DocsPage() {
 
               {/* INSTALL TABS */}
               <div className="mt-8">
-                <div className="flex border-b border-slate-800">
+                <div className="flex border-b border-border">
                   <button
                     onClick={() => setActiveTab('windows')}
-                    className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${activeTab === 'windows' ? 'border-cyan-500 text-white' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                    className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${activeTab === 'windows' ? 'border-primary text-white' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
                   >
                     Windows
                   </button>
                   <button
                     onClick={() => setActiveTab('macos')}
-                    className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${activeTab === 'macos' ? 'border-cyan-500 text-white' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                    className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${activeTab === 'macos' ? 'border-primary text-white' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
                   >
                     macOS
                   </button>
                   <button
                     onClick={() => setActiveTab('linux')}
-                    className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${activeTab === 'linux' ? 'border-cyan-500 text-white' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                    className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${activeTab === 'linux' ? 'border-primary text-white' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
                   >
                     Linux
                   </button>
@@ -296,13 +296,13 @@ export default function DocsPage() {
                       <p className="text-sm text-slate-400">
                         3. Add `C:\tools\infracanvas` to your User **Environment Variables PATH**:
                       </p>
-                      <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                         [System.Environment]::SetEnvironmentVariable("PATH", $env:Path + ";C:\tools\infracanvas", "User")
                       </pre>
                       <p className="text-sm text-slate-400">
                         4. Restart your terminal and verify the installation:
                       </p>
-                      <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
+                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                         infracanvas --help
                       </pre>
                     </div>
@@ -316,19 +316,19 @@ export default function DocsPage() {
                       <p className="text-sm text-slate-400">
                         2. Move the binary into your local executable search PATH:
                       </p>
-                      <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                         sudo mv ~/Downloads/infracanvas-darwin-arm64 /usr/local/bin/infracanvas
                       </pre>
                       <p className="text-sm text-slate-400">
                         3. Give the binary execute permissions:
                       </p>
-                      <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                         chmod +x /usr/local/bin/infracanvas
                       </pre>
                       <p className="text-sm text-slate-400">
                         4. Run command check to verify:
                       </p>
-                      <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
+                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                         infracanvas --help
                       </pre>
                     </div>
@@ -342,19 +342,19 @@ export default function DocsPage() {
                       <p className="text-sm text-slate-400">
                         2. Move the binary into `/usr/local/bin`:
                       </p>
-                      <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                         sudo mv ~/Downloads/infracanvas-linux-amd64 /usr/local/bin/infracanvas
                       </pre>
                       <p className="text-sm text-slate-400">
                         3. Grant execution rights:
                       </p>
-                      <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                         chmod +x /usr/local/bin/infracanvas
                       </pre>
                       <p className="text-sm text-slate-400">
                         4. Verify installation:
                       </p>
-                      <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
+                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                         infracanvas --help
                       </pre>
                     </div>
@@ -377,7 +377,7 @@ export default function DocsPage() {
                 <p className="text-sm text-slate-400">
                   Run the login sub-command. The program will prompt for your account email and password securely, then query and write your session token:
                 </p>
-                <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                   infracanvas login
                 </pre>
               </div>
@@ -387,7 +387,7 @@ export default function DocsPage() {
                 <p className="text-sm text-slate-400">
                   To clear your locally cached credentials and end the session:
                 </p>
-                <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                   infracanvas logout
                 </pre>
               </div>
@@ -404,7 +404,7 @@ export default function DocsPage() {
 
               <div className="space-y-3">
                 <h3 className="text-base font-semibold text-white">List Projects</h3>
-                <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                   infracanvas projects list
                 </pre>
               </div>
@@ -412,14 +412,14 @@ export default function DocsPage() {
               <div className="space-y-3 pt-4">
                 <h3 className="text-base font-semibold text-white">Create a Project</h3>
                 <p className="text-sm text-slate-400">Initialize a new project workspace by name:</p>
-                <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                   infracanvas projects create --name "My VPC Stack" --visibility PRIVATE
                 </pre>
               </div>
 
               <div className="space-y-3 pt-4">
                 <h3 className="text-base font-semibold text-white">Delete a Project</h3>
-                <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                   infracanvas projects delete --id "my-vpc-stack-id" --force
                 </pre>
               </div>
@@ -437,7 +437,7 @@ export default function DocsPage() {
               <div className="space-y-3">
                 <h3 className="text-base font-semibold text-white">Import a Single File</h3>
                 <p className="text-sm text-slate-400">Upload and parse a single Terraform or Kubernetes configuration:</p>
-                <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                   infracanvas import --project "VPC-Stack" --file "./terraform/main.tf"
                 </pre>
               </div>
@@ -445,7 +445,7 @@ export default function DocsPage() {
               <div className="space-y-3 pt-4">
                 <h3 className="text-base font-semibold text-white">Import a Directory</h3>
                 <p className="text-sm text-slate-400">Recursively scan and import all configurations from a target directory:</p>
-                <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                   infracanvas import --project "VPC-Stack" --dir "./deployments/"
                 </pre>
               </div>
@@ -462,7 +462,7 @@ export default function DocsPage() {
 
               <div className="space-y-3">
                 <h3 className="text-base font-semibold text-white">Execute Deployment Pipeline</h3>
-                <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                   infracanvas deploy --project "VPC-Stack"
                 </pre>
                 <p className="text-sm text-slate-400 mt-2">
@@ -473,7 +473,7 @@ export default function DocsPage() {
               <div className="space-y-3 pt-4">
                 <h3 className="text-base font-semibold text-white">Deploy with Auto-Destroy</h3>
                 <p className="text-sm text-slate-400">To spin up testing systems and tear them down immediately upon execution completion:</p>
-                <pre className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs font-mono overflow-x-auto text-cyan-400">
+                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
                   infracanvas deploy --project "VPC-Stack" --auto-destroy
                 </pre>
               </div>
@@ -483,7 +483,7 @@ export default function DocsPage() {
       </div>
 
       {/* FOOTER */}
-      <footer className="border-t border-slate-800/80 bg-slate-950/80 py-8 relative z-10">
+      <footer className="border-t border-border/80 bg-slate-950/80 py-8 relative z-10">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-6 text-sm text-slate-500 lg:flex-row lg:items-center lg:justify-between lg:px-10">
           <p>© 2026 OrchestrateOS. All rights reserved.</p>
           <div className="flex gap-5">

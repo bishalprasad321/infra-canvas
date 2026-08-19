@@ -412,9 +412,9 @@ spec:
             </div>
 
             {/* Right side editor */}
-            <div className="flex-1 flex flex-col bg-[#05080E]">
+            <div className="flex-1 flex flex-col bg-background">
               {/* Tab options */}
-              <div className="h-10 px-4 border-b border-border bg-[#0C121D] flex items-center justify-between text-xs select-none">
+              <div className="h-10 px-4 border-b border-border bg-card flex items-center justify-between text-xs select-none">
                 <span className="font-mono text-slate-400 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
                   <Icon icon="lucide:code-2" className="text-primary text-sm" />
                   {tech === 'Terraform' ? 'custom.tf' : 'custom_tasks.yml'}
