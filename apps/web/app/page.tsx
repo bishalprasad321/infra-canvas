@@ -226,7 +226,7 @@ function TypedCodeLine({ reduceMotion }: { reduceMotion: boolean | null }) {
 function AnimatedHeadline({ reduceMotion }: { reduceMotion: boolean | null }) {
   return (
     <h1
-      className={`${heroDisplayFont.className} text-4xl font-semibold tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl leading-[1.08]`}
+      className="text-4xl font-semibold tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl leading-[1.08]"
       style={{ perspective: 800 }}
     >
       <WordLine words={LINE_ONE} startDelay={0} reduceMotion={reduceMotion} />
@@ -1128,7 +1128,7 @@ function Footer() {
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen w-full bg-[#07080B] flex flex-col relative text-slate-100 font-sans overflow-x-hidden">
+    <div className={`min-h-screen w-full bg-background flex flex-col relative text-slate-100 overflow-x-hidden ${heroDisplayFont.className}`}>
       {/* Subtle background dot pattern */}
       <div className="pointer-events-none fixed inset-0 bg-dot-pattern opacity-30 z-0" />
 

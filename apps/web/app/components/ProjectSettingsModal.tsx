@@ -395,7 +395,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
                       return (
                         <div key={m.user_id} className="p-3.5 flex items-center justify-between text-sm">
                           <div className="flex items-center gap-3">
-                            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/30 to-blue-500/30 border border-primary/20 flex items-center justify-center font-heading font-bold text-primary text-xs shrink-0">
+                            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/30 to-amber-500/30 border border-primary/20 flex items-center justify-center font-heading font-bold text-primary text-xs shrink-0">
                               {initials}
                             </div>
                             <div>

@@ -21,8 +21,8 @@ interface DirectoryTreeProps {
 
 const FOLDER_META: Record<string, { label: string; color: string; icon: string }> = {
   terraform: { label: 'terraform/', color: 'text-primary', icon: 'lucide:folder' },
-  ansible:   { label: 'ansible/',   color: 'text-[#00A4FF]', icon: 'lucide:folder' },
-  k8s:       { label: 'k8s/',       color: 'text-[#326CE5]', icon: 'lucide:folder' },
+  ansible:   { label: 'ansible/',   color: 'text-[#8B5CF6]', icon: 'lucide:folder' },
+  k8s:       { label: 'k8s/',       color: 'text-[#0EA5E9]', icon: 'lucide:folder' },
 };
 
 const DirectoryTree: React.FC<DirectoryTreeProps> = ({ selectedFile, onFileSelect, files }) => {
@@ -306,10 +306,13 @@ function ExportCodeContent() {
       <header className="h-16 border-b border-border bg-card/60 px-6 flex items-center justify-between z-10 shrink-0 select-none">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-md">
-              <Icon icon="lucide:layers" className="text-primary-foreground text-lg" />
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-amber-600 flex items-center justify-center shadow-md shadow-indigo-500/20">
+              <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM9 14H5a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1v-4a1 1 0 00-1-1z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14 15h5M14 19h5" />
+              </svg>
             </div>
-            <span className="font-heading font-bold text-lg tracking-tight">InfraFlow</span>
+            <span className="font-heading font-bold text-lg tracking-tight text-white">InfraCanvas</span>
           </div>
           <div className="h-4 w-[1px] bg-border"></div>
           <div className="flex items-center gap-2 text-sm">

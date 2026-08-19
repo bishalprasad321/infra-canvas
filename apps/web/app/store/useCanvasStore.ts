@@ -126,7 +126,7 @@ export const getInitialEdges = (): Edge[] => [
     id: 'e_sg_instance',
     source: 'aws_security_group.web_sg',
     target: 'aws_instance.web_server',
-    style: { stroke: '#844FBA', strokeWidth: 2.5 },
+    style: { stroke: '#6366F1', strokeWidth: 2.5 },
     animated: false
   },
   {
@@ -141,7 +141,7 @@ export const getInitialEdges = (): Edge[] => [
     id: 'e_nginx_assets',
     source: 'install_nginx.yml',
     target: 'deploy_site_assets',
-    style: { stroke: '#00A4FF', strokeWidth: 2.5 },
+    style: { stroke: '#8B5CF6', strokeWidth: 2.5 },
     animated: false
   }
 ];
@@ -220,7 +220,7 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
         const sourceNode = get().nodes.find(n => n.id === connection.source);
         const targetNode = get().nodes.find(n => n.id === connection.target);
         
-        let stroke = '#00A4FF'; // Default Ansible color
+        let stroke = '#8B5CF6'; // Default Ansible color
         let className = '';
         let animated = false;
 
@@ -229,11 +229,11 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
           const targetTech = targetNode.data.tech;
 
           if (sourceTech === 'Source') {
-            stroke = '#D97706';
+            stroke = '#F59E0B';
           } else if (sourceTech === 'Target') {
-            stroke = '#0D9488';
+            stroke = '#14B8A6';
           } else if (sourceTech === 'Terraform' && targetTech === 'Terraform') {
-            stroke = '#844FBA';
+            stroke = '#6366F1';
           } else if (sourceTech === 'Terraform' && targetTech === 'Ansible') {
             stroke = 'url(#grad-tf-ansible)';
             className = 'animate-dash-flow';
@@ -241,7 +241,7 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
           } else if (sourceTech === 'Ansible' && targetTech === 'Kubernetes') {
             stroke = 'url(#grad-ansible-k8s)';
           } else if (sourceTech === 'Kubernetes' && targetTech === 'Kubernetes') {
-            stroke = '#326CE5';
+            stroke = '#0EA5E9';
           }
         }
 
