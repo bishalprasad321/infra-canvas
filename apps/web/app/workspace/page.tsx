@@ -25,6 +25,9 @@ import ReactFlowCanvasNode from '../components/ReactFlowCanvasNode';
 import ProfileMenu from '../components/ProfileMenu';
 import Tooltip from '../components/Tooltip';
 import CustomNodeModal from '../components/CustomNodeModal';
+import { ProjectSettingsModal } from '../components/ProjectSettingsModal';
+import { CredentialManagerTab } from '../components/CredentialManagerModal';
+import { InputWithVariablePicker } from '../components/VariablePicker';
 import { generateAnsibleYAML } from '../lib/exportYaml';
 import { downloadZipBundle, downloadTerraformZip, generateBundleFiles, generateTerraformFiles } from '../lib/bundleGenerator';
 import { DEFAULT_INSTANCE_PARAMS, DEFAULT_SG_PARAMS } from '../lib/terraformDefaults';
@@ -58,6 +61,7 @@ interface LibraryNode {
   rawCode?: string;
   codeType?: 'tf' | 'yml' | 'yaml';
   parameters?: Record<string, any>;
+  outputs?: string[];
 }
 
 // --- HELPER SUB-COMPONENTS ---
@@ -347,480 +351,7 @@ const Header: React.FC<HeaderProps> = ({
   );
 };
 
-// ProjectSettingsModal Component
-interface ProjectSettingsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  projectDetails: any;
-  onUpdateProjectDetails: (updated: any) => void;
-  projectId: string;
-}
 
-const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
-  isOpen,
-  onClose,
-  projectDetails,
-  onUpdateProjectDetails,
-  projectId
-}) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'members' | 'danger'>('general');
-  const [name, setName] = useState(projectDetails?.name || '');
-  const [description, setDescription] = useState(projectDetails?.description || '');
-  const [visibility, setVisibility] = useState(projectDetails?.visibility || 'PRIVATE');
-  const [members, setMembers] = useState<any[]>([]);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('VIEWER');
-  const [loading, setLoading] = useState(false);
-  const [membersLoading, setMembersLoading] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState('');
-  const router = useRouter();
-
-  const { user, token } = useAuthStore();
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-  const activeToken = token;
-  const isAdmin = projectDetails?.user_role === 'ADMIN';
-
-  // Sync state if project details loaded after mount
-  useEffect(() => {
-    if (projectDetails) {
-      setName(projectDetails.name || '');
-      setDescription(projectDetails.description || '');
-      setVisibility(projectDetails.visibility || 'PRIVATE');
-    }
-  }, [projectDetails]);
-
-  // Fetch project members on load or tab switch to members
-  useEffect(() => {
-    if (!isOpen || activeTab !== 'members' || !activeToken) return;
-
-    const fetchMembers = async () => {
-      setMembersLoading(true);
-      try {
-        const res = await fetch(`${API_URL}/api/projects/${projectId}/members`, {
-          headers: { 'Authorization': `Bearer ${activeToken}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setMembers(data);
-        }
-      } catch (err) {
-        console.error("Failed to fetch members", err);
-      } finally {
-        setMembersLoading(false);
-      }
-    };
-
-    fetchMembers();
-  }, [isOpen, activeTab, projectId, API_URL, activeToken]);
-
-  if (!isOpen) return null;
-
-  const handleGeneralSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeToken) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/projects/${projectId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${activeToken}`
-        },
-        body: JSON.stringify({ name, description, visibility })
-      });
-
-      if (res.ok) {
-        onUpdateProjectDetails({ ...projectDetails, name, description, visibility });
-        onClose();
-      } else {
-        const errText = await res.text();
-        alert("Failed to update project: " + errText);
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Error saving project settings");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inviteEmail || !activeToken) return;
-
-    try {
-      const res = await fetch(`${API_URL}/api/projects/${projectId}/members`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${activeToken}`
-        },
-        body: JSON.stringify({ email: inviteEmail, role: inviteRole })
-      });
-
-      if (res.ok) {
-        setInviteEmail('');
-        // Re-fetch members list
-        const mRes = await fetch(`${API_URL}/api/projects/${projectId}/members`, {
-          headers: { 'Authorization': `Bearer ${activeToken}` }
-        });
-        if (mRes.ok) {
-          const data = await mRes.json();
-          setMembers(data);
-        }
-      } else {
-        const errText = await res.text();
-        alert("Failed to invite collaborator: " + errText);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleRoleChange = async (targetUserId: string, newRole: string) => {
-    if (!activeToken) return;
-
-    try {
-      const res = await fetch(`${API_URL}/api/projects/${projectId}/members/${targetUserId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${activeToken}`
-        },
-        body: JSON.stringify({ role: newRole })
-      });
-
-      if (res.ok) {
-        setMembers(prev => prev.map(m => m.user_id === targetUserId ? { ...m, role: newRole } : m));
-      } else {
-        const errText = await res.text();
-        alert("Failed to update member role: " + errText);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleRemoveMember = async (targetUserId: string) => {
-    if (!activeToken || !confirm("Are you sure you want to remove this collaborator?")) return;
-
-    try {
-      const res = await fetch(`${API_URL}/api/projects/${projectId}/members/${targetUserId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${activeToken}`
-        }
-      });
-
-      if (res.ok) {
-        setMembers(prev => prev.filter(m => m.user_id !== targetUserId));
-      } else {
-        const errText = await res.text();
-        alert("Failed to remove member: " + errText);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDeleteProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (deleteConfirm !== projectDetails?.name) {
-      alert("Please type the project name exactly to confirm deletion.");
-      return;
-    }
-    if (!activeToken) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/projects/${projectId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${activeToken}` }
-      });
-      if (res.ok) {
-        onClose();
-        router.push('/dashboard');
-      } else {
-        const errText = await res.text();
-        alert("Failed to delete project: " + errText);
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Error deleting project");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-xl shadow-2xl w-[600px] max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
-        
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/30">
-          <div>
-            <h3 className="text-lg font-heading font-bold text-foreground">Project Settings</h3>
-            <p className="text-xs text-muted-foreground">Configure visibility, collaborators, and dashboard settings.</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-all cursor-pointer"
-          >
-            <Icon icon="lucide:x" className="text-lg" />
-          </button>
-        </div>
-
-        {/* Tab Selector */}
-        <div className="px-6 border-b border-border flex gap-4 bg-muted/10 text-sm">
-          <button
-            onClick={() => setActiveTab('general')}
-            className={`py-3 border-b-2 font-medium transition-all cursor-pointer ${
-              activeTab === 'general' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            General Settings
-          </button>
-          <button
-            onClick={() => setActiveTab('members')}
-            className={`py-3 border-b-2 font-medium transition-all cursor-pointer ${
-              activeTab === 'members' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Collaborators
-          </button>
-          {isAdmin && (
-            <button
-              onClick={() => setActiveTab('danger')}
-              className={`py-3 border-b-2 font-medium transition-all cursor-pointer ${
-                activeTab === 'danger' ? 'border-rose-500 text-rose-500' : 'border-transparent text-muted-foreground hover:text-rose-400'
-              }`}
-            >
-              Danger Zone
-            </button>
-          )}
-        </div>
-
-        {/* Body content */}
-        <div className="flex-grow overflow-y-auto p-6 scrollbar-thin">
-          
-          {/* GENERAL SETTINGS */}
-          {activeTab === 'general' && (
-            <form onSubmit={handleGeneralSave} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Project Name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  disabled={!isAdmin}
-                  required
-                  className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-foreground focus:outline-none focus:border-primary transition-all disabled:opacity-50"
-                  placeholder="e.g. Production Cluster Setup"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Description</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  disabled={!isAdmin}
-                  rows={3}
-                  className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-foreground focus:outline-none focus:border-primary transition-all disabled:opacity-50 resize-none"
-                  placeholder="Configure AWS infrastructure deploying EC2 instances..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Project Visibility</label>
-                <select
-                  value={visibility}
-                  onChange={(e) => setVisibility(e.target.value)}
-                  disabled={!isAdmin}
-                  className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-foreground focus:outline-none focus:border-primary transition-all disabled:opacity-50"
-                >
-                  <option value="PRIVATE">Private (Only selected members)</option>
-                  <option value="TEAM">Team (Accessible to team organization members)</option>
-                  <option value="PUBLIC">Public Catalog (Discoverable by everyone)</option>
-                </select>
-              </div>
-
-              {isAdmin ? (
-                <div className="pt-4 flex justify-end gap-3 border-t border-border">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="px-4 py-2 text-sm bg-muted text-foreground hover:bg-muted/80 rounded-lg transition-all cursor-pointer font-semibold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="px-4 py-2 text-sm bg-primary text-primary-foreground hover:bg-primary/95 rounded-lg transition-all cursor-pointer font-semibold flex items-center gap-1.5 disabled:opacity-55"
-                  >
-                    {loading && <Icon icon="lucide:loader-2" className="animate-spin text-sm" />}
-                    Save Changes
-                  </button>
-                </div>
-              ) : (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-lg text-xs font-medium flex items-center gap-2">
-                  <Icon icon="lucide:lock" className="text-base shrink-0" />
-                  Visibility and name modifications are limited to project administrators.
-                </div>
-              )}
-            </form>
-          )}
-
-          {/* MEMBERS LIST */}
-          {activeTab === 'members' && (
-            <div className="space-y-6">
-              
-              {/* Add Member form for Admin */}
-              {isAdmin && (
-                <form onSubmit={handleInvite} className="bg-muted/30 p-4 border border-border rounded-xl space-y-3">
-                  <h4 className="text-sm font-semibold text-foreground">Add Collaborator</h4>
-                  <div className="flex gap-2">
-                    <input
-                      type="email"
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                      required
-                      placeholder="user@infracanvas.com"
-                      className="flex-1 px-3 py-1.5 bg-muted/60 border border-border rounded-lg text-foreground focus:outline-none focus:border-primary transition-all text-sm"
-                    />
-                    <select
-                      value={inviteRole}
-                      onChange={(e) => setInviteRole(e.target.value)}
-                      className="px-3 py-1.5 bg-muted/60 border border-border rounded-lg text-foreground focus:outline-none focus:border-primary transition-all text-sm"
-                    >
-                      <option value="VIEWER">Viewer</option>
-                      <option value="EDITOR">Editor</option>
-                      <option value="ADMIN">Admin</option>
-                    </select>
-                    <button
-                      type="submit"
-                      className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary/95 rounded-lg transition-all cursor-pointer text-sm font-semibold flex items-center gap-1"
-                    >
-                      <Icon icon="lucide:plus" className="text-sm" /> Add
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {/* Members listing */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Workspace Members</h4>
-                {membersLoading ? (
-                  <div className="py-6 flex justify-center text-muted-foreground">
-                    <Icon icon="lucide:loader-2" className="animate-spin text-xl text-primary" />
-                  </div>
-                ) : members.length === 0 ? (
-                  <div className="py-6 text-center text-sm text-muted-foreground">No collaborators added.</div>
-                ) : (
-                  <div className="divide-y divide-border border border-border rounded-xl overflow-hidden bg-muted/10">
-                    {members.map((m) => {
-                      const initials = m.user_name ? m.user_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() : '?';
-                      const isOwner = m.user_id === projectDetails?.created_by;
-                      return (
-                        <div key={m.user_id} className="p-3.5 flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-3">
-                            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/30 to-blue-500/30 border border-primary/20 flex items-center justify-center font-heading font-bold text-primary text-xs shrink-0">
-                              {initials}
-                            </div>
-                            <div>
-                              <div className="font-semibold text-foreground flex items-center gap-1.5">
-                                {m.user_name}
-                                {isOwner && (
-                                  <span className="px-1.5 py-0.5 bg-amber-500/15 text-amber-400 text-[9px] font-bold uppercase rounded border border-amber-500/25">Owner</span>
-                                )}
-                              </div>
-                              <div className="text-xs text-muted-foreground">{m.email}</div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            {isAdmin && !isOwner && m.user_id !== user?.id ? (
-                              <>
-                                <select
-                                  value={m.role}
-                                  onChange={(e) => handleRoleChange(m.user_id, e.target.value)}
-                                  className="px-2 py-1 bg-muted border border-border rounded text-xs text-foreground focus:outline-none"
-                                >
-                                  <option value="VIEWER">Viewer</option>
-                                  <option value="EDITOR">Editor</option>
-                                  <option value="ADMIN">Admin</option>
-                                </select>
-                                <button
-                                  onClick={() => handleRemoveMember(m.user_id)}
-                                  className="p-1 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-400 rounded transition-all cursor-pointer"
-                                  title="Remove Member"
-                                >
-                                  <Icon icon="lucide:user-minus" className="text-sm" />
-                                </button>
-                              </>
-                            ) : (
-                              <span className="px-2 py-1 bg-muted/60 text-muted-foreground text-xs font-semibold rounded uppercase tracking-wider border border-border">
-                                {m.role}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* DANGER ZONE (DELETE PROJECT) */}
-          {activeTab === 'danger' && isAdmin && (
-            <div className="space-y-4">
-              <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl space-y-2">
-                <h4 className="font-bold flex items-center gap-1.5 text-sm uppercase tracking-wide">
-                  <Icon icon="lucide:alert-triangle" className="text-lg text-rose-400" />
-                  Warning: Irreversible action
-                </h4>
-                <p className="text-xs leading-relaxed text-rose-400/90">
-                  Deleting this project will permanently remove the canvas configurations, parameter inputs, live deployment credentials, and execution histories from the workspace. This action cannot be undone.
-                </p>
-              </div>
-
-              <form onSubmit={handleDeleteProject} className="space-y-4 pt-2">
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                    Please type <strong className="text-foreground select-all">{projectDetails?.name}</strong> to confirm:
-                  </label>
-                  <input
-                    type="text"
-                    value={deleteConfirm}
-                    onChange={(e) => setDeleteConfirm(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 bg-[#12070A] border border-rose-500/35 rounded-lg text-rose-200 focus:outline-none focus:border-rose-500 transition-all"
-                    placeholder="Project name"
-                  />
-                </div>
-
-                <div className="pt-2 flex justify-end border-t border-border">
-                  <button
-                    type="submit"
-                    disabled={loading || deleteConfirm !== projectDetails?.name}
-                    className="px-4 py-2 text-sm bg-rose-600 text-white hover:bg-rose-500 rounded-lg transition-all cursor-pointer font-bold flex items-center gap-1.5 disabled:opacity-55"
-                  >
-                    {loading && <Icon icon="lucide:loader-2" className="animate-spin text-sm" />}
-                    Permanently Delete Project
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // NodeCard Component (Library Panel Item)
 interface NodeCardProps {
@@ -1324,7 +855,7 @@ function getNodeFiles(node: Node, allNodes: Node[], allEdges: Edge[]): PreviewFi
   const tech = node.data?.tech as string;
 
   if (node.id.startsWith('aws_instance.web_server') || node.id.startsWith('aws_security_group')) {
-    const { mainTf, variablesTf, outputsTf } = generateTerraformFiles(allNodes);
+    const { mainTf, variablesTf, outputsTf } = generateTerraformFiles(allNodes, allEdges);
     if (node.id.startsWith('aws_security_group')) {
       return [{ name: 'main.tf', content: mainTf, language: 'hcl' }];
     }
@@ -1682,6 +1213,7 @@ interface InspectorPanelProps {
   isReadOnly?: boolean;
   onStartEditing?: (nodeId: string) => void;
   onEndEditing?: (nodeId: string) => void;
+  availableCredentials?: any[];
 }
 
 const InspectorPanel: React.FC<InspectorPanelProps> = ({
@@ -1698,10 +1230,12 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   isReadOnly = false,
   onStartEditing,
   onEndEditing,
+  availableCredentials = [],
 }) => {
   const [newTagKey, setNewTagKey] = useState('');
   const [newTagVal, setNewTagVal] = useState('');
   const [showAddTag, setShowAddTag] = useState(false);
+  const [activeVmTab, setActiveVmTab] = useState<'aws' | 'gcp' | 'azure'>('aws');
 
   const p = selectedNode?.data?.parameters as any || (selectedNode ? getDefaultParametersForNode(selectedNode.id) : {});
   const sg = p;
@@ -1755,6 +1289,10 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const branchVal = (selectedNode?.data?.branch as string) || '';
   const environmentVal = (selectedNode?.data?.environment as string) || 'localstack';
   const regionVal = (selectedNode?.data?.region as string) || 'us-east-1';
+  const credentialIdVal = (selectedNode?.data?.credentialId as string) || '';
+  const sshKeyIdVal = (selectedNode?.data?.sshKeyId as string) || '';
+  const projectIDVal = (selectedNode?.data?.projectId as string) || '';
+  const gcpZoneVal = (selectedNode?.data?.gcpZone as string) || 'us-central1-a';
   const startCommandVal = (selectedNode?.data?.startCommand as string) || '';
   const appPortVal = (selectedNode?.data?.appPort as string) || '';
 
@@ -1843,121 +1381,335 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   {/* 1. TERRAFORM INSTANCE NODE PARAMETERS */}
                   {selectedNode.id.startsWith('aws_instance.web_server') && (
                     <>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Name</label>
-                        <input
-                          type="text"
-                          value={p.instanceName}
-                          onChange={(e) => handleParameterChange('instanceName', e.target.value)}
-                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">AMI ID</label>
-                          <input
-                            type="text"
-                            value={p.amiId}
-                            onChange={(e) => handleParameterChange('amiId', e.target.value)}
-                            placeholder="e.g. ami-0abcdef1234567890"
-                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Type</label>
-                          <div className="relative">
-                            <select
-                              value={p.instanceType}
-                              onChange={(e) => handleParameterChange('instanceType', e.target.value)}
-                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
-                            >
-                              <option value="t3.micro">t3.micro</option>
-                              <option value="t3.small">t3.small</option>
-                              <option value="t3.medium">t3.medium</option>
-                              <option value="t3.large">t3.large</option>
-                              <option value="m5.large">m5.large</option>
-                              <option value="m5.xlarge">m5.xlarge</option>
-                              <option value="c5.large">c5.large</option>
-                            </select>
-                            <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VPC Subnet ID</label>
-                        <input
-                          type="text"
-                          value={p.subnetId}
-                          onChange={(e) => handleParameterChange('subnetId', e.target.value)}
-                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-                        />
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-1 select-none">
-                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Root Volume Size</label>
-                          <span className="text-xs font-semibold text-foreground">{p.rootVolumeSize} GB</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="8"
-                          max="200"
-                          value={p.rootVolumeSize}
-                          onChange={(e) => handleParameterChange('rootVolumeSize', parseInt(e.target.value))}
-                          className="w-full accent-primary bg-muted h-1 rounded-lg appearance-none cursor-pointer"
-                        />
-                        <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1 select-none">
-                          <span>8 GB</span>
-                          <span>200 GB</span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Tags</label>
-                        <div className="flex flex-wrap gap-1.5 p-2 bg-muted border border-border rounded-lg">
-                          {p.tags.map((tag: any, idx: number) => (
-                            <span key={idx} className="inline-flex items-center gap-1 bg-card px-2 py-0.5 rounded text-[10px] text-foreground border border-border">
-                              {tag.key}: {tag.value}
-                              <button onClick={() => handleTagDelete(idx)} className="text-muted-foreground hover:text-red-400 transition-colors cursor-pointer">
-                                <Icon icon="lucide:x" className="text-[10px]" />
-                              </button>
-                            </span>
-                          ))}
-                          {!showAddTag ? (
-                            <button
-                              onClick={() => setShowAddTag(true)}
-                              className="text-[10px] text-primary hover:text-primary/90 font-semibold px-2 py-0.5 flex items-center gap-1 cursor-pointer"
-                            >
-                              <Icon icon="lucide:plus" className="text-xs" /> Add tag
-                            </button>
-                          ) : (
-                            <form onSubmit={handleTagAdd} className="flex items-center gap-1 w-full mt-1">
-                              <input
-                                type="text"
-                                placeholder="Key"
-                                value={newTagKey}
-                                onChange={(e) => setNewTagKey(e.target.value)}
-                                className="bg-card border border-border rounded px-1.5 py-0.5 text-[10px] w-1/2 text-foreground focus:outline-none"
-                              />
-                              <input
-                                type="text"
-                                placeholder="Value"
-                                value={newTagVal}
-                                onChange={(e) => setNewTagVal(e.target.value)}
-                                className="bg-card border border-border rounded px-1.5 py-0.5 text-[10px] w-1/2 text-foreground focus:outline-none"
-                              />
-                              <button type="submit" className="text-emerald-400 hover:text-emerald-300 cursor-pointer">
-                                <Icon icon="lucide:check" className="text-xs" />
-                              </button>
-                              <button type="button" onClick={() => setShowAddTag(false)} className="text-rose-400 hover:text-rose-300 cursor-pointer">
-                                <Icon icon="lucide:x" className="text-xs" />
-                              </button>
-                            </form>
+                      {/* Tabs Header */}
+                      <div className="flex border-b border-border mb-4">
+                        <button
+                          onClick={() => setActiveVmTab('aws')}
+                          className={clsx(
+                            "flex-1 pb-2 text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer border-b-2 text-center",
+                            activeVmTab === 'aws'
+                              ? "border-primary text-foreground"
+                              : "border-transparent text-muted-foreground hover:text-foreground"
                           )}
-                        </div>
+                        >
+                          AWS
+                        </button>
+                        <button
+                          onClick={() => setActiveVmTab('gcp')}
+                          className={clsx(
+                            "flex-1 pb-2 text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer border-b-2 text-center",
+                            activeVmTab === 'gcp'
+                              ? "border-primary text-foreground"
+                              : "border-transparent text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          GCP
+                        </button>
+                        <button
+                          onClick={() => setActiveVmTab('azure')}
+                          className={clsx(
+                            "flex-1 pb-2 text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer border-b-2 text-center",
+                            activeVmTab === 'azure'
+                              ? "border-primary text-foreground"
+                              : "border-transparent text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          Azure
+                        </button>
                       </div>
+
+                      {activeVmTab === 'aws' && (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Name</label>
+                            <input
+                              type="text"
+                              value={p.instanceName || ''}
+                              onChange={(e) => handleParameterChange('instanceName', e.target.value)}
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">AMI ID</label>
+                              <input
+                                type="text"
+                                value={p.amiId || ''}
+                                onChange={(e) => handleParameterChange('amiId', e.target.value)}
+                                placeholder="e.g. ami-0abcdef1234567890"
+                                className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Type</label>
+                              <div className="relative">
+                                <select
+                                  value={p.instanceType || 't3.micro'}
+                                  onChange={(e) => handleParameterChange('instanceType', e.target.value)}
+                                  className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                                >
+                                  <option value="t3.micro">t3.micro</option>
+                                  <option value="t3.small">t3.small</option>
+                                  <option value="t3.medium">t3.medium</option>
+                                  <option value="t3.large">t3.large</option>
+                                  <option value="m5.large">m5.large</option>
+                                  <option value="m5.xlarge">m5.xlarge</option>
+                                  <option value="c5.large">c5.large</option>
+                                </select>
+                                <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VPC Subnet ID</label>
+                            <InputWithVariablePicker
+                              nodes={nodes}
+                              onValueChange={(val) => handleParameterChange('subnetId', val)}
+                              type="text"
+                              value={p.subnetId || ''}
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Security Group ID</label>
+                            <InputWithVariablePicker
+                              nodes={nodes}
+                              onValueChange={(val) => handleParameterChange('securityGroupId', val)}
+                              type="text"
+                              value={p.securityGroupId || ''}
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between mb-1 select-none">
+                              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Root Volume Size</label>
+                              <span className="text-xs font-semibold text-foreground">{p.rootVolumeSize || 50} GB</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="8"
+                              max="200"
+                              value={p.rootVolumeSize || 50}
+                              onChange={(e) => handleParameterChange('rootVolumeSize', parseInt(e.target.value))}
+                              className="w-full accent-primary bg-muted h-1 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1 select-none">
+                              <span>8 GB</span>
+                              <span>200 GB</span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Tags</label>
+                            <div className="flex flex-wrap gap-1.5 p-2 bg-muted border border-border rounded-lg">
+                              {(p.tags || []).map((tag: any, idx: number) => (
+                                <span key={idx} className="inline-flex items-center gap-1 bg-card px-2 py-0.5 rounded text-[10px] text-foreground border border-border">
+                                  {tag.key}: {tag.value}
+                                  <button onClick={() => handleTagDelete(idx)} className="text-muted-foreground hover:text-red-400 transition-colors cursor-pointer">
+                                    <Icon icon="lucide:x" className="text-[10px]" />
+                                  </button>
+                                </span>
+                              ))}
+                              {!showAddTag ? (
+                                <button
+                                  onClick={() => setShowAddTag(true)}
+                                  className="text-[10px] text-primary hover:text-primary/90 font-semibold px-2 py-0.5 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Icon icon="lucide:plus" className="text-xs" /> Add tag
+                                </button>
+                              ) : (
+                                <form onSubmit={handleTagAdd} className="flex items-center gap-1 w-full mt-1">
+                                  <input
+                                    type="text"
+                                    placeholder="Key"
+                                    value={newTagKey}
+                                    onChange={(e) => setNewTagKey(e.target.value)}
+                                    className="bg-card border border-border rounded px-1.5 py-0.5 text-[10px] w-1/2 text-foreground focus:outline-none"
+                                  />
+                                  <input
+                                    type="text"
+                                    placeholder="Value"
+                                    value={newTagVal}
+                                    onChange={(e) => setNewTagVal(e.target.value)}
+                                    className="bg-card border border-border rounded px-1.5 py-0.5 text-[10px] w-1/2 text-foreground focus:outline-none"
+                                  />
+                                  <button type="submit" className="text-emerald-400 hover:text-emerald-300 cursor-pointer">
+                                    <Icon icon="lucide:check" className="text-xs" />
+                                  </button>
+                                  <button type="button" onClick={() => setShowAddTag(false)} className="text-rose-400 hover:text-rose-300 cursor-pointer">
+                                    <Icon icon="lucide:x" className="text-xs" />
+                                  </button>
+                                </form>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {activeVmTab === 'gcp' && (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Instance Name</label>
+                            <input
+                              type="text"
+                              value={p.gcpInstanceName || ''}
+                              onChange={(e) => handleParameterChange('gcpInstanceName', e.target.value)}
+                              placeholder="e.g. web-server"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Machine Type</label>
+                              <div className="relative">
+                                <select
+                                  value={p.gcpMachineType || 'e2-micro'}
+                                  onChange={(e) => handleParameterChange('gcpMachineType', e.target.value)}
+                                  className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                                >
+                                  <option value="e2-micro">e2-micro</option>
+                                  <option value="e2-small">e2-small</option>
+                                  <option value="e2-medium">e2-medium</option>
+                                  <option value="n2-standard-2">n2-standard-2</option>
+                                  <option value="n2-standard-4">n2-standard-4</option>
+                                </select>
+                                <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Image</label>
+                              <input
+                                type="text"
+                                value={p.gcpImage || 'ubuntu-os-cloud/ubuntu-2204-lts'}
+                                onChange={(e) => handleParameterChange('gcpImage', e.target.value)}
+                                placeholder="ubuntu-os-cloud/ubuntu-2204-lts"
+                                className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VPC Network</label>
+                            <input
+                              type="text"
+                              value={p.gcpNetwork || 'default'}
+                              onChange={(e) => handleParameterChange('gcpNetwork', e.target.value)}
+                              placeholder="default"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between mb-1 select-none">
+                              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Disk Size</label>
+                              <span className="text-xs font-semibold text-foreground">{p.gcpDiskSize || 50} GB</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="10"
+                              max="500"
+                              value={p.gcpDiskSize || 50}
+                              onChange={(e) => handleParameterChange('gcpDiskSize', parseInt(e.target.value))}
+                              className="w-full accent-primary bg-muted h-1 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1 select-none">
+                              <span>10 GB</span>
+                              <span>500 GB</span>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {activeVmTab === 'azure' && (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VM Name</label>
+                            <input
+                              type="text"
+                              value={p.azureVmName || ''}
+                              onChange={(e) => handleParameterChange('azureVmName', e.target.value)}
+                              placeholder="e.g. web-vm"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Size (SKU)</label>
+                              <div className="relative">
+                                <select
+                                  value={p.azureVmSize || 'Standard_B1s'}
+                                  onChange={(e) => handleParameterChange('azureVmSize', e.target.value)}
+                                  className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                                >
+                                  <option value="Standard_B1s">Standard_B1s</option>
+                                  <option value="Standard_B1ms">Standard_B1ms</option>
+                                  <option value="Standard_B2s">Standard_B2s</option>
+                                  <option value="Standard_D2s_v3">Standard_D2s_v3</option>
+                                </select>
+                                <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Publisher</label>
+                              <input
+                                type="text"
+                                value={p.azurePublisher || 'Canonical'}
+                                onChange={(e) => handleParameterChange('azurePublisher', e.target.value)}
+                                placeholder="Canonical"
+                                className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Offer</label>
+                              <input
+                                type="text"
+                                value={p.azureOffer || 'UbuntuServer'}
+                                onChange={(e) => handleParameterChange('azureOffer', e.target.value)}
+                                placeholder="UbuntuServer"
+                                className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">SKU</label>
+                              <input
+                                type="text"
+                                value={p.azureSku || '18.04-LTS'}
+                                onChange={(e) => handleParameterChange('azureSku', e.target.value)}
+                                placeholder="18.04-LTS"
+                                className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between mb-1 select-none">
+                              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">OS Disk Size</label>
+                              <span className="text-xs font-semibold text-foreground">{p.azureDiskSize || 50} GB</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="30"
+                              max="1024"
+                              value={p.azureDiskSize || 50}
+                              onChange={(e) => handleParameterChange('azureDiskSize', parseInt(e.target.value))}
+                              className="w-full accent-primary bg-muted h-1 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1 select-none">
+                              <span>30 GB</span>
+                              <span>1024 GB</span>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
 
@@ -2005,10 +1757,22 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
                       <div>
                         <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Allowed CIDR</label>
-                        <input
+                        <InputWithVariablePicker
+                          nodes={nodes}
+                          onValueChange={(val) => handleParameterChange('allowedCidr', val)}
                           type="text"
                           value={p.allowedCidr || '0.0.0.0/0'}
-                          onChange={(e) => handleParameterChange('allowedCidr', e.target.value)}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VPC Link ID</label>
+                        <InputWithVariablePicker
+                          nodes={nodes}
+                          onValueChange={(val) => handleParameterChange('vpcId', val)}
+                          type="text"
+                          value={p.vpcId || ''}
                           className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
                         />
                       </div>
@@ -2139,6 +1903,28 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                           />
                         </div>
                       </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">VPC Security Group IDs</label>
+                        <InputWithVariablePicker
+                          nodes={nodes}
+                          onValueChange={(val) => handleParameterChange('vpcSecurityGroupIds', val)}
+                          type="text"
+                          value={p.vpcSecurityGroupIds || ''}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">DB Subnet Group Name</label>
+                        <InputWithVariablePicker
+                          nodes={nodes}
+                          onValueChange={(val) => handleParameterChange('dbSubnetGroupName', val)}
+                          type="text"
+                          value={p.dbSubnetGroupName || ''}
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
                     </>
                   )}
 
@@ -2234,6 +2020,34 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   {selectedNode.data.tech === 'Ansible' && (
                     <div className="space-y-4">
                       <p className="text-[11px] text-muted-foreground">Ansible playbooks support variable binding using `{`{ variable }`}`. Click `{`{x}`}` to convert hardcoded values to variables.</p>
+                      
+                      {/* Connection Settings */}
+                      <div className="bg-muted/40 border border-border rounded-xl p-3 space-y-3">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                          <Icon icon="lucide:settings" className="text-primary text-xs" /> Target Connection Settings
+                        </span>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Target Host IP</label>
+                          <InputWithVariablePicker
+                            nodes={nodes}
+                            onValueChange={(val) => handleParameterChange('ansibleHost', val)}
+                            type="text"
+                            value={p.ansibleHost || ''}
+                            placeholder="e.g. 127.0.0.1 or {{ nodes.web_server.public_ip }}"
+                            className="w-full bg-muted border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Target SSH User</label>
+                          <input
+                            type="text"
+                            value={p.ansibleUser || 'ubuntu'}
+                            onChange={(e) => handleParameterChange('ansibleUser', e.target.value)}
+                            placeholder="e.g. ubuntu or ec2-user"
+                            className="w-full bg-muted border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all font-mono"
+                          />
+                        </div>
+                      </div>
                       
                       {nodeLabel.includes('Open Port') && (
                         <div>
@@ -2599,35 +2413,146 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     </div>
                   )}
 
-                  {/* 2c. AWS TARGET NODE PARAMETERS */}
+                  {/* 2c. TARGET NODE PARAMETERS */}
                   {selectedNode.data.tech === 'Target' && (
                     <div className="space-y-4">
-                      <p className="text-[11px] text-muted-foreground">
-                        Chooses which AWS environment Terraform provisions into. Only the LocalStack sandbox is wired up right now.
-                      </p>
+                      {selectedNode.id.startsWith('aws_target') ? (
+                        <>
+                          <p className="text-[11px] text-muted-foreground">
+                            Chooses which AWS environment Terraform provisions into. LocalStack sandbox for testing, live AWS cloud for production.
+                          </p>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Environment</label>
+                            <div className="relative">
+                              <select
+                                  value={environmentVal}
+                                  onChange={(e) => updateNodeData(selectedNode.id, { environment: e.target.value })}
+                                  className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                              >
+                                <option value="localstack">LocalStack (Sandbox)</option>
+                                <option value="aws">Live AWS (Cloud)</option>
+                              </select>
+                              <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                            </div>
+                          </div>
+
+                          {environmentVal === 'aws' && (
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">AWS Credential Source</label>
+                              <div className="relative">
+                                <select
+                                    value={credentialIdVal}
+                                    onChange={(e) => updateNodeData(selectedNode.id, { credentialId: e.target.value })}
+                                    className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                                >
+                                  <option value="">-- Select AWS Credential --</option>
+                                  {availableCredentials.filter(c => c.provider === 'AWS').map(c => (
+                                    <option key={c.id} value={c.id}>{c.name} ({c.key_fingerprint})</option>
+                                  ))}
+                                </select>
+                                <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                              </div>
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">AWS Region</label>
+                            <input
+                              type="text"
+                              value={regionVal}
+                              onChange={(e) => updateNodeData(selectedNode.id, { region: e.target.value })}
+                              placeholder="us-east-1"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-[11px] text-muted-foreground">
+                            Chooses which GCP project and zone to deploy into.
+                          </p>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Environment</label>
+                            <div className="relative">
+                              <select
+                                  value={environmentVal}
+                                  onChange={(e) => updateNodeData(selectedNode.id, { environment: e.target.value })}
+                                  className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                              >
+                                <option value="gcp">Live GCP (Cloud)</option>
+                              </select>
+                              <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">GCP Service Account JSON</label>
+                            <div className="relative">
+                              <select
+                                  value={credentialIdVal}
+                                  onChange={(e) => updateNodeData(selectedNode.id, { credentialId: e.target.value })}
+                                  className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                              >
+                                <option value="">-- Select GCP Service Account --</option>
+                                {availableCredentials.filter(c => c.provider === 'GCP').map(c => (
+                                  <option key={c.id} value={c.id}>{c.name} ({c.key_fingerprint})</option>
+                                ))}
+                              </select>
+                              <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">GCP Project ID</label>
+                            <input
+                              type="text"
+                              value={projectIDVal}
+                              onChange={(e) => updateNodeData(selectedNode.id, { projectId: e.target.value })}
+                              placeholder="infracanvas-prod-12345"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">GCP Region</label>
+                            <input
+                              type="text"
+                              value={regionVal}
+                              onChange={(e) => updateNodeData(selectedNode.id, { region: e.target.value })}
+                              placeholder="us-central1"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">GCP Zone</label>
+                            <input
+                              type="text"
+                              value={gcpZoneVal}
+                              onChange={(e) => updateNodeData(selectedNode.id, { gcpZone: e.target.value })}
+                              placeholder="us-central1-a"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {/* COMMON SSH KEY CONFIGURATION */}
                       <div>
-                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Environment</label>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Ansible SSH Target Private Key</label>
                         <div className="relative">
                           <select
-                            value={environmentVal}
-                            onChange={(e) => updateNodeData(selectedNode.id, { environment: e.target.value })}
-                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                              value={sshKeyIdVal}
+                              onChange={(e) => updateNodeData(selectedNode.id, { sshKeyId: e.target.value })}
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
                           >
-                            <option value="localstack">LocalStack (Sandbox)</option>
-                            <option value="aws" disabled>Real AWS — coming later</option>
+                            <option value="">-- Select SSH Key (.pem) --</option>
+                            {availableCredentials.filter(c => c.provider === 'SSH').map(c => (
+                              <option key={c.id} value={c.id}>{c.name} ({c.key_fingerprint})</option>
+                            ))}
                           </select>
                           <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
                         </div>
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">AWS Region</label>
-                        <input
-                          type="text"
-                          value={regionVal}
-                          onChange={(e) => updateNodeData(selectedNode.id, { region: e.target.value })}
-                          placeholder="us-east-1"
-                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-                        />
                       </div>
                     </div>
                   )}
@@ -2942,6 +2867,7 @@ function getDefaultParametersForNode(nodeId: string): any {
       amiId: 'ami-785db401',
       instanceType: 't3.medium',
       subnetId: 'subnet-0123456789abcdef0',
+      securityGroupId: '',
       rootVolumeSize: 50,
       tags: [
         { key: 'Environment', value: 'prod' },
@@ -2952,6 +2878,7 @@ function getDefaultParametersForNode(nodeId: string): any {
   if (nodeId.startsWith('aws_security_group')) {
     return {
       sgName: 'web_sg',
+      vpcId: '',
       description: 'Allows HTTP/HTTPS inbound & SSH access',
       ingressPorts: '80, 443, 22'
     };
@@ -2970,7 +2897,9 @@ function getDefaultParametersForNode(nodeId: string): any {
       instanceClass: 'db.t3.micro',
       username: 'dbadmin',
       password: 'SuperSecurePassword123!',
-      engineVersion: '14.1'
+      engineVersion: '14.1',
+      vpcSecurityGroupIds: '',
+      dbSubnetGroupName: ''
     };
   }
   if (nodeId.startsWith('aws_vpc')) {
@@ -2993,34 +2922,44 @@ function getDefaultParametersForNode(nodeId: string): any {
   if (nodeId.startsWith('apt_install')) {
     return {
       packages: 'curl, git, jq',
-      state: 'present'
+      state: 'present',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('create_user')) {
     return {
       username: 'deployer',
       shell: '/bin/bash',
-      createHome: true
+      createHome: true,
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('systemd_service')) {
     return {
       serviceName: 'nginx',
       state: 'started',
-      enabled: true
+      enabled: true,
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('git_clone')) {
     return {
       repoUrl: 'https://github.com/infracanvas/sample-app.git',
       destPath: '/var/www/app',
-      branch: 'main'
+      branch: 'main',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('shell_command')) {
     return {
       command: 'echo "hello infrastructure"',
-      chdir: '/tmp'
+      chdir: '/tmp',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('file_copy')) {
@@ -3028,24 +2967,56 @@ function getDefaultParametersForNode(nodeId: string): any {
       srcPath: 'config.json',
       destPath: '/var/www/app/config.json',
       owner: 'www-data',
-      mode: '0644'
+      mode: '0644',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('open-port')) {
     return {
-      port: '80'
+      port: '80',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('postgresql')) {
     return {
       dbUser: 'postgres',
-      dbPass: 'postgres'
+      dbPass: 'postgres',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   if (nodeId.startsWith('deploy-node-app')) {
     return {
       startCommand: 'npm start',
-      appPort: '3000'
+      appPort: '3000',
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
+    };
+  }
+  if (nodeId.startsWith('update-packages')) {
+    return {
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
+    };
+  }
+  if (nodeId.startsWith('nginx')) {
+    return {
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
+    };
+  }
+  if (nodeId.startsWith('nodejs')) {
+    return {
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
+    };
+  }
+  if (nodeId.startsWith('copy-env')) {
+    return {
+      ansibleHost: '',
+      ansibleUser: 'ubuntu'
     };
   }
   // Kubernetes Nodes
@@ -3118,6 +3089,14 @@ const LIBRARY_NODES: LibraryNode[] = [
     description: 'Chooses where this pipeline deploys — LocalStack sandbox for testing, real AWS later.',
     category: 'Cloud Target'
   },
+  {
+    id: 'gcp_target',
+    tech: 'Target',
+    icon: 'lucide:cloud',
+    title: 'GCP Target',
+    description: 'Chooses where this pipeline deploys — Live GCP Project.',
+    category: 'Cloud Target'
+  },
   // Terraform Nodes
   {
     id: 'aws_instance.web_server',
@@ -3125,7 +3104,8 @@ const LIBRARY_NODES: LibraryNode[] = [
     icon: 'lucide:server',
     title: 'Virtual Machine (EC2)',
     description: 'Provisions a high-performance VM instance with security groups.',
-    category: 'Provisioning & Cloud'
+    category: 'Provisioning & Cloud',
+    outputs: ['public_ip', 'private_ip', 'id', 'ssh_user']
   },
   {
     id: 'aws_security_group',
@@ -3133,7 +3113,8 @@ const LIBRARY_NODES: LibraryNode[] = [
     icon: 'lucide:shield',
     title: 'Firewall (Security Group)',
     description: 'Configures stateful firewall rules to allow traffic.',
-    category: 'Provisioning & Cloud'
+    category: 'Provisioning & Cloud',
+    outputs: ['sg_id', 'sg_name']
   },
   {
     id: 'aws_s3_bucket',
@@ -3141,7 +3122,8 @@ const LIBRARY_NODES: LibraryNode[] = [
     icon: 'lucide:hard-drive',
     title: 'Object Storage (S3)',
     description: 'Provisions a secure cloud object storage bucket.',
-    category: 'Provisioning & Cloud'
+    category: 'Provisioning & Cloud',
+    outputs: ['bucket_name', 'bucket_arn']
   },
   {
     id: 'aws_db_instance',
@@ -3149,7 +3131,8 @@ const LIBRARY_NODES: LibraryNode[] = [
     icon: 'lucide:database',
     title: 'Relational Database (RDS)',
     description: 'Deploys a PostgreSQL database instance.',
-    category: 'Provisioning & Cloud'
+    category: 'Provisioning & Cloud',
+    outputs: ['endpoint', 'port', 'db_name', 'username']
   },
   {
     id: 'aws_vpc',
@@ -3157,7 +3140,8 @@ const LIBRARY_NODES: LibraryNode[] = [
     icon: 'lucide:network',
     title: 'Virtual Network (VPC)',
     description: 'Creates a custom virtual private cloud network.',
-    category: 'Provisioning & Cloud'
+    category: 'Provisioning & Cloud',
+    outputs: ['vpc_id', 'cidr_block']
   },
   {
     id: 'aws_subnet',
@@ -3165,7 +3149,8 @@ const LIBRARY_NODES: LibraryNode[] = [
     icon: 'lucide:split',
     title: 'Network Subnet',
     description: 'Allocates a specific subnet in a VPC.',
-    category: 'Provisioning & Cloud'
+    category: 'Provisioning & Cloud',
+    outputs: ['subnet_id', 'availability_zone']
   },
   // Ansible Nodes
   {
@@ -3594,6 +3579,7 @@ function WorkspaceContent() {
   const [projectDetails, setProjectDetails] = useState<any>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isCustomNodeOpen, setIsCustomNodeOpen] = useState(false);
+  const [availableCredentials, setAvailableCredentials] = useState<any[]>([]);
 
   const [selectedOS, setSelectedOS] = useState("Linux");
   const [zoomLevel, setZoomLevel] = useState(100);
@@ -3766,6 +3752,15 @@ function WorkspaceContent() {
         if (customRes.ok) {
           const customNodes = await customRes.json();
           setCustomLibraryNodes(customNodes || []);
+        }
+
+        // 4. Fetch cloud credentials
+        const credsRes = await fetch(`${API_URL}/api/projects/${projectId}/credentials`, {
+          headers: { 'Authorization': `Bearer ${activeToken}` }
+        });
+        if (credsRes.ok) {
+          const creds = await credsRes.json();
+          setAvailableCredentials(creds || []);
         }
       } catch (err) {
         console.warn("Failed to load project canvas data", err);
@@ -4208,7 +4203,7 @@ function WorkspaceContent() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } else if (format === 'tf') {
-      await downloadTerraformZip(nodes);
+      await downloadTerraformZip(nodes, edges);
     } else if (format === 'json') {
       const k8sContent = {
         apiVersion: "apps/v1",
@@ -4360,6 +4355,7 @@ function WorkspaceContent() {
           isReadOnly={deployStatus === 'PENDING' || deployStatus === 'RUNNING' || saveStatus === 'readonly'}
           onStartEditing={handleStartEditing}
           onEndEditing={handleEndEditing}
+          availableCredentials={availableCredentials}
         />
       </div>
 

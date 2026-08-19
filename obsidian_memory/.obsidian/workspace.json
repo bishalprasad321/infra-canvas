@@ -1,0 +1,221 @@
+{
+  "main": {
+    "id": "f13b3daa06ed3371",
+    "type": "split",
+    "children": [
+      {
+        "id": "6b63eb475975772b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "4f8de7b21a4e1c86",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "c3261c5a8543cc4a",
+    "type": "split",
+    "children": [
+      {
+        "id": "15fb9243d8a3e360",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "4be314ae87284dd4",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "541de95d6f2ddb9f",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "89ecdc004e7358c7",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "1e4b1a3eb4d7cd85",
+    "type": "split",
+    "children": [
+      {
+        "id": "ba8132db9fb8696d",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "b7f464d4a40b5dfe",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "c292e6cd4c7b14ba",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "d1bf8103e128c3eb",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "53ec5cd469734f89",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "c27366854ce5aa31",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "4f8de7b21a4e1c86",
+  "lastOpenFiles": [
+    "03 - Execution Runner & DevOps Sandbox/03.3 - Dynamic Inventory & Output State Binding.md",
+    "08 - Roadmap & Future Development/08.3 - Enterprise Scalability & Cloud Roadmap.md",
+    "08 - Roadmap & Future Development/08.2 - AI Agent & Prompt-to-Canvas Integration.md",
+    "08 - Roadmap & Future Development/08.1 - Non-Implemented & Mocked Features.md",
+    "08 - Roadmap & Future Development",
+    "07 - Learnings, Mistakes & Gotchas/07.3 - Design Trade-offs & Pros-Cons Matrix.md",
+    "07 - Learnings, Mistakes & Gotchas/07.2 - Technical Pitfalls & Edge Cases.md",
+    "07 - Learnings, Mistakes & Gotchas/07.1 - Critical Bugs Encountered & Solutions.md",
+    "07 - Learnings, Mistakes & Gotchas",
+    "06 - CLI & Tooling/06.2 - Build Scripts & Static Binary Distribution.md",
+    "06 - CLI & Tooling/06.1 - InfraCanvas CLI & Reverse Import Tool.md",
+    "06 - CLI & Tooling",
+    "05 - Frontend & Visual Canvas/05.4 - Custom Node Authoring & Validation.md",
+    "05 - Frontend & Visual Canvas/05.3 - Execution Safety Locking & Readonly Modes.md",
+    "05 - Frontend & Visual Canvas/05.2 - Zustand State Stores Architecture.md",
+    "05 - Frontend & Visual Canvas/05.1 - ReactFlow Canvas & Interaction Modes.md",
+    "05 - Frontend & Visual Canvas",
+    "04 - Security & Identity/04.3 - AES-256-GCM Credential Vault & Fingerprinting.md",
+    "04 - Security & Identity/04.2 - Social OAuth 2.0 Flow (Google & GitHub).md",
+    "04 - Security & Identity/04.1 - Authentication & RBAC Access Control.md",
+    "04 - Security & Identity",
+    "03 - Execution Runner & DevOps Sandbox/03.5 - Teardown & Destroy Lifecycle.md",
+    "03 - Execution Runner & DevOps Sandbox/03.4 - Live Node Status Tracking & Stream Scanning.md",
+    "03 - Execution Runner & DevOps Sandbox/03.2 - DevOps Sandbox (LocalStack & SSH Containers).md",
+    "03 - Execution Runner & DevOps Sandbox/03.1 - Go Runner Pipeline Engine.md",
+    "03 - Execution Runner & DevOps Sandbox",
+    "02 - Core Engines & Compilers/02.5 - ZIP Bundle Packaging & Export.md",
+    "02 - Core Engines & Compilers/02.4 - HCL and YAML Reverse Importer AST.md",
+    "02 - Core Engines & Compilers/02.3 - Kubernetes Manifests Compiler.md",
+    "02 - Core Engines & Compilers/02.2 - Dynamic Multi-Resource Terraform Generator.md",
+    "02 - Core Engines & Compilers/02.1 - Topological Ansible Compiler.md",
+    "02 - Core Engines & Compilers",
+    "01 - Vision & Architecture/01.4 - Realtime Sync & WebSocket Architecture.md",
+    "01 - Vision & Architecture"
+  ]
+}
