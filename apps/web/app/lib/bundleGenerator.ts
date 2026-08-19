@@ -119,6 +119,7 @@ ${requiredProviders}  }
   providerBlock += `}`;
 
   const tfNodes = nodes.filter(n => (n.data as any)?.tech === 'Terraform');
+  const dummySshKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQC2R1m2hJc6eC+7737t8t8O1/Y2N5hDkK1aP4+rD2mZ6bJ9mF7C8F9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2= dummy-infracanvas-key";
   let tfResourcesBlock = '';
   let subnetBlock = '';
   let variablesTf = '# Input variables for Terraform deployment\n\n';
@@ -143,10 +144,14 @@ variable "instance_type" {
   type        = string
   default     = "${awsInstanceType}"
   description = "EC2 instance size"
+}
+
+variable "aws_ssh_pub_key" {
+  type    = string
+  default = "${dummySshKey}"
 }\n\n`;
   }
 
-  const dummySshKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQC2R1m2hJc6eC+7737t8t8O1/Y2N5hDkK1aP4+rD2mZ6bJ9mF7C8F9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2m8B9eD0rC2= dummy-infracanvas-key";
 
   if (hasGcp) {
     const gcpTarget = connectedTargets.find(t => t.id.startsWith('gcp_target'));
@@ -199,9 +204,47 @@ variable "gcp_ssh_pub_key" {
         const awsEnv = ((awsTargetNode?.data as any)?.environment as string) || 'localstack';
         let subnetLine = '';
         if (p.subnetId) {
-          subnetLine = `\n  subnet_id     = "${p.subnetId}"`;
-        } else if (awsEnv === 'localstack') {
-          subnetBlock = `data "aws_vpc" "default" {
+          const val = p.subnetId.trim();
+          if (val.startsWith('aws_subnet.') || val.startsWith('var.')) {
+            subnetLine = `\n  subnet_id     = ${val}`;
+          } else {
+            subnetLine = `\n  subnet_id     = "${val}"`;
+          }
+        } else {
+          // Check for incoming edge from a subnet node
+          const incomingSubnetEdges = edges.filter(e => e.target === id && e.source.startsWith('aws_subnet'));
+          if (incomingSubnetEdges.length > 0) {
+            const subnetNode = nodes.find(n => n.id === incomingSubnetEdges[0].source);
+            const subnetName = ((subnetNode?.data as any)?.parameters?.subnetName) || 'app_subnet_1a';
+            subnetLine = `\n  subnet_id     = aws_subnet.${subnetName}.id`;
+          } else {
+            // Check if there is any subnet node on the canvas
+            const firstSubnet = tfNodes.find(n => n.id.startsWith('aws_subnet'));
+            if (firstSubnet) {
+              const subnetName = ((firstSubnet.data as any)?.parameters?.subnetName) || 'app_subnet_1a';
+              subnetLine = `\n  subnet_id     = aws_subnet.${subnetName}.id`;
+            } else {
+              // Check if a VPC exists on the canvas. If so, automatically generate a subnet inside it
+              const firstVpc = tfNodes.find(n => n.id.startsWith('aws_vpc'));
+              if (firstVpc) {
+                const vpcName = ((firstVpc.data as any)?.parameters?.vpcName) || 'app_vpc';
+                subnetBlock = `resource "aws_subnet" "infracanvas_auto_subnet" {
+  vpc_id                  = aws_vpc.${vpcName}.id
+  cidr_block              = "10.0.1.0/24"
+  map_public_ip_on_launch = true
+  tags = {
+    Name = "${vpcName}-auto-subnet"
+  }
+}
+
+resource "aws_route_table_association" "infracanvas_auto_subnet_assoc" {
+  subnet_id      = aws_subnet.infracanvas_auto_subnet.id
+  route_table_id = aws_route_table.${vpcName}_rt.id
+}`;
+                subnetLine = `\n  subnet_id     = aws_subnet.infracanvas_auto_subnet.id`;
+              } else {
+                // Default fallback (Default VPC)
+                subnetBlock = `data "aws_vpc" "default" {
   default = true
 }
 
@@ -211,17 +254,47 @@ data "aws_subnets" "default" {
     values = [data.aws_vpc.default.id]
   }
 }`;
-          subnetLine = `\n  subnet_id     = tolist(data.aws_subnets.default.ids)[0]`;
+                subnetLine = `\n  subnet_id     = tolist(data.aws_subnets.default.ids)[0]`;
+              }
+            }
+          }
         }
 
-        const hasSg = tfNodes.some(n => n.id.startsWith('aws_security_group'));
-        const sgLine = hasSg
-          ? `\n  vpc_security_group_ids = [aws_security_group.${((tfNodes.find(n => n.id.startsWith('aws_security_group'))?.data) as any)?.parameters?.sgName || 'web_sg'}.id]`
-          : '';
+        let sgLine = '';
+        if (p.securityGroupId) {
+          const sgVal = p.securityGroupId.trim();
+          if (sgVal.startsWith('aws_security_group.') || sgVal.startsWith('var.')) {
+            sgLine = `\n  vpc_security_group_ids = [${sgVal}]`;
+          } else {
+            sgLine = `\n  vpc_security_group_ids = ["${sgVal}"]`;
+          }
+        } else {
+          // Check for incoming edge from a security group to this EC2 node
+          const incomingSgEdges = edges.filter(e => e.target === id && e.source.startsWith('aws_security_group'));
+          if (incomingSgEdges.length > 0) {
+            const sgNode = nodes.find(n => n.id === incomingSgEdges[0].source);
+            const sgName = ((sgNode?.data as any)?.parameters?.sgName) || 'web_sg';
+            sgLine = `\n  vpc_security_group_ids = [aws_security_group.${sgName}.id]`;
+          } else {
+            // Fallback to old behavior: if any sg node exists
+            const hasSg = tfNodes.some(n => n.id.startsWith('aws_security_group'));
+            if (hasSg) {
+              const sgNode = tfNodes.find(n => n.id.startsWith('aws_security_group'));
+              const sgName = ((sgNode?.data as any)?.parameters?.sgName) || 'web_sg';
+              sgLine = `\n  vpc_security_group_ids = [aws_security_group.${sgName}.id]`;
+            }
+          }
+        }
 
-        tfResourcesBlock += `resource "aws_instance" "${name}" {
+        tfResourcesBlock += `resource "aws_key_pair" "infracanvas_key" {
+  key_name   = "infracanvas-deploy-key"
+  public_key = var.aws_ssh_pub_key
+}
+
+resource "aws_instance" "${name}" {
   ami           = "${ami}"
   instance_type = "${type}"${subnetLine}${sgLine}
+  key_name      = aws_key_pair.infracanvas_key.key_name
 
   root_block_device {
     volume_size = ${rootVolume}
@@ -418,12 +491,47 @@ resource "azurerm_linux_virtual_machine" "vm" {
         });
       }
 
+      let vpcLine = '';
+      if (p.vpcId) {
+        const vpcVal = p.vpcId.trim();
+        if (vpcVal.startsWith('aws_vpc.') || vpcVal.startsWith('var.')) {
+          vpcLine = `\n  vpc_id      = ${vpcVal}`;
+        } else {
+          vpcLine = `\n  vpc_id      = "${vpcVal}"`;
+        }
+      } else {
+        // Check for incoming edge from a VPC node to this Security Group node
+        const incomingVpcEdges = edges.filter(e => e.target === id && e.source.startsWith('aws_vpc'));
+        if (incomingVpcEdges.length > 0) {
+          const vpcNode = nodes.find(n => n.id === incomingVpcEdges[0].source);
+          const vpcName = ((vpcNode?.data as any)?.parameters?.vpcName) || 'app_vpc';
+          vpcLine = `\n  vpc_id      = aws_vpc.${vpcName}.id`;
+        } else {
+          // If any VPC node exists on the canvas, default to it
+          const firstVpc = tfNodes.find(n => n.id.startsWith('aws_vpc'));
+          if (firstVpc) {
+            const vpcName = ((firstVpc.data as any)?.parameters?.vpcName) || 'app_vpc';
+            vpcLine = `\n  vpc_id      = aws_vpc.${vpcName}.id`;
+          }
+        }
+      }
+
+      let hasSshRule = ingressRules.includes('from_port   = 22') || ingressRules.includes('from_port = 22') || ingressRules.includes('from_port   = 22\n') || ingressRules.includes('from_port = 22\n');
+      let sshRuleStr = '';
+      if (!hasSshRule) {
+        sshRuleStr = `\n  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }\n`;
+      }
+
       tfResourcesBlock += `resource "aws_security_group" "${name}" {
   name        = "${name}"
-  description = "${desc}"
+  description = "${desc}"${vpcLine}
 
-${ingressRules}
-
+${ingressRules}${sshRuleStr}
   egress {
     from_port   = 0
     to_port     = 0
@@ -457,6 +565,32 @@ resource "aws_s3_bucket_versioning" "${name}_versioning" {
       const password = p.password || 'SuperSecurePassword123!';
       const engineVersion = p.engineVersion || '14.1';
 
+      let extraParams = '';
+      if (p.dbSubnetGroupName) {
+        const val = p.dbSubnetGroupName.trim();
+        if (val.startsWith('aws_') || val.startsWith('var.')) {
+          extraParams += `\n  db_subnet_group_name = ${val}`;
+        } else {
+          extraParams += `\n  db_subnet_group_name = "${val}"`;
+        }
+      }
+      if (p.vpcSecurityGroupIds) {
+        const val = p.vpcSecurityGroupIds.trim();
+        if (val.startsWith('aws_') || val.startsWith('var.')) {
+          extraParams += `\n  vpc_security_group_ids = [${val}]`;
+        } else {
+          extraParams += `\n  vpc_security_group_ids = ["${val}"]`;
+        }
+      } else {
+        // Check for incoming edge from a security group to RDS
+        const incomingSgEdges = edges.filter(e => e.target === id && e.source.startsWith('aws_security_group'));
+        if (incomingSgEdges.length > 0) {
+          const sgNode = nodes.find(n => n.id === incomingSgEdges[0].source);
+          const sgName = ((sgNode?.data as any)?.parameters?.sgName) || 'web_sg';
+          extraParams += `\n  vpc_security_group_ids = [aws_security_group.${sgName}.id]`;
+        }
+      }
+
       tfResourcesBlock += `resource "aws_db_instance" "${name}" {
   allocated_storage   = ${storage}
   db_name             = "${name}"
@@ -465,7 +599,7 @@ resource "aws_s3_bucket_versioning" "${name}_versioning" {
   instance_class      = "${instanceClass}"
   username            = "${username}"
   password            = "${password}"
-  skip_final_snapshot = true
+  skip_final_snapshot = true${extraParams}
 }\n\n`;
     }
     else if (id.startsWith('aws_vpc') && hasAws) {
@@ -479,11 +613,65 @@ resource "aws_s3_bucket_versioning" "${name}_versioning" {
   tags = {
     Name = "${name}"
   }
+}
+
+resource "aws_internet_gateway" "${name}_igw" {
+  vpc_id = aws_vpc.${name}.id
+  tags = {
+    Name = "${name}_igw"
+  }
+}
+
+resource "aws_route_table" "${name}_rt" {
+  vpc_id = aws_vpc.${name}.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.${name}_igw.id
+  }
+
+  tags = {
+    Name = "${name}_rt"
+  }
 }\n\n`;
     }
     else if (id.startsWith('aws_subnet') && hasAws) {
       const name = p.subnetName || 'app_subnet_1a';
-      const vpc = p.vpcId || 'aws_vpc.app_vpc.id';
+      let vpc = '';
+      let vpcNameForRt = '';
+      if (p.vpcId) {
+        const vpcVal = p.vpcId.trim();
+        if (vpcVal.startsWith('aws_vpc.') || vpcVal.startsWith('var.')) {
+          vpc = vpcVal;
+          if (vpcVal.startsWith('aws_vpc.')) {
+            const parts = vpcVal.split('.');
+            if (parts.length > 1) {
+              vpcNameForRt = parts[1];
+            }
+          }
+        } else {
+          vpc = `"${vpcVal}"`;
+        }
+      } else {
+        // Check for incoming edge from a VPC node to this subnet node
+        const incomingVpcEdges = edges.filter(e => e.target === id && e.source.startsWith('aws_vpc'));
+        if (incomingVpcEdges.length > 0) {
+          const vpcNode = nodes.find(n => n.id === incomingVpcEdges[0].source);
+          const vpcName = ((vpcNode?.data as any)?.parameters?.vpcName) || 'app_vpc';
+          vpc = `aws_vpc.${vpcName}.id`;
+          vpcNameForRt = vpcName;
+        } else {
+          // Fallback to first VPC found or placeholder
+          const firstVpc = tfNodes.find(n => n.id.startsWith('aws_vpc'));
+          if (firstVpc) {
+            const vpcName = ((firstVpc?.data as any)?.parameters?.vpcName) || 'app_vpc';
+            vpc = `aws_vpc.${vpcName}.id`;
+            vpcNameForRt = vpcName;
+          } else {
+            vpc = "data.aws_vpc.default.id";
+          }
+        }
+      }
       const cidr = p.cidrBlock || '10.0.1.0/24';
       const az = p.availabilityZone || 'us-east-1a';
       const mapPublic = p.mapPublicIp !== false;
@@ -497,6 +685,13 @@ resource "aws_s3_bucket_versioning" "${name}_versioning" {
     Name = "${name}"
   }
 }\n\n`;
+
+      if (vpcNameForRt) {
+        tfResourcesBlock += `resource "aws_route_table_association" "${name}_assoc" {
+  subnet_id      = aws_subnet.${name}.id
+  route_table_id = aws_route_table.${vpcNameForRt}_rt.id
+}\n\n`;
+      }
     }
     else if ((node.data as any)?.isCustom && (node.data as any)?.tech === 'Terraform') {
       let customCode = (node.data as any).rawCode || '';
@@ -537,6 +732,90 @@ ${tfResourcesBlock}`;
 }\n\n`;
     }
   });
+
+  // Dynamic parameters HCL output resolver
+  const getDynamicHclOutputExpr = (node: Node, outputKey: string, isGcp: boolean): string => {
+    const p = (node.data as any)?.parameters || {};
+    const id = node.id;
+    
+    if (isGcp) {
+      if (id.startsWith('aws_instance.web_server')) {
+        if (outputKey === 'public_ip') return `google_compute_instance.vm_instance.network_interface.0.access_config.0.nat_ip`;
+        if (outputKey === 'private_ip') return `google_compute_instance.vm_instance.network_interface.0.network_ip`;
+        if (outputKey === 'id') return `google_compute_instance.vm_instance.instance_id`;
+        if (outputKey === 'ssh_user') return `"ubuntu"`;
+      }
+      return '';
+    }
+
+    if (id.startsWith('aws_instance.web_server')) {
+      const name = p.instanceName || 'web_server';
+      if (outputKey === 'public_ip') return `aws_instance.${name}.public_ip`;
+      if (outputKey === 'private_ip') return `aws_instance.${name}.private_ip`;
+      if (outputKey === 'id') return `aws_instance.${name}.id`;
+      if (outputKey === 'ssh_user') return `"ubuntu"`;
+    }
+    if (id.startsWith('aws_security_group')) {
+      const name = p.sgName || 'web_sg';
+      if (outputKey === 'sg_id') return `aws_security_group.${name}.id`;
+      if (outputKey === 'sg_name') return `aws_security_group.${name}.name`;
+    }
+    if (id.startsWith('aws_s3_bucket')) {
+      const name = p.bucketName || 'infracanvas-user-bucket';
+      if (outputKey === 'bucket_name') return `aws_s3_bucket.${name}.id`;
+      if (outputKey === 'bucket_arn') return `aws_s3_bucket.${name}.arn`;
+    }
+    if (id.startsWith('aws_db_instance')) {
+      const name = p.dbName || 'appdb';
+      if (outputKey === 'endpoint') return `aws_db_instance.${name}.endpoint`;
+      if (outputKey === 'port') return `aws_db_instance.${name}.port`;
+      if (outputKey === 'db_name') return `aws_db_instance.${name}.db_name`;
+      if (outputKey === 'username') return `aws_db_instance.${name}.username`;
+    }
+    if (id.startsWith('aws_vpc')) {
+      const name = p.vpcName || 'app_vpc';
+      if (outputKey === 'vpc_id') return `aws_vpc.${name}.id`;
+      if (outputKey === 'cidr_block') return `aws_vpc.${name}.cidr_block`;
+    }
+    if (id.startsWith('aws_subnet')) {
+      const name = p.subnetName || 'app_subnet';
+      if (outputKey === 'subnet_id') return `aws_subnet.${name}.id`;
+      if (outputKey === 'availability_zone') return `aws_subnet.${name}.availability_zone`;
+    }
+    return '';
+  };
+
+  // Scan all node parameters for dynamic variable references of format {{ nodes.node_name.output_key }}
+  const dynamicOutputs: string[] = [];
+  const regex = /{{\s*(?:nodes\.)?([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_-]+)\s*}}/g;
+  const serialized = JSON.stringify(nodes.map(n => n.data));
+  const scanned = new Set<string>();
+  let match;
+
+  while ((match = regex.exec(serialized)) !== null) {
+    const nodeVarName = match[1];
+    const outputKey = match[2];
+    
+    const referencedNode = nodes.find(n => n.id.replace(/\./g, '_') === nodeVarName);
+    if (referencedNode) {
+      const uniqueKey = `${referencedNode.id}_${outputKey}`;
+      if (!scanned.has(uniqueKey)) {
+        scanned.add(uniqueKey);
+        
+        const expr = getDynamicHclOutputExpr(referencedNode, outputKey, hasGcp);
+        if (expr) {
+          dynamicOutputs.push(`output "${nodeVarName}_${outputKey}" {
+  value       = ${expr}
+  description = "Dynamic parameter output for ${nodeVarName}"
+}`);
+        }
+      }
+    }
+  }
+
+  if (dynamicOutputs.length > 0) {
+    outputsTfContent += '\n\n' + dynamicOutputs.join('\n\n') + '\n';
+  }
 
   return { mainTf, variablesTf, outputsTf: outputsTfContent };
 }
@@ -581,14 +860,59 @@ export function generateBundleFiles(nodes: Node[], edges: Edge[]): FileItem[] {
   if (hasAnsible) {
     const targetNode = nodes.find(n => (n.data as any)?.tech === 'Target');
     const isGcp = targetNode?.id.startsWith('gcp_target');
-    const instanceNode = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
-    const instanceName = ((instanceNode?.data as any)?.parameters || DEFAULT_INSTANCE_PARAMS).instanceName || 'web_server';
     const playbookYml = generateAnsibleYAML(nodes, edges);
     const colon = ':';
     
-    const hostLine = isGcp
-      ? `web_server_1 ansible_host=google_compute_instance.${instanceName}.public_ip ansible_user=ubuntu`
-      : `web_server_1 ansible_host=aws_instance.${instanceName}.public_ip ansible_user=ubuntu`;
+    // Find starting Ansible node
+    const ansibleNodes = nodes.filter(n => (n.data as any)?.tech === 'Ansible');
+    const ansibleNodeIds = new Set(ansibleNodes.map(n => n.id));
+    const nonStartAnsibleIds = new Set(
+      edges.filter(e => ansibleNodeIds.has(e.target) && ansibleNodeIds.has(e.source)).map(e => e.target)
+    );
+    const startAnsibleNodes = ansibleNodes.filter(n => !nonStartAnsibleIds.has(n.id));
+    const startNode = startAnsibleNodes[0];
+    const startParams = (startNode?.data as any)?.parameters || {};
+
+    let hostLine = '';
+    // Check if starting Ansible node has incoming VM connection
+    const incomingVmEdges = edges.filter(
+      e => e.target === startNode?.id &&
+      (e.source.startsWith('aws_instance') || e.source.startsWith('google_compute_instance') || e.source.startsWith('gcp_target') || e.source.startsWith('azure_linux'))
+    );
+
+    const sshUser = startParams.ansibleUser || 'ubuntu';
+
+    if (incomingVmEdges.length > 0) {
+      const vmNode = nodes.find(n => n.id === incomingVmEdges[0].source);
+      const vmParams = (vmNode?.data as any)?.parameters || {};
+      const vmName = vmParams.instanceName || 'web_server';
+      if (vmNode?.id.startsWith('aws_instance')) {
+        hostLine = `web_server_1 ansible_host=aws_instance.${vmName}.public_ip ansible_user=${sshUser}`;
+      } else if (vmNode?.id.startsWith('google_compute_instance') || vmNode?.id.startsWith('gcp_target')) {
+        hostLine = `web_server_1 ansible_host=google_compute_instance.${vmName}.public_ip ansible_user=${sshUser}`;
+      } else {
+        const azureUser = startParams.ansibleUser || 'azureuser';
+        hostLine = `web_server_1 ansible_host=azurerm_public_ip.pip.ip_address ansible_user=${azureUser}`;
+      }
+    } else if (startParams.ansibleHost) {
+      const hostVal = startParams.ansibleHost.trim();
+      hostLine = `web_server_1 ansible_host=${hostVal} ansible_user=${sshUser}`;
+    } else {
+      // Fallback to first VM on canvas
+      const fallbackVm = nodes.find(n => n.id.startsWith('aws_instance.web_server'));
+      if (fallbackVm) {
+        const vmParams = (fallbackVm.data as any)?.parameters || {};
+        const vmName = vmParams.instanceName || 'web_server';
+        hostLine = `web_server_1 ansible_host=aws_instance.${vmName}.public_ip ansible_user=${sshUser}`;
+      } else {
+        const fallbackGcp = nodes.find(n => n.id.startsWith('gcp_target'));
+        if (fallbackGcp) {
+          hostLine = `web_server_1 ansible_host=google_compute_instance.web_server.public_ip ansible_user=${sshUser}`;
+        } else {
+          hostLine = `web_server_1 ansible_host=127.0.0.1 ansible_user=${sshUser}`;
+        }
+      }
+    }
 
     const hostsIni = `[webservers]
 ${hostLine}
