@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@iconify/react';
 import { useAuthStore } from '../store/useAuthStore';
+import { ProjectSettingsModal } from '../components/ProjectSettingsModal';
 
 interface Project {
 	id: string;
@@ -51,6 +52,8 @@ function DashboardContent() {
 	const [searchQuery, setSearchQuery] = useState('');
 	const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 	const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+	const [selectedProjectForSettings, setSelectedProjectForSettings] = useState<Project | null>(null);
 
 	// Create project form state
 	const [newProjName, setNewProjName] = useState('');
@@ -465,13 +468,27 @@ function DashboardContent() {
 										</div>
 
 										{project.user_role ? (
-											<button
-												onClick={() => handleOpenWorkspace(project.id)}
-												className="rounded-xl bg-slate-800 hover:bg-primary hover:text-white px-4 py-2 text-xs font-bold text-slate-300 transition duration-200 cursor-pointer flex items-center gap-1"
-											>
-												<span>Open Workspace</span>
-												<Icon icon="lucide:chevron-right" className="text-sm" />
-											</button>
+											<div className="flex items-center gap-2">
+												{(project.user_role === 'EDITOR' || project.user_role === 'ADMIN') && (
+													<button
+														onClick={() => {
+															setSelectedProjectForSettings(project);
+															setIsSettingsOpen(true);
+														}}
+														className="p-2 rounded-xl border border-slate-850 bg-[#0D1324] hover:bg-primary/10 hover:border-primary/20 text-slate-450 hover:text-primary transition cursor-pointer flex items-center justify-center h-8 w-8"
+														title="Project Settings"
+													>
+														<Icon icon="lucide:settings" className="text-sm" />
+													</button>
+												)}
+												<button
+													onClick={() => handleOpenWorkspace(project.id)}
+													className="rounded-xl bg-slate-800 hover:bg-primary hover:text-white px-4 py-2 text-xs font-bold text-slate-300 transition duration-200 cursor-pointer flex items-center gap-1"
+												>
+													<span>Open Workspace</span>
+													<Icon icon="lucide:chevron-right" className="text-sm" />
+												</button>
+											</div>
 										) : (
 											<button
 												onClick={() => {
@@ -624,6 +641,23 @@ function DashboardContent() {
 						</form>
 					</div>
 				</div>
+			)}
+
+			{isSettingsOpen && selectedProjectForSettings && (
+				<ProjectSettingsModal
+					isOpen={isSettingsOpen}
+					onClose={() => {
+						setIsSettingsOpen(false);
+						setSelectedProjectForSettings(null);
+						fetchData(); // Refresh lists when credentials/collaborators changes are made
+					}}
+					projectDetails={selectedProjectForSettings}
+					onUpdateProjectDetails={(updated) => {
+						setSelectedProjectForSettings(updated);
+						fetchData();
+					}}
+					projectId={selectedProjectForSettings.id}
+				/>
 			)}
 		</div>
 	);

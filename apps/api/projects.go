@@ -2,6 +2,7 @@ package main
 
 import (
 	"api/importer"
+	"api/vault"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -950,4 +951,110 @@ func handleImport(w http.ResponseWriter, r *http.Request) {
 		"edges":   json.RawMessage(mergedEdgesJSON),
 		"version": nextVersion,
 	})
+}
+
+type CredentialItem struct {
+	ID             string `json:"id"`
+	ProjectID      string `json:"project_id"`
+	Provider       string `json:"provider"`
+	Name           string `json:"name"`
+	KeyFingerprint string `json:"key_fingerprint"`
+	CreatedAt      string `json:"created_at"`
+}
+
+// GET /api/projects/{id}/credentials
+func handleGetProjectCredentials(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+
+	rows, err := db.Query("SELECT id, project_id, provider, name, key_fingerprint, created_at FROM cloud_credentials WHERE project_id = ? ORDER BY created_at DESC", projectID)
+	if err != nil {
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var items []CredentialItem = []CredentialItem{}
+	for rows.Next() {
+		var item CredentialItem
+		if err := rows.Scan(&item.ID, &item.ProjectID, &item.Provider, &item.Name, &item.KeyFingerprint, &item.CreatedAt); err == nil {
+			items = append(items, item)
+		}
+	}
+
+	if err = rows.Err(); err != nil {
+		http.Error(w, "Database error during row iteration: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(items)
+}
+
+// POST /api/projects/{id}/credentials
+func handleCreateProjectCredential(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var payload struct {
+		Name     string `json:"name"`
+		Provider string `json:"provider"`
+		RawData  string `json:"raw_data"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if payload.Name == "" || payload.Provider == "" || payload.RawData == "" {
+		http.Error(w, "Missing name, provider, or raw_data in payload", http.StatusBadRequest)
+		return
+	}
+
+	if payload.Provider != "AWS" && payload.Provider != "GCP" && payload.Provider != "SSH" {
+		http.Error(w, "Invalid provider: must be AWS, GCP, or SSH", http.StatusBadRequest)
+		return
+	}
+
+	cipherText, nonce, authTag, err := vault.Encrypt([]byte(payload.RawData))
+	if err != nil {
+		http.Error(w, "Vault encryption failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	fingerprint := vault.Fingerprint(payload.Provider, []byte(payload.RawData))
+	credID := generateUUID()
+
+	_, err = db.Exec("INSERT INTO cloud_credentials (id, project_id, provider, name, encrypted_data, nonce, auth_tag, key_fingerprint, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		credID, projectID, payload.Provider, payload.Name, cipherText, nonce, authTag, fingerprint, user.ID)
+	if err != nil {
+		http.Error(w, "Failed to save credential: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":              credID,
+		"message":         "Credential saved securely",
+		"key_fingerprint": fingerprint,
+	})
+}
+
+// DELETE /api/projects/{id}/credentials/{credId}
+func handleDeleteProjectCredential(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+	credID := r.PathValue("credId")
+
+	_, err := db.Exec("DELETE FROM cloud_credentials WHERE id = ? AND project_id = ?", credID, projectID)
+	if err != nil {
+		http.Error(w, "Failed to delete credential: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Credential deleted successfully"})
 }
