@@ -290,7 +290,7 @@ function DashboardContent() {
 							<div className="h-4 w-4 rounded-md bg-gradient-to-br from-primary to-amber-400"></div>
 						</div>
 						<div>
-							<p className="text-sm font-semibold tracking-wide text-white">OrchestrateOS</p>
+							<p className="text-sm font-semibold tracking-wide text-white">InfraCanvas</p>
 							<p className="text-xs text-slate-400">Workspace Dashboard</p>
 						</div>
 					</Link>
@@ -483,7 +483,7 @@ function DashboardContent() {
 												)}
 												<button
 													onClick={() => handleOpenWorkspace(project.id)}
-													className="rounded-xl bg-slate-800 hover:bg-primary hover:text-white px-4 py-2 text-xs font-bold text-slate-300 transition duration-200 cursor-pointer flex items-center gap-1"
+													className="rounded-xl bg-secondary hover:bg-primary hover:text-white px-4 py-2 text-xs font-bold text-slate-300 transition duration-200 cursor-pointer flex items-center gap-1"
 												>
 													<span>Open Workspace</span>
 													<Icon icon="lucide:chevron-right" className="text-sm" />
@@ -515,7 +515,7 @@ function DashboardContent() {
 					<div className="w-full max-w-md bg-secondary border border-border rounded-3xl p-6 shadow-2xl flex flex-col gap-5 animate-in zoom-in-95 duration-200">
 						<div className="flex justify-between items-center">
 							<h3 className="text-lg font-bold text-white">Create New Workspace</h3>
-							<button onClick={() => setIsCreateModalOpen(false)} className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 cursor-pointer">
+							<button onClick={() => setIsCreateModalOpen(false)} className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-secondary cursor-pointer">
 								<Icon icon="lucide:x" className="text-xl" />
 							</button>
 						</div>
@@ -594,7 +594,7 @@ function DashboardContent() {
 					<div className="w-full max-w-md bg-secondary border border-border rounded-3xl p-6 shadow-2xl flex flex-col gap-5 animate-in zoom-in-95 duration-200">
 						<div className="flex justify-between items-center">
 							<h3 className="text-lg font-bold text-white">Request Access</h3>
-							<button onClick={() => setIsJoinModalOpen(false)} className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 cursor-pointer">
+							<button onClick={() => setIsJoinModalOpen(false)} className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-secondary cursor-pointer">
 								<Icon icon="lucide:x" className="text-xl" />
 							</button>
 						</div>

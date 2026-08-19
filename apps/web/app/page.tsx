@@ -50,7 +50,7 @@ function Navbar() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50">
       <div className="mx-auto max-w-7xl px-6 py-4 lg:px-10">
-        <div className="flex items-center justify-between rounded-2xl border border-white/[0.06] bg-slate-950/60 px-6 py-3 shadow-2xl backdrop-blur-xl">
+        <div className="flex items-center justify-between rounded-2xl border border-white/[0.06] bg-background/60 px-6 py-3 shadow-2xl backdrop-blur-xl">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-amber-600 shadow-lg shadow-indigo-500/20">
@@ -107,7 +107,7 @@ function Navbar() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
-            className="mt-2 rounded-2xl border border-white/[0.06] bg-slate-950/90 p-6 shadow-2xl backdrop-blur-xl lg:hidden"
+            className="mt-2 rounded-2xl border border-white/[0.06] bg-background/90 p-6 shadow-2xl backdrop-blur-xl lg:hidden"
           >
             <nav className="flex flex-col gap-4">
               <a href="#features" onClick={() => setMobileOpen(false)} className="text-sm text-slate-400 hover:text-white transition">Features</a>
@@ -672,7 +672,7 @@ spec:
               scale={1.02}
               effect="gravitate"
               spotlight
-              className="rounded-2xl border border-white/[0.08] bg-slate-950/80 shadow-2xl backdrop-blur-xl overflow-hidden"
+              className="rounded-2xl border border-white/[0.08] bg-background/80 shadow-2xl backdrop-blur-xl overflow-hidden"
             >
               <div className="relative z-20">
                 {/* Window chrome */}
@@ -971,7 +971,7 @@ function CliSection() {
             variants={scaleIn}
             transition={{ duration: 0.6, ease: EASE }}
           >
-            <TiltCard tiltLimit={6} scale={1.02} effect="gravitate" spotlight className="rounded-2xl border border-white/[0.08] bg-slate-950/80 shadow-2xl backdrop-blur-xl overflow-hidden">
+            <TiltCard tiltLimit={6} scale={1.02} effect="gravitate" spotlight className="rounded-2xl border border-white/[0.08] bg-background/80 shadow-2xl backdrop-blur-xl overflow-hidden">
               <div className="relative z-20">
                 <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3">
                   <div className="flex items-center gap-2">

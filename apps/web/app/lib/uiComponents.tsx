@@ -30,9 +30,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       primary:
         'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 shadow-md hover:shadow-lg active:shadow-inner',
       secondary:
-        'bg-slate-700 text-slate-100 hover:bg-slate-600 border border-input',
+        'bg-input text-slate-100 hover:bg-input border border-input',
       outline: 'border-2 border-blue-500 text-blue-400 hover:bg-blue-500/10',
-      ghost: 'text-slate-300 hover:bg-slate-700/50 hover:text-slate-100',
+      ghost: 'text-slate-300 hover:bg-input/50 hover:text-slate-100',
     };
 
     const sizeStyles = {
@@ -94,7 +94,7 @@ export const Badge: React.FC<BadgeProps> = ({
 }) => {
   const variantStyles = {
     primary: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
-    secondary: 'bg-slate-600/50 text-slate-200 border border-input/40',
+    secondary: 'bg-input/70 text-slate-200 border border-input/40',
     success: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
     warning: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
     error: 'bg-red-500/20 text-red-300 border border-red-500/30',
@@ -128,7 +128,7 @@ export const Card: React.FC<CardProps> = ({
 }) => {
   return (
     <div
-      className={`bg-slate-800/50 border border-border rounded-lg backdrop-blur-sm transition-all duration-200 hover:border-input hover:bg-slate-800/70 ${withPadding ? 'p-4' : ''} ${className}`}
+      className={`bg-secondary/50 border border-border rounded-lg backdrop-blur-sm transition-all duration-200 hover:border-input hover:bg-secondary/70 ${withPadding ? 'p-4' : ''} ${className}`}
     >
       {children}
     </div>
@@ -158,11 +158,11 @@ export const Tooltip: React.FC<TooltipProps> = ({
     <div className="relative group inline-block">
       {children}
       <div
-        className={`absolute ${positionStyles[position]} hidden group-hover:block z-50 px-3 py-2 bg-slate-900 text-slate-100 text-xs rounded-md whitespace-nowrap shadow-lg border border-border pointer-events-none`}
+        className={`absolute ${positionStyles[position]} hidden group-hover:block z-50 px-3 py-2 bg-card text-slate-100 text-xs rounded-md whitespace-nowrap shadow-lg border border-border pointer-events-none`}
       >
         {content}
         <div
-          className={`absolute w-2 h-2 bg-slate-900 border-l border-t border-border ${
+          className={`absolute w-2 h-2 bg-card border-l border-t border-border ${
             position === 'top'
               ? 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 rotate-45'
               : position === 'bottom'
@@ -202,7 +202,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
       <Tooltip content={label || ''}>
         <button
           ref={ref}
-          className={`inline-flex items-center justify-center rounded-lg transition-all duration-200 text-slate-300 hover:text-white hover:bg-slate-700/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${sizeStyles[size]} ${className}`}
+          className={`inline-flex items-center justify-center rounded-lg transition-all duration-200 text-slate-300 hover:text-white hover:bg-input/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${sizeStyles[size]} ${className}`}
           {...props}
         >
           {icon}
