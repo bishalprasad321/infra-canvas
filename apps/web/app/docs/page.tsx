@@ -6,6 +6,62 @@ import { Icon } from '@iconify/react';
 import { useAuthStore } from '../store/useAuthStore';
 import ProfileMenu from '../components/ProfileMenu';
 
+function CodeBlock({ code }: { code: string }) {
+  const [status, setStatus] = useState<'idle' | 'copied' | 'error'>('idle');
+
+  const legacyCopy = (text: string) => {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return ok;
+  };
+
+  const handleCopy = async () => {
+    let ok = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(code);
+        ok = true;
+      } else {
+        ok = legacyCopy(code);
+      }
+    } catch {
+      ok = legacyCopy(code);
+    }
+    setStatus(ok ? 'copied' : 'error');
+    setTimeout(() => setStatus('idle'), 1600);
+  };
+
+  return (
+    <div className="relative">
+      <pre className="bg-card border border-border p-4 pr-12 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
+        {code}
+      </pre>
+      <button
+        type="button"
+        onClick={handleCopy}
+        aria-label={status === 'copied' ? 'Copied' : status === 'error' ? 'Copy failed' : 'Copy command'}
+        title={status === 'error' ? 'Copy failed — select the text manually' : undefined}
+        className={`absolute top-2.5 right-2.5 flex h-8 w-8 items-center justify-center rounded-lg border transition-all cursor-pointer ${
+          status === 'copied'
+            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+            : status === 'error'
+            ? 'border-red-500/30 bg-red-500/10 text-red-400'
+            : 'border-border bg-secondary/80 text-slate-400 hover:text-primary hover:border-primary/40 hover:bg-secondary'
+        }`}
+      >
+        <Icon icon={status === 'copied' ? 'lucide:check' : status === 'error' ? 'lucide:x' : 'lucide:copy'} className="text-sm" />
+      </button>
+    </div>
+  );
+}
+
 export default function DocsPage() {
   const { user, hasHydrated } = useAuthStore();
   const isLoggedIn = hasHydrated && !!user;
@@ -27,21 +83,20 @@ export default function DocsPage() {
     <div className="min-h-screen w-full bg-background text-slate-100 flex flex-col font-sans overflow-x-hidden selection:bg-primary/35 selection:text-white">
       {/* BACKGROUND GRADIENTS */}
       <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950"></div>
         <div className="absolute left-1/4 top-10 h-72 w-72 rounded-full bg-primary/10 blur-3xl"></div>
-        <div className="absolute bottom-10 right-1/4 h-96 w-96 rounded-full bg-primary/5 blur-3xl"></div>
+        <div className="absolute bottom-10 right-1/4 h-96 w-96 rounded-full bg-amber-500/5 blur-3xl"></div>
       </div>
 
       {/* HEADER */}
-      <header className="sticky top-0 z-20 border-b border-border bg-slate-950/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 lg:px-10">
           <div className="flex items-center gap-4">
             <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-slate-900 shadow-md">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card shadow-md">
                 <div className="h-4 w-4 rounded-md bg-gradient-to-br from-primary to-amber-500"></div>
               </div>
               <div>
-                <p className="text-sm font-semibold tracking-wide text-white">OrchestrateOS</p>
+                <p className="text-sm font-semibold tracking-wide text-white">InfraCanvas</p>
                 <p className="text-xs text-slate-400">Documentation</p>
               </div>
             </Link>
@@ -59,7 +114,7 @@ export default function DocsPage() {
                 <ProfileMenu variant="compact" />
               </>
             ) : (
-              <Link href="/login" className="rounded-lg border border-border bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md hover:bg-slate-800 transition">
+              <Link href="/login" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-white shadow-md hover:bg-secondary transition">
                 Sign In
               </Link>
             )}
@@ -145,12 +200,12 @@ export default function DocsPage() {
           {/* SECTION 1: INTRO */}
           {activeSection === 'intro' && (
             <section className="space-y-6">
-              <h1 className="text-3xl font-bold tracking-tight text-white lg:text-4xl">OrchestrateOS CLI</h1>
+              <h1 className="text-3xl font-bold tracking-tight text-white lg:text-4xl">InfraCanvas CLI</h1>
               <p className="text-lg text-slate-400 leading-relaxed">
-                The OrchestrateOS Command-Line Interface (`infracanvas`) is a powerful tool designed to integrate visual configuration layouts directly with native infrastructure-as-code manifests. With the CLI, platform teams can synchronize local directories, query workspace settings, and stream deployment pipelines from their local terminals or CI/CD pipelines.
+                The InfraCanvas Command-Line Interface (`infracanvas`) is a powerful tool designed to integrate visual configuration layouts directly with native infrastructure-as-code manifests. With the CLI, platform teams can synchronize local directories, query workspace settings, and stream deployment pipelines from their local terminals or CI/CD pipelines.
               </p>
 
-              <div className="rounded-2xl border border-border bg-slate-900/60 p-6 backdrop-blur-md">
+              <div className="rounded-2xl border border-border bg-card/60 p-6 backdrop-blur-md">
                 <h3 className="text-base font-semibold text-white">Main Capabilities</h3>
                 <ul className="mt-4 space-y-3 text-sm text-slate-400">
                   <li className="flex items-start gap-3">
@@ -171,7 +226,7 @@ export default function DocsPage() {
               <div className="pt-4">
                 <button
                   onClick={() => setActiveSection('install')}
-                  className="rounded-xl bg-primary hover:bg-primary/90 px-6 py-3.5 text-sm font-semibold text-slate-950 transition flex items-center gap-2"
+                  className="rounded-xl bg-primary hover:bg-primary/90 px-6 py-3.5 text-sm font-semibold text-white transition flex items-center gap-2 cursor-pointer"
                 >
                   Proceed to Installation
                   <Icon icon="lucide:arrow-right" />
@@ -205,7 +260,7 @@ export default function DocsPage() {
                     <a
                       href={downloadLinks.windows}
                       download
-                      className="flex items-center justify-between rounded-xl border border-border bg-slate-900 px-4 py-3.5 text-sm font-medium hover:bg-slate-800 hover:border-border transition"
+                      className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3.5 text-sm font-medium hover:bg-secondary hover:border-border transition"
                     >
                       <span className="flex items-center gap-2">
                         <Icon icon="logos:microsoft-windows" className="text-base" />
@@ -216,7 +271,7 @@ export default function DocsPage() {
                     <a
                       href={downloadLinks.macosSilicon}
                       download
-                      className="flex items-center justify-between rounded-xl border border-border bg-slate-900 px-4 py-3.5 text-sm font-medium hover:bg-slate-800 hover:border-border transition"
+                      className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3.5 text-sm font-medium hover:bg-secondary hover:border-border transition"
                     >
                       <span className="flex items-center gap-2">
                         <Icon icon="logos:apple" className="text-base text-white" />
@@ -227,7 +282,7 @@ export default function DocsPage() {
                     <a
                       href={downloadLinks.macosIntel}
                       download
-                      className="flex items-center justify-between rounded-xl border border-border bg-slate-900 px-4 py-3.5 text-sm font-medium hover:bg-slate-800 hover:border-border transition"
+                      className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3.5 text-sm font-medium hover:bg-secondary hover:border-border transition"
                     >
                       <span className="flex items-center gap-2">
                         <Icon icon="logos:apple" className="text-base" />
@@ -238,7 +293,7 @@ export default function DocsPage() {
                     <a
                       href={downloadLinks.linux}
                       download
-                      className="flex items-center justify-between rounded-xl border border-border bg-slate-900 px-4 py-3.5 text-sm font-medium hover:bg-slate-800 hover:border-border transition"
+                      className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3.5 text-sm font-medium hover:bg-secondary hover:border-border transition"
                     >
                       <span className="flex items-center gap-2">
                         <Icon icon="logos:linux-tux" className="text-base" />
@@ -248,12 +303,12 @@ export default function DocsPage() {
                     </a>
                   </div>
                 ) : (
-                  <div className="mt-6 flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-slate-950 p-6 text-center">
+                  <div className="mt-6 flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background p-6 text-center">
                     <Icon icon="lucide:lock" className="text-slate-600 text-3xl mb-2" />
                     <p className="text-sm text-slate-400 mb-4">You must be logged in to download compiled binaries.</p>
                     <Link
                       href="/login"
-                      className="rounded-lg bg-primary hover:bg-primary/90 px-5 py-2.5 text-xs font-semibold text-slate-950 transition"
+                      className="rounded-lg bg-primary hover:bg-primary/90 px-5 py-2.5 text-xs font-semibold text-white transition"
                     >
                       Sign In to Download
                     </Link>
@@ -296,15 +351,11 @@ export default function DocsPage() {
                       <p className="text-sm text-slate-400">
                         3. Add `C:\tools\infracanvas` to your User **Environment Variables PATH**:
                       </p>
-                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                        [System.Environment]::SetEnvironmentVariable("PATH", $env:Path + ";C:\tools\infracanvas", "User")
-                      </pre>
+                      <CodeBlock code={'[System.Environment]::SetEnvironmentVariable("PATH", $env:Path + ";C:\\tools\\infracanvas", "User")'} />
                       <p className="text-sm text-slate-400">
                         4. Restart your terminal and verify the installation:
                       </p>
-                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                        infracanvas --help
-                      </pre>
+                      <CodeBlock code="infracanvas --help" />
                     </div>
                   )}
 
@@ -316,21 +367,15 @@ export default function DocsPage() {
                       <p className="text-sm text-slate-400">
                         2. Move the binary into your local executable search PATH:
                       </p>
-                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                        sudo mv ~/Downloads/infracanvas-darwin-arm64 /usr/local/bin/infracanvas
-                      </pre>
+                      <CodeBlock code="sudo mv ~/Downloads/infracanvas-darwin-arm64 /usr/local/bin/infracanvas" />
                       <p className="text-sm text-slate-400">
                         3. Give the binary execute permissions:
                       </p>
-                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                        chmod +x /usr/local/bin/infracanvas
-                      </pre>
+                      <CodeBlock code="chmod +x /usr/local/bin/infracanvas" />
                       <p className="text-sm text-slate-400">
                         4. Run command check to verify:
                       </p>
-                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                        infracanvas --help
-                      </pre>
+                      <CodeBlock code="infracanvas --help" />
                     </div>
                   )}
 
@@ -342,21 +387,15 @@ export default function DocsPage() {
                       <p className="text-sm text-slate-400">
                         2. Move the binary into `/usr/local/bin`:
                       </p>
-                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                        sudo mv ~/Downloads/infracanvas-linux-amd64 /usr/local/bin/infracanvas
-                      </pre>
+                      <CodeBlock code="sudo mv ~/Downloads/infracanvas-linux-amd64 /usr/local/bin/infracanvas" />
                       <p className="text-sm text-slate-400">
                         3. Grant execution rights:
                       </p>
-                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                        chmod +x /usr/local/bin/infracanvas
-                      </pre>
+                      <CodeBlock code="chmod +x /usr/local/bin/infracanvas" />
                       <p className="text-sm text-slate-400">
                         4. Verify installation:
                       </p>
-                      <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                        infracanvas --help
-                      </pre>
+                      <CodeBlock code="infracanvas --help" />
                     </div>
                   )}
                 </div>
@@ -377,9 +416,7 @@ export default function DocsPage() {
                 <p className="text-sm text-slate-400">
                   Run the login sub-command. The program will prompt for your account email and password securely, then query and write your session token:
                 </p>
-                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                  infracanvas login
-                </pre>
+                <CodeBlock code="infracanvas login" />
               </div>
 
               <div className="space-y-3 pt-4">
@@ -387,9 +424,7 @@ export default function DocsPage() {
                 <p className="text-sm text-slate-400">
                   To clear your locally cached credentials and end the session:
                 </p>
-                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                  infracanvas logout
-                </pre>
+                <CodeBlock code="infracanvas logout" />
               </div>
             </section>
           )}
@@ -404,24 +439,18 @@ export default function DocsPage() {
 
               <div className="space-y-3">
                 <h3 className="text-base font-semibold text-white">List Projects</h3>
-                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                  infracanvas projects list
-                </pre>
+                <CodeBlock code="infracanvas projects list" />
               </div>
 
               <div className="space-y-3 pt-4">
                 <h3 className="text-base font-semibold text-white">Create a Project</h3>
                 <p className="text-sm text-slate-400">Initialize a new project workspace by name:</p>
-                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                  infracanvas projects create --name "My VPC Stack" --visibility PRIVATE
-                </pre>
+                <CodeBlock code='infracanvas projects create --name "My VPC Stack" --visibility PRIVATE' />
               </div>
 
               <div className="space-y-3 pt-4">
                 <h3 className="text-base font-semibold text-white">Delete a Project</h3>
-                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                  infracanvas projects delete --id "my-vpc-stack-id" --force
-                </pre>
+                <CodeBlock code='infracanvas projects delete --id "my-vpc-stack-id" --force' />
               </div>
             </section>
           )}
@@ -437,17 +466,13 @@ export default function DocsPage() {
               <div className="space-y-3">
                 <h3 className="text-base font-semibold text-white">Import a Single File</h3>
                 <p className="text-sm text-slate-400">Upload and parse a single Terraform or Kubernetes configuration:</p>
-                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                  infracanvas import --project "VPC-Stack" --file "./terraform/main.tf"
-                </pre>
+                <CodeBlock code='infracanvas import --project "VPC-Stack" --file "./terraform/main.tf"' />
               </div>
 
               <div className="space-y-3 pt-4">
                 <h3 className="text-base font-semibold text-white">Import a Directory</h3>
                 <p className="text-sm text-slate-400">Recursively scan and import all configurations from a target directory:</p>
-                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                  infracanvas import --project "VPC-Stack" --dir "./deployments/"
-                </pre>
+                <CodeBlock code='infracanvas import --project "VPC-Stack" --dir "./deployments/"' />
               </div>
             </section>
           )}
@@ -462,9 +487,7 @@ export default function DocsPage() {
 
               <div className="space-y-3">
                 <h3 className="text-base font-semibold text-white">Execute Deployment Pipeline</h3>
-                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                  infracanvas deploy --project "VPC-Stack"
-                </pre>
+                <CodeBlock code='infracanvas deploy --project "VPC-Stack"' />
                 <p className="text-sm text-slate-400 mt-2">
                   This command connects to the deployment tracker socket, streaming all progress logs sequentially and printing them in real-time.
                 </p>
@@ -473,9 +496,7 @@ export default function DocsPage() {
               <div className="space-y-3 pt-4">
                 <h3 className="text-base font-semibold text-white">Deploy with Auto-Destroy</h3>
                 <p className="text-sm text-slate-400">To spin up testing systems and tear them down immediately upon execution completion:</p>
-                <pre className="bg-slate-900 border border-border p-4 rounded-xl text-xs font-mono overflow-x-auto text-slate-300">
-                  infracanvas deploy --project "VPC-Stack" --auto-destroy
-                </pre>
+                <CodeBlock code='infracanvas deploy --project "VPC-Stack" --auto-destroy' />
               </div>
             </section>
           )}
@@ -483,9 +504,9 @@ export default function DocsPage() {
       </div>
 
       {/* FOOTER */}
-      <footer className="border-t border-border/80 bg-slate-950/80 py-8 relative z-10">
+      <footer className="border-t border-border/80 bg-background/80 py-8 relative z-10">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-6 text-sm text-slate-500 lg:flex-row lg:items-center lg:justify-between lg:px-10">
-          <p>© 2026 OrchestrateOS. All rights reserved.</p>
+          <p>© 2026 InfraCanvas. All rights reserved.</p>
           <div className="flex gap-5">
             <Link href="/" className="hover:text-slate-300 transition">Home</Link>
             <span className="cursor-not-allowed">Terms</span>

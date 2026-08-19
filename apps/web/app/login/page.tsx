@@ -243,7 +243,7 @@ function LoginForm() {
             </p>
           ) : (
             <p>
-              New to OrchestrateOS?{' '}
+              New to InfraCanvas?{' '}
               <button 
                 type="button" 
                 onClick={() => router.push('/login?mode=signup')}

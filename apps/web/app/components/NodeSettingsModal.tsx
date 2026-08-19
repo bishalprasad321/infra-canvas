@@ -16,10 +16,10 @@ export default function NodeSettingsModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-slate-900 border border-border rounded-xl shadow-2xl w-[400px] overflow-hidden flex flex-col">
+      <div className="bg-card border border-border rounded-xl shadow-2xl w-[400px] overflow-hidden flex flex-col">
         
         {/* Header */}
-        <div className="bg-slate-800 px-5 py-4 border-b border-border flex justify-between items-center">
+        <div className="bg-secondary px-5 py-4 border-b border-border flex justify-between items-center">
           <h3 className="text-slate-100 font-semibold flex items-center gap-2">
             ⚙️ Configure: {label}
           </h3>
@@ -42,7 +42,7 @@ export default function NodeSettingsModal() {
               <div className="flex gap-2">
                 <input 
                   type="text"
-                  className="flex-grow bg-slate-950 border border-border rounded-md px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                  className="flex-grow bg-background border border-border rounded-md px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
                   value={(selectedNode.data.dbUser as string) || ''}
                   onChange={(e) => updateNodeData(selectedNode.id, { dbUser: e.target.value })}
                   placeholder="e.g., admin or {{ db_user }}"
@@ -56,7 +56,7 @@ export default function NodeSettingsModal() {
                       updateNodeData(selectedNode.id, { dbUser: `{{ ${currentVal} }}` });
                     }
                   }}
-                  className="px-3 bg-slate-800 hover:bg-slate-700 border border-border rounded-md text-slate-400 hover:text-emerald-400 text-xs font-mono transition-colors"
+                  className="px-3 bg-secondary hover:bg-input border border-border rounded-md text-slate-400 hover:text-emerald-400 text-xs font-mono transition-colors"
                   title="Convert to Variable"
                 >
                   {`{x}`}
@@ -65,7 +65,7 @@ export default function NodeSettingsModal() {
               <div className="flex gap-2">
                 <input 
                   type="text"
-                  className="flex-grow bg-slate-950 border border-border rounded-md px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                  className="flex-grow bg-background border border-border rounded-md px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
                   value={(selectedNode.data.dbPass as string) || ''}
                   onChange={(e) => updateNodeData(selectedNode.id, { dbPass: e.target.value })}
                   placeholder="e.g., Your DB password or {{ db_pass }}"
@@ -79,7 +79,7 @@ export default function NodeSettingsModal() {
                       updateNodeData(selectedNode.id, { dbPass: `{{ ${currentVal} }}` });
                     }
                   }}
-                  className="px-3 bg-slate-800 hover:bg-slate-700 border border-border rounded-md text-slate-400 hover:text-emerald-400 text-xs font-mono transition-colors"
+                  className="px-3 bg-secondary hover:bg-input border border-border rounded-md text-slate-400 hover:text-emerald-400 text-xs font-mono transition-colors"
                   title="Convert to Variable"
                 >
                   {`{x}`}
@@ -97,7 +97,7 @@ export default function NodeSettingsModal() {
               <div className="flex gap-2">
                 <input 
                   type="text"
-                  className="flex-grow bg-slate-950 border border-border rounded-md px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                  className="flex-grow bg-background border border-border rounded-md px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
                   value={(selectedNode.data.port as string) || ''}
                   onChange={(e) => updateNodeData(selectedNode.id, { port: e.target.value })}
                   placeholder="e.g., 8080 or {{ port }}"
@@ -111,7 +111,7 @@ export default function NodeSettingsModal() {
                       updateNodeData(selectedNode.id, { port: `{{ ${currentVal} }}` });
                     }
                   }}
-                  className="px-3 bg-slate-800 hover:bg-slate-700 border border-border rounded-md text-slate-400 hover:text-emerald-400 text-xs font-mono transition-colors"
+                  className="px-3 bg-secondary hover:bg-input border border-border rounded-md text-slate-400 hover:text-emerald-400 text-xs font-mono transition-colors"
                   title="Convert to Variable"
                 >
                   {`{x}`}
@@ -131,7 +131,7 @@ export default function NodeSettingsModal() {
         </div>
         
         {/* Footer */}
-        <div className="bg-slate-950/50 px-5 py-3 border-t border-border flex justify-end">
+        <div className="bg-background/50 px-5 py-3 border-t border-border flex justify-end">
           <button 
             onClick={() => setSelectedNodeId(null)}
             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-md transition-colors shadow-sm"

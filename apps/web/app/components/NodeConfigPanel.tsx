@@ -15,7 +15,7 @@ export default function NodeConfigPanel() {
     const label = selectedNode.data.label as string;
 
     return (
-        <div className="absolute top-4 right-4 w-80 bg-slate-800 border border-border rounded-lg shadow-xl p-4 z-50 text-white">
+        <div className="absolute top-4 right-4 w-80 bg-secondary border border-border rounded-lg shadow-xl p-4 z-50 text-white">
       <div className="flex justify-between items-center mb-4 border-b border-border pb-2">
         <h3 className="font-bold text-sm">Configure: {label}</h3>
         <button onClick={() => setSelectedNodeId(null)} className="text-slate-400 hover:text-white">
@@ -30,7 +30,7 @@ export default function NodeConfigPanel() {
             <span className="text-slate-400">Database User</span>
             <input 
               type="text"
-              className="bg-slate-900 border border-border rounded px-2 py-1 outline-none focus:border-emerald-500"
+              className="bg-card border border-border rounded px-2 py-1 outline-none focus:border-emerald-500"
               value={(selectedNode.data.dbUser as string) || ''}
               onChange={(e) => updateNodeData(selectedNode.id, { dbUser: e.target.value })}
               placeholder="e.g., admin"
@@ -46,7 +46,7 @@ export default function NodeConfigPanel() {
             <span className="text-slate-400">Port Number</span>
             <input 
               type="number"
-              className="bg-slate-900 border border-border rounded px-2 py-1 outline-none focus:border-blue-500"
+              className="bg-card border border-border rounded px-2 py-1 outline-none focus:border-blue-500"
               value={(selectedNode.data.port as number) || ''}
               onChange={(e) => updateNodeData(selectedNode.id, { port: e.target.value })}
               placeholder="e.g., 8080"
