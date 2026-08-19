@@ -46,7 +46,7 @@ export default function NodeConfigPanel() {
             <span className="text-slate-400">Port Number</span>
             <input 
               type="number"
-              className="bg-card border border-border rounded px-2 py-1 outline-none focus:border-blue-500"
+              className="bg-card border border-border rounded px-2 py-1 outline-none focus:border-primary"
               value={(selectedNode.data.port as number) || ''}
               onChange={(e) => updateNodeData(selectedNode.id, { port: e.target.value })}
               placeholder="e.g., 8080"

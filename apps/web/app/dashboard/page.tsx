@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Icon } from '@iconify/react';
 import { useAuthStore } from '../store/useAuthStore';
 import { ProjectSettingsModal } from '../components/ProjectSettingsModal';
+import { TiltCard } from '../components/landing/TiltCard';
 
 interface Project {
 	id: string;
@@ -432,9 +433,12 @@ function DashboardContent() {
 				) : (
 					<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 						{filteredProjects.map((project) => (
-							<div
+							<TiltCard
 								key={project.id}
-								className="rounded-[24px] border border-border bg-secondary/30 hover:bg-secondary/50 hover:border-border hover:shadow-2xl transition duration-300 p-6 flex flex-col justify-between shadow-xl relative group"
+								tiltLimit={0}
+								scale={1}
+								spotlight
+								className="rounded-[24px] border border-border bg-secondary/30 hover:bg-secondary/50 hover:border-primary/30 hover:shadow-2xl transition-colors duration-300 p-6 flex flex-col justify-between shadow-xl group cursor-default"
 							>
 								<div>
 									<div className="flex items-center justify-between mb-4">
@@ -503,7 +507,7 @@ function DashboardContent() {
 										)}
 									</div>
 								</div>
-							</div>
+							</TiltCard>
 						))}
 					</div>
 				)}

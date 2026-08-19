@@ -28,10 +28,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ) => {
     const variantStyles = {
       primary:
-        'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 shadow-md hover:shadow-lg active:shadow-inner',
+        'bg-primary text-white hover:opacity-90 shadow-md shadow-primary/20 hover:shadow-lg active:shadow-inner',
       secondary:
         'bg-input text-slate-100 hover:bg-input border border-input',
-      outline: 'border-2 border-blue-500 text-blue-400 hover:bg-blue-500/10',
+      outline: 'border-2 border-primary text-primary hover:bg-primary/10',
       ghost: 'text-slate-300 hover:bg-input/50 hover:text-slate-100',
     };
 
@@ -44,7 +44,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={ref}
-        className={`inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+        className={`inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
         disabled={isLoading || props.disabled}
         {...props}
       >
@@ -93,7 +93,7 @@ export const Badge: React.FC<BadgeProps> = ({
   className = '',
 }) => {
   const variantStyles = {
-    primary: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
+    primary: 'bg-primary/20 text-indigo-300 border border-primary/30',
     secondary: 'bg-input/70 text-slate-200 border border-input/40',
     success: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
     warning: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
@@ -202,7 +202,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
       <Tooltip content={label || ''}>
         <button
           ref={ref}
-          className={`inline-flex items-center justify-center rounded-lg transition-all duration-200 text-slate-300 hover:text-white hover:bg-input/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${sizeStyles[size]} ${className}`}
+          className={`inline-flex items-center justify-center rounded-lg transition-all duration-200 text-slate-300 hover:text-white hover:bg-input/50 focus:outline-none focus:ring-2 focus:ring-primary/50 ${sizeStyles[size]} ${className}`}
           {...props}
         >
           {icon}

@@ -122,7 +122,7 @@ export default function Sidebar() {
                 >
                   <span className="flex items-center gap-2">
                     <span
-                      className={`w-1.5 h-1.5 rounded-full bg-blue-400 transition-all duration-200 ${isExpanded ? 'bg-emerald-400' : ''}`}
+                      className={`w-1.5 h-1.5 rounded-full bg-primary transition-all duration-200 ${isExpanded ? 'bg-emerald-400' : ''}`}
                     />
                     {category}
                   </span>
