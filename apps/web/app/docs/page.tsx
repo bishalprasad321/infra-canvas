@@ -62,12 +62,32 @@ function CodeBlock({ code }: { code: string }) {
   );
 }
 
+const NAV_SECTIONS = [
+  {
+    group: 'Getting Started',
+    items: [
+      { id: 'intro', label: 'Introduction', icon: 'lucide:book-open' },
+      { id: 'install', label: 'Installation Guide', icon: 'lucide:download' },
+    ],
+  },
+  {
+    group: 'CLI Commands',
+    items: [
+      { id: 'auth', label: 'Authentication', icon: 'lucide:key-round' },
+      { id: 'projects', label: 'Projects CRUD', icon: 'lucide:folder-git-2' },
+      { id: 'import', label: 'Importing Code', icon: 'lucide:upload-cloud' },
+      { id: 'deploy', label: 'Deploy & Runs', icon: 'lucide:play-circle' },
+    ],
+  },
+];
+
 export default function DocsPage() {
   const { user, hasHydrated } = useAuthStore();
   const isLoggedIn = hasHydrated && !!user;
 
   const [activeTab, setActiveTab] = useState<'windows' | 'macos' | 'linux'>('windows');
   const [activeSection, setActiveSection] = useState<string>('intro');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const API_URL = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) || 'http://localhost:8080';
   const downloadBaseUrl = `${API_URL}/downloads`;
@@ -89,114 +109,113 @@ export default function DocsPage() {
 
       {/* HEADER */}
       <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 lg:px-10">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card shadow-md">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-10">
+          <div className="flex min-w-0 items-center gap-4">
+            <Link href="/" className="flex min-w-0 items-center gap-3 hover:opacity-90 transition">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card shadow-md">
                 <div className="h-4 w-4 rounded-md bg-gradient-to-br from-primary to-amber-500"></div>
               </div>
-              <div>
-                <p className="text-sm font-semibold tracking-wide text-white">InfraCanvas</p>
-                <p className="text-xs text-slate-400">Documentation</p>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold tracking-wide text-white">InfraCanvas</p>
+                <p className="truncate text-xs text-slate-400">Documentation</p>
               </div>
             </Link>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-sm text-slate-400 hover:text-white transition mr-4">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <Link href="/" className="hidden text-sm text-slate-400 hover:text-white transition mr-2 sm:inline-block sm:mr-4">
               Back to Home
             </Link>
             {isLoggedIn ? (
               <>
-                <Link href="/dashboard" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-md hover:opacity-90 transition">
+                <Link href="/dashboard" className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-md hover:opacity-90 transition sm:px-4">
                   Dashboard
                 </Link>
                 <ProfileMenu variant="compact" />
               </>
             ) : (
-              <Link href="/login" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-white shadow-md hover:bg-secondary transition">
+              <Link href="/login" className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-white shadow-md hover:bg-secondary transition sm:px-4">
                 Sign In
               </Link>
+            )}
+          </div>
+        </div>
+
+        {/* MOBILE SECTION NAV */}
+        <div className="border-t border-border/80 lg:hidden">
+          <div className="mx-auto w-full max-w-7xl px-4 sm:px-6">
+            <button
+              onClick={() => setMobileNavOpen((open) => !open)}
+              className="flex w-full items-center justify-between gap-2 py-3 text-sm font-medium text-white cursor-pointer"
+              aria-expanded={mobileNavOpen}
+            >
+              <span className="flex items-center gap-2">
+                <Icon
+                  icon={NAV_SECTIONS.flatMap((g) => g.items).find((i) => i.id === activeSection)?.icon ?? 'lucide:book-open'}
+                  className="text-base text-primary"
+                />
+                {NAV_SECTIONS.flatMap((g) => g.items).find((i) => i.id === activeSection)?.label ?? 'Introduction'}
+              </span>
+              <Icon icon="lucide:chevron-down" className={`text-base text-slate-400 transition-transform ${mobileNavOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {mobileNavOpen && (
+              <nav className="flex flex-col gap-5 pb-4">
+                {NAV_SECTIONS.map((group) => (
+                  <div key={group.group}>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{group.group}</p>
+                    <ul className="mt-2 space-y-1">
+                      {group.items.map((item) => (
+                        <li key={item.id}>
+                          <button
+                            onClick={() => {
+                              setActiveSection(item.id);
+                              setMobileNavOpen(false);
+                            }}
+                            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition cursor-pointer ${activeSection === item.id ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
+                          >
+                            <Icon icon={item.icon} className="text-base" />
+                            {item.label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </nav>
             )}
           </div>
         </div>
       </header>
 
       {/* MAIN LAYOUT */}
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 px-6 py-8 lg:px-10">
-        {/* SIDEBAR NAVIGATION */}
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-8 sm:px-6 lg:flex-row lg:px-10">
+        {/* SIDEBAR NAVIGATION (desktop) */}
         <aside className="hidden w-64 shrink-0 lg:block border-r border-border/80 pr-8">
           <nav className="sticky top-28 flex flex-col gap-6">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Getting Started</p>
-              <ul className="mt-3 space-y-2">
-                <li>
-                  <button
-                    onClick={() => setActiveSection('intro')}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'intro' ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
-                  >
-                    <Icon icon="lucide:book-open" className="text-base" />
-                    Introduction
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setActiveSection('install')}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'install' ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
-                  >
-                    <Icon icon="lucide:download" className="text-base" />
-                    Installation Guide
-                  </button>
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">CLI Commands</p>
-              <ul className="mt-3 space-y-2">
-                <li>
-                  <button
-                    onClick={() => setActiveSection('auth')}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'auth' ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
-                  >
-                    <Icon icon="lucide:key-round" className="text-base" />
-                    Authentication
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setActiveSection('projects')}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'projects' ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
-                  >
-                    <Icon icon="lucide:folder-git-2" className="text-base" />
-                    Projects CRUD
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setActiveSection('import')}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'import' ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
-                  >
-                    <Icon icon="lucide:upload-cloud" className="text-base" />
-                    Importing Code
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setActiveSection('deploy')}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeSection === 'deploy' ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
-                  >
-                    <Icon icon="lucide:play-circle" className="text-base" />
-                    Deploy & Runs
-                  </button>
-                </li>
-              </ul>
-            </div>
+            {NAV_SECTIONS.map((group) => (
+              <div key={group.group}>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{group.group}</p>
+                <ul className="mt-3 space-y-2">
+                  {group.items.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        onClick={() => setActiveSection(item.id)}
+                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition cursor-pointer ${activeSection === item.id ? 'bg-primary/10 text-primary font-medium' : 'text-slate-400 hover:bg-secondary hover:text-slate-100'}`}
+                      >
+                        <Icon icon={item.icon} className="text-base" />
+                        {item.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </nav>
         </aside>
 
         {/* DOCS CONTENT */}
-        <main className="flex-1 lg:pl-10 max-w-3xl">
+        <main className="min-w-0 flex-1 lg:pl-10 max-w-3xl">
           {/* SECTION 1: INTRO */}
           {activeSection === 'intro' && (
             <section className="space-y-6">
@@ -505,7 +524,7 @@ export default function DocsPage() {
 
       {/* FOOTER */}
       <footer className="border-t border-border/80 bg-background/80 py-8 relative z-10">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-6 text-sm text-slate-500 lg:flex-row lg:items-center lg:justify-between lg:px-10">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 text-sm text-slate-500 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-10">
           <p>© 2026 InfraCanvas. All rights reserved.</p>
           <div className="flex gap-5">
             <Link href="/" className="hover:text-slate-300 transition">Home</Link>
