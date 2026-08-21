@@ -267,10 +267,10 @@ export default function RightPanel() {
   const taskCount = nodes.length;
 
   return (
-    <aside className="w-96 bg-gradient-to-b from-slate-900/80 to-slate-950/80 border-l border-slate-700/50 flex flex-col shrink-0 backdrop-blur-sm">
+    <aside className="w-96 bg-gradient-to-b from-slate-900/80 to-slate-950/80 border-l border-border/50 flex flex-col shrink-0 backdrop-blur-sm">
       
       {/* Panel Header - Enhanced */}
-      <div className="border-b border-slate-700/50 bg-slate-900/50">
+      <div className="border-b border-border/50 bg-card/50">
         <div className="px-4 py-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
@@ -368,10 +368,10 @@ export default function RightPanel() {
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto p-0">
-            <div className="bg-slate-950/50 border border-slate-700/30 rounded-lg font-mono text-sm overflow-x-auto h-full flex">
+            <div className="bg-background/50 border border-border/30 rounded-lg font-mono text-sm overflow-x-auto h-full flex">
               <div className="flex w-full">
                 {/* Line Numbers */}
-                <div className="bg-slate-900/50 border-r border-slate-700/30 px-3 py-4 text-slate-600 text-right select-none flex-shrink-0">
+                <div className="bg-card/50 border-r border-border/30 px-3 py-4 text-slate-600 text-right select-none flex-shrink-0">
                   {yamlCode.split('\n').map((_, i) => (
                     <div key={i} className="h-6 leading-6 text-xs">
                       {i + 1}
@@ -389,7 +389,7 @@ export default function RightPanel() {
       </div>
 
       {/* Footer Info */}
-      <div className="px-4 py-3 border-t border-slate-700/50 bg-slate-900/50 text-xs text-slate-500 text-center">
+      <div className="px-4 py-3 border-t border-border/50 bg-card/50 text-xs text-slate-500 text-center">
         Ready to deploy? Download and use with Ansible
       </div>
     </aside>

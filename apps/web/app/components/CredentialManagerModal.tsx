@@ -146,13 +146,13 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl animate-in zoom-in-95 duration-200 text-slate-100 max-h-[85vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="relative w-full max-w-4xl rounded-2xl border border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200 text-slate-100 max-h-[85vh] overflow-y-auto">
         
         {/* HEADER */}
-        <div className="flex items-center justify-between border-b border-slate-850 pb-4 mb-6">
+        <div className="flex items-center justify-between border-b border-border pb-4 mb-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
               <Icon icon="lucide:shield-check" className="text-xl" />
             </div>
             <div>
@@ -162,7 +162,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
           </div>
           <button 
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-slate-800 transition"
+            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-secondary transition"
           >
             <Icon icon="lucide:x" className="text-slate-400" />
           </button>
@@ -190,7 +190,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. AWS Production Keys"
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-cyan-500/50"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-primary/50"
                 />
               </div>
 
@@ -199,12 +199,12 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
                 <button
                   type="button"
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/50"
+                  className="flex w-full items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm text-slate-100 focus:border-primary/50"
                 >
                   <span className="flex items-center gap-2">
                     {provider === 'AWS' && <Icon icon="logos:aws" className="text-base" />}
                     {provider === 'GCP' && <Icon icon="logos:google-cloud" className="text-base" />}
-                    {provider === 'SSH' && <Icon icon="lucide:key" className="text-cyan-500 text-base" />}
+                    {provider === 'SSH' && <Icon icon="lucide:key" className="text-primary text-base" />}
                     {provider === 'AWS' && 'Amazon Web Services (AWS)'}
                     {provider === 'GCP' && 'Google Cloud Platform (GCP)'}
                     {provider === 'SSH' && 'SSH Private Key (.pem)'}
@@ -213,34 +213,34 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
                 </button>
 
                 {isDropdownOpen && (
-                  <div className="absolute top-full left-0 z-20 mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 p-1 shadow-xl">
+                  <div className="absolute top-full left-0 z-20 mt-1 w-full rounded-lg border border-border bg-background p-1 shadow-xl">
                     <button
                       type="button"
                       onClick={() => { setProvider('AWS'); setIsDropdownOpen(false); }}
-                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-slate-900 text-left"
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-card text-left"
                     >
                       <Icon icon="logos:aws" /> AWS Access Keys
                     </button>
                     <button
                       type="button"
                       onClick={() => { setProvider('GCP'); setIsDropdownOpen(false); }}
-                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-slate-900 text-left"
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-card text-left"
                     >
                       <Icon icon="logos:google-cloud" /> GCP Service Account JSON
                     </button>
                     <button
                       type="button"
                       onClick={() => { setProvider('SSH'); setIsDropdownOpen(false); }}
-                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-slate-900 text-left"
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-card text-left"
                     >
-                      <Icon icon="lucide:key" className="text-cyan-500" /> SSH PEM Private Key
+                      <Icon icon="lucide:key" className="text-primary" /> SSH PEM Private Key
                     </button>
                   </div>
                 )}
               </div>
 
               {provider === 'AWS' && (
-                <div className="space-y-3 p-3 rounded-lg bg-slate-950/50 border border-slate-850">
+                <div className="space-y-3 p-3 rounded-lg bg-background/50 border border-border">
                   <div>
                     <label className="block text-xs text-slate-400 mb-1">AWS Access Key ID</label>
                     <input
@@ -248,7 +248,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
                       value={awsAccessKey}
                       onChange={(e) => setAwsAccessKey(e.target.value)}
                       placeholder="AKIA..."
-                      className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-slate-100 outline-none"
                     />
                   </div>
                   <div>
@@ -258,7 +258,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
                       value={awsSecretKey}
                       onChange={(e) => setAwsSecretKey(e.target.value)}
                       placeholder="••••••••••••••••••••••••••••••••"
-                      className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-slate-100 outline-none"
                     />
                   </div>
                   <div>
@@ -268,7 +268,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
                       value={awsRegion}
                       onChange={(e) => setAwsRegion(e.target.value)}
                       placeholder="us-east-1"
-                      className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-slate-100 outline-none"
                     />
                   </div>
                 </div>
@@ -282,7 +282,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
                     value={rawTextData}
                     onChange={(e) => setRawTextData(e.target.value)}
                     placeholder='{ "type": "service_account", "project_id": "...", ... }'
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs font-mono text-cyan-400 outline-none resize-none"
+                    className="w-full rounded-lg border border-border bg-background p-3 text-xs font-mono text-primary outline-none resize-none"
                   />
                 </div>
               )}
@@ -296,7 +296,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
                       value={sshUser}
                       onChange={(e) => setSshUser(e.target.value)}
                       placeholder="ubuntu"
-                      className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none focus:border-cyan-500/50"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-slate-100 outline-none focus:border-primary/50"
                     />
                   </div>
                   <div>
@@ -306,7 +306,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
                       value={rawTextData}
                       onChange={(e) => setRawTextData(e.target.value)}
                       placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
-                      className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs font-mono text-slate-300 outline-none resize-none focus:border-cyan-500/50"
+                      className="w-full rounded-lg border border-border bg-background p-3 text-xs font-mono text-slate-300 outline-none resize-none focus:border-primary/50"
                     />
                   </div>
                 </div>
@@ -314,7 +314,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
 
               <button
                 type="submit"
-                className="w-full rounded-lg bg-cyan-500 hover:bg-cyan-400 py-2.5 text-sm font-semibold text-slate-950 shadow-md transition"
+                className="w-full rounded-lg bg-primary hover:bg-primary/90 py-2.5 text-sm font-semibold text-white shadow-md transition"
               >
                 Save Encrypted Secret
               </button>
@@ -326,22 +326,22 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
             <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-4">Active Credentials</h3>
             {isLoading ? (
               <div className="flex flex-1 items-center justify-center">
-                <Icon icon="lucide:loader-2" className="animate-spin text-2xl text-cyan-500" />
+                <Icon icon="lucide:loader-2" className="animate-spin text-2xl text-primary" />
               </div>
             ) : credentials.length === 0 ? (
-              <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-slate-800 p-8 text-center text-slate-500">
+              <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border p-8 text-center text-slate-500">
                 <Icon icon="lucide:key" className="text-3xl mb-2" />
                 <p className="text-sm">No credentials registered for this project.</p>
               </div>
             ) : (
               <div className="space-y-3 overflow-y-auto max-h-[45vh] pr-2">
                 {credentials.map((cred) => (
-                  <div key={cred.id} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                  <div key={cred.id} className="flex items-center justify-between rounded-xl border border-border bg-background/40 p-4">
                     <div className="flex items-start gap-3">
                       <div className="mt-1">
                         {cred.provider === 'AWS' && <Icon icon="logos:aws" className="text-lg" />}
                         {cred.provider === 'GCP' && <Icon icon="logos:google-cloud" className="text-lg" />}
-                        {cred.provider === 'SSH' && <Icon icon="lucide:key" className="text-cyan-500 text-lg" />}
+                        {cred.provider === 'SSH' && <Icon icon="lucide:key" className="text-primary text-lg" />}
                       </div>
                       <div>
                         <h4 className="text-sm font-semibold text-white">{cred.name}</h4>
@@ -351,7 +351,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
                     </div>
                     <button
                       onClick={() => handleDeleteCredential(cred.id)}
-                      className="rounded-lg p-2 hover:bg-slate-800 hover:text-rose-500 transition text-slate-500"
+                      className="rounded-lg p-2 hover:bg-secondary hover:text-rose-500 transition text-slate-500"
                     >
                       <Icon icon="lucide:trash-2" className="text-base" />
                     </button>
@@ -518,7 +518,7 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. AWS Production Keys"
-                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-cyan-500/50"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-primary/50"
               />
             </div>
 
@@ -527,12 +527,12 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
               <button
                 type="button"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/50"
+                className="flex w-full items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm text-slate-100 focus:border-primary/50"
               >
                 <span className="flex items-center gap-2">
                   {provider === 'AWS' && <Icon icon="logos:aws" className="text-base" />}
                   {provider === 'GCP' && <Icon icon="logos:google-cloud" className="text-base" />}
-                  {provider === 'SSH' && <Icon icon="lucide:key" className="text-cyan-500 text-base" />}
+                  {provider === 'SSH' && <Icon icon="lucide:key" className="text-primary text-base" />}
                   {provider === 'AWS' && 'Amazon Web Services (AWS)'}
                   {provider === 'GCP' && 'Google Cloud Platform (GCP)'}
                   {provider === 'SSH' && 'SSH Private Key (.pem)'}
@@ -541,34 +541,34 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
               </button>
 
               {isDropdownOpen && (
-                <div className="absolute top-full left-0 z-20 mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 p-1 shadow-xl">
+                <div className="absolute top-full left-0 z-20 mt-1 w-full rounded-lg border border-border bg-background p-1 shadow-xl">
                   <button
                     type="button"
                     onClick={() => { setProvider('AWS'); setIsDropdownOpen(false); }}
-                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-slate-900 text-left"
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-card text-left"
                   >
                     <Icon icon="logos:aws" /> AWS Access Keys
                   </button>
                   <button
                     type="button"
                     onClick={() => { setProvider('GCP'); setIsDropdownOpen(false); }}
-                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-slate-900 text-left"
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-card text-left"
                   >
                     <Icon icon="logos:google-cloud" /> GCP Service Account JSON
                   </button>
                   <button
                     type="button"
                     onClick={() => { setProvider('SSH'); setIsDropdownOpen(false); }}
-                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-slate-900 text-left"
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-card text-left"
                   >
-                    <Icon icon="lucide:key" className="text-cyan-500" /> SSH PEM Private Key
+                    <Icon icon="lucide:key" className="text-primary" /> SSH PEM Private Key
                   </button>
                 </div>
               )}
             </div>
 
             {provider === 'AWS' && (
-              <div className="space-y-3 p-3 rounded-lg bg-slate-950/50 border border-slate-850">
+              <div className="space-y-3 p-3 rounded-lg bg-background/50 border border-border">
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">AWS Access Key ID</label>
                   <input
@@ -576,7 +576,7 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
                     value={awsAccessKey}
                     onChange={(e) => setAwsAccessKey(e.target.value)}
                     placeholder="AKIA..."
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-slate-100 outline-none"
                   />
                 </div>
                 <div>
@@ -586,7 +586,7 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
                     value={awsSecretKey}
                     onChange={(e) => setAwsSecretKey(e.target.value)}
                     placeholder="••••••••••••••••••••••••••••••••"
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-slate-100 outline-none"
                   />
                 </div>
                 <div>
@@ -596,7 +596,7 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
                     value={awsRegion}
                     onChange={(e) => setAwsRegion(e.target.value)}
                     placeholder="us-east-1"
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-slate-100 outline-none"
                   />
                 </div>
               </div>
@@ -610,7 +610,7 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
                   value={rawTextData}
                   onChange={(e) => setRawTextData(e.target.value)}
                   placeholder='{ "type": "service_account", "project_id": "...", ... }'
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs font-mono text-cyan-400 outline-none resize-none"
+                  className="w-full rounded-lg border border-border bg-background p-3 text-xs font-mono text-primary outline-none resize-none"
                 />
               </div>
             )}
@@ -624,7 +624,7 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
                     value={sshUser}
                     onChange={(e) => setSshUser(e.target.value)}
                     placeholder="ubuntu"
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none focus:border-cyan-500/50"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-slate-100 outline-none focus:border-primary/50"
                   />
                 </div>
                 <div>
@@ -634,7 +634,7 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
                     value={rawTextData}
                     onChange={(e) => setRawTextData(e.target.value)}
                     placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs font-mono text-slate-300 outline-none resize-none focus:border-cyan-500/50"
+                    className="w-full rounded-lg border border-border bg-background p-3 text-xs font-mono text-slate-300 outline-none resize-none focus:border-primary/50"
                   />
                 </div>
               </div>
@@ -642,7 +642,7 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
 
             <button
               type="submit"
-              className="w-full rounded-lg bg-cyan-500 hover:bg-cyan-400 py-2.5 text-sm font-semibold text-slate-950 shadow-md transition"
+              className="w-full rounded-lg bg-primary hover:bg-primary/90 py-2.5 text-sm font-semibold text-white shadow-md transition"
             >
               Save Encrypted Secret
             </button>
@@ -654,22 +654,22 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
           <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-4">Active Credentials</h3>
           {isLoading ? (
             <div className="flex flex-1 items-center justify-center">
-              <Icon icon="lucide:loader-2" className="animate-spin text-2xl text-cyan-500" />
+              <Icon icon="lucide:loader-2" className="animate-spin text-2xl text-primary" />
             </div>
           ) : credentials.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-slate-800 p-8 text-center text-slate-500">
+            <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border p-8 text-center text-slate-500">
               <Icon icon="lucide:key" className="text-3xl mb-2" />
               <p className="text-sm">No credentials registered for this project.</p>
             </div>
           ) : (
             <div className="space-y-3 overflow-y-auto max-h-[45vh] pr-2">
               {credentials.map((cred) => (
-                <div key={cred.id} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                <div key={cred.id} className="flex items-center justify-between rounded-xl border border-border bg-background/40 p-4">
                   <div className="flex items-start gap-3">
                     <div className="mt-1">
                       {cred.provider === 'AWS' && <Icon icon="logos:aws" className="text-lg" />}
                       {cred.provider === 'GCP' && <Icon icon="logos:google-cloud" className="text-lg" />}
-                      {cred.provider === 'SSH' && <Icon icon="lucide:key" className="text-cyan-500 text-lg" />}
+                      {cred.provider === 'SSH' && <Icon icon="lucide:key" className="text-primary text-lg" />}
                     </div>
                     <div>
                       <h4 className="text-sm font-semibold text-white">{cred.name}</h4>
@@ -679,7 +679,7 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
                   </div>
                   <button
                     onClick={() => handleDeleteCredential(cred.id)}
-                    className="rounded-lg p-2 hover:bg-slate-800 hover:text-rose-500 transition text-slate-500"
+                    className="rounded-lg p-2 hover:bg-secondary hover:text-rose-500 transition text-slate-500"
                   >
                     <Icon icon="lucide:trash-2" className="text-base" />
                   </button>

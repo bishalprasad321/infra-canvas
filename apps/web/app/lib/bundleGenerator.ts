@@ -921,7 +921,7 @@ ${hostLine}
 ansible_python_interpreter=/usr/bin/python3`;
 
     files.push(
-      { path: 'ansible/playbook.yml', name: 'playbook.yml', language: 'YAML', icon: 'lucide:clipboard', iconColor: 'text-[#00A4FF]', lines: countLines(playbookYml), size: getSizeKb(playbookYml), content: playbookYml },
+      { path: 'ansible/playbook.yml', name: 'playbook.yml', language: 'YAML', icon: 'lucide:clipboard', iconColor: 'text-[#8B5CF6]', lines: countLines(playbookYml), size: getSizeKb(playbookYml), content: playbookYml },
       { path: 'ansible/hosts.ini', name: 'hosts.ini', language: 'INI', icon: 'lucide:settings', iconColor: 'text-muted-foreground', lines: countLines(hostsIni), size: getSizeKb(hostsIni), content: hostsIni },
     );
   }
@@ -1092,7 +1092,7 @@ spec:
 
     const deploymentYamlContent = k8sManifests.join('\n---\n');
     files.push(
-      { path: 'k8s/deployment.yaml', name: 'deployment.yaml', language: 'YAML', icon: 'lucide:layers', iconColor: 'text-[#326CE5]', lines: countLines(deploymentYamlContent), size: getSizeKb(deploymentYamlContent), content: deploymentYamlContent },
+      { path: 'k8s/deployment.yaml', name: 'deployment.yaml', language: 'YAML', icon: 'lucide:layers', iconColor: 'text-[#0EA5E9]', lines: countLines(deploymentYamlContent), size: getSizeKb(deploymentYamlContent), content: deploymentYamlContent },
     );
   }
 
