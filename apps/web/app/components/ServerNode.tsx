@@ -4,7 +4,7 @@ import useCanvasStore from '../store/useCanvasStore';
 
 // Category mapping for node types
 const categoryMap: Record<string, { type: string; color: string }> = {
-  'Update Packages': { type: 'SYSTEM', color: 'bg-slate-700/40 text-slate-300' },
+  'Update Packages': { type: 'SYSTEM', color: 'bg-input/40 text-slate-300' },
   'Install Nginx': { type: 'WEB', color: 'bg-indigo-700/40 text-indigo-300' },
   'Install Node.js': { type: 'WEB', color: 'bg-indigo-700/40 text-indigo-300' },
   'PostgreSQL': { type: 'DATABASE', color: 'bg-emerald-700/40 text-emerald-300' },
@@ -26,7 +26,7 @@ export default function ServerNode({ id, data }: { id: string, data: { label: st
   // hook into the store to set the active mode
   const { setSelectedNodeId } = useCanvasStore();
   const icon = iconMap[data.label] || data.icon || '⚙️';
-  const category = categoryMap[data.label] || { type: 'TASK', color: 'bg-slate-700/40 text-slate-300' };
+  const category = categoryMap[data.label] || { type: 'TASK', color: 'bg-input/40 text-slate-300' };
 
   return (
     <div className="flex flex-col gap-0 select-none">
@@ -38,7 +38,7 @@ export default function ServerNode({ id, data }: { id: string, data: { label: st
       />
 
       {/* NODE CONTENT - Themed card style */}
-      <div className="relative px-4 py-3 bg-slate-800/60 border border-slate-700/80 hover:border-slate-600 rounded-lg min-w-[180px] shadow-md hover:shadow-lg transition-all duration-200 backdrop-blur-sm group">
+      <div className="relative px-4 py-3 bg-secondary/60 border border-border/80 hover:border-input rounded-lg min-w-[180px] shadow-md hover:shadow-lg transition-all duration-200 backdrop-blur-sm group">
         
         {/* Settings icon - apprars on group hover */}
         <button 

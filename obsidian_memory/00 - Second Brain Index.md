@@ -53,6 +53,7 @@ graph TD
     Frontend --> F2[[05.2 - Zustand State Stores Architecture]]
     Frontend --> F3[[05.3 - Execution Safety Locking & Readonly Modes]]
     Frontend --> F4[[05.4 - Custom Node Authoring & Validation]]
+    Frontend --> F5[[05.5 - Design System & Color Palette]]
 
     CLI --> T1[[06.1 - InfraCanvas CLI & Reverse Import Tool]]
     CLI --> T2[[06.2 - Build Scripts & Static Binary Distribution]]
@@ -100,11 +101,12 @@ User authentication, Team/Project RBAC authorization matrix, OAuth 2.0 flow (Goo
 - [[04.3 - AES-256-GCM Credential Vault & Fingerprinting]]
 
 ### 5. [[05.1 - ReactFlow Canvas & Interaction Modes|05 - Frontend & Visual Canvas]]
-Next.js 16 and React 19 visual workspace, Zustand state management, interaction modes (Select, Pan, Link), canvas execution safety locks, and custom node authoring.
+Next.js 16 and React 19 visual workspace, Zustand state management, interaction modes (Select, Pan, Link), canvas execution safety locks, custom node authoring, and the shared design system/color palette.
 - [[05.1 - ReactFlow Canvas & Interaction Modes]]
 - [[05.2 - Zustand State Stores Architecture]]
 - [[05.3 - Execution Safety Locking & Readonly Modes]]
 - [[05.4 - Custom Node Authoring & Validation]]
+- [[05.5 - Design System & Color Palette]]
 
 ### 6. [[06.1 - InfraCanvas CLI & Reverse Import Tool|06 - CLI & Tooling]]
 Go CLI tool (`infracanvas`), automated build pipelines, and static distribution mechanisms.
