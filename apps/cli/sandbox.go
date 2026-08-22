@@ -272,8 +272,15 @@ func runSandboxDown(cmd *cobra.Command, args []string) {
 
 // ---- shared helpers ----
 
+// dockerComposeProjectName is set explicitly (not left to Compose's directory-
+// name default) so `sandbox up/down` never risks colliding with an unrelated
+// Compose project a user happens to have running from the same or a sibling
+// directory — exactly the class of bug hit while building
+// docker-compose.hosted.yml (see obsidian_memory/08.4's Phase 1 notes).
+const dockerComposeProjectName = "infracanvas-sandbox"
+
 func runDockerCompose(args ...string) error {
-	fullArgs := append([]string{"compose", "-f", filepath.Join("sandbox", "docker-compose.sandbox.yml")}, args...)
+	fullArgs := append([]string{"compose", "-p", dockerComposeProjectName, "-f", filepath.Join("sandbox", "docker-compose.sandbox.yml")}, args...)
 	cmd := exec.Command("docker", fullArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

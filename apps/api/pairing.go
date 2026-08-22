@@ -273,6 +273,7 @@ func resolvePairedAgent(projectID string) *runner.AgentContext {
 
 	return &runner.AgentContext{
 		AgentID:       agentID,
+		ProjectID:     projectID,
 		GatewayURL:    gatewayURL,
 		PrivateKeyPEM: string(plainText),
 	}
