@@ -223,6 +223,23 @@ func main() {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
 		FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+	);
+	CREATE TABLE IF NOT EXISTS paired_agents (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		agent_id TEXT UNIQUE NOT NULL,
+		name TEXT NOT NULL,
+		public_key TEXT NOT NULL,
+		encrypted_private_key BLOB NOT NULL,
+		nonce BLOB NOT NULL,
+		auth_tag BLOB NOT NULL,
+		key_fingerprint TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'ACTIVE', 'REVOKED')),
+		created_by TEXT NOT NULL,
+		registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		last_seen_at DATETIME,
+		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+		FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
 	);`
 	if _, err := db.Exec(schemaQuery); err != nil {
 		log.Fatalf("[DB] Failed to initialize schema: %v\n", err)
@@ -287,6 +304,15 @@ func main() {
 	mux.Handle("GET /api/projects/{id}/join-requests", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleGetJoinRequests))))
 	mux.Handle("POST /api/projects/{id}/join-requests/{reqId}/approve", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleApproveJoinRequest))))
 	mux.Handle("POST /api/projects/{id}/join-requests/{reqId}/reject", AuthMiddleware(RequireProjectRole("ADMIN")(http.HandlerFunc(handleRejectJoinRequest))))
+
+	// Sandbox Agent Routes (Phase 1 opt-in beta — see obsidian_memory/08.4)
+	if os.Getenv("SANDBOX_AGENT_BETA") == "true" {
+		mux.Handle("POST /api/projects/{id}/agents/register", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleRegisterAgent))))
+		mux.Handle("POST /api/projects/{id}/agents/pair", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handlePairAgent))))
+		mux.Handle("GET /api/projects/{id}/agents/{agentId}", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetAgentStatus))))
+		mux.HandleFunc("POST /api/internal/agents/{agentId}/callback", handleAgentStatusCallback)
+		log.Println("[SANDBOX AGENT] Beta routes registered (SANDBOX_AGENT_BETA=true)")
+	}
 
 	// Static downloads serving with fallback redirection to GitHub Releases
 	_ = os.MkdirAll("./static/downloads", 0755)
@@ -544,9 +570,10 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 		}()
 
 		extraEnv, secretsToMask := extractSecretsAndEnvironment(projectID, canvasStr)
+		agentCtx := resolvePairedAgent(projectID)
 
 		// Start executing runner
-		runner.RunPipeline(runID, canvasStr, payload.Files, "deploy", payload.AutoDestroy, extraEnv, secretsToMask, logChan, func(nodeId, status string) {
+		runner.RunPipeline(runID, canvasStr, payload.Files, "deploy", payload.AutoDestroy, extraEnv, secretsToMask, agentCtx, logChan, func(nodeId, status string) {
 			broadcastNodeStatus(runID, nodeId, status)
 		}, func(status string) {
 			broadcastToTracker(runID, "status_change", status)
@@ -810,8 +837,9 @@ func handleDestroy(w http.ResponseWriter, r *http.Request) {
 		}()
 
 		extraEnv, secretsToMask := extractSecretsAndEnvironment(projectID, canvasStr)
+		agentCtx := resolvePairedAgent(projectID)
 
-		runner.RunPipeline(runID, canvasStr, nil, "destroy", false, extraEnv, secretsToMask, logChan, func(nodeId, status string) {
+		runner.RunPipeline(runID, canvasStr, nil, "destroy", false, extraEnv, secretsToMask, agentCtx, logChan, func(nodeId, status string) {
 			broadcastNodeStatus(runID, nodeId, status)
 		}, nil, func(finalStatus string, logs string) {
 			tracker.Lock()
@@ -1311,6 +1339,7 @@ func handleUpgradePlan(w http.ResponseWriter, r *http.Request) {
 func extractSecretsAndEnvironment(projectID string, canvasStr string) ([]string, []string) {
 	var extraEnv []string
 	var secretsToMask []string
+	sshPubKeyInjected := false
 
 	loadCredential := func(credID string) {
 		var provider, name string
@@ -1377,6 +1406,7 @@ func extractSecretsAndEnvironment(projectID string, canvasStr string) ([]string,
 					extraEnv = append(extraEnv, "TF_VAR_aws_ssh_pub_key="+pubKeyStr)
 					extraEnv = append(extraEnv, "TF_VAR_gcp_ssh_pub_key="+pubKeyStr)
 					extraEnv = append(extraEnv, "TF_VAR_azure_ssh_pub_key="+pubKeyStr)
+					sshPubKeyInjected = true
 				}
 			}
 		}
@@ -1412,6 +1442,40 @@ func extractSecretsAndEnvironment(projectID string, canvasStr string) ([]string,
 		}
 	}
 
+	// No project SSH credential provided a real public key: fall back to the
+	// actual sandbox/id_rsa.pub content rather than leaving the placeholder
+	// dummy key baked into bundleGenerator.ts's Terraform template in place.
+	// That placeholder is not a syntactically valid OpenSSH key, so it fails
+	// aws_key_pair's real-AWS ImportKeyPair call with "Key is not in valid
+	// OpenSSH public key format" (LocalStack's mock doesn't validate this,
+	// which is why this only surfaces against real AWS/GCP/Azure). This also
+	// keeps the injected public key consistent with the private key the
+	// Ansible phase's sandbox-key fallback (below, in runner.go) actually uses
+	// when no custom SSH credential is configured.
+	if !sshPubKeyInjected {
+		if pubKeyStr, err := readSandboxPublicKey(); err == nil {
+			extraEnv = append(extraEnv, "TF_VAR_aws_ssh_pub_key="+pubKeyStr)
+			extraEnv = append(extraEnv, "TF_VAR_gcp_ssh_pub_key="+pubKeyStr)
+			extraEnv = append(extraEnv, "TF_VAR_azure_ssh_pub_key="+pubKeyStr)
+		}
+	}
+
 	return extraEnv, secretsToMask
+}
+
+// readSandboxPublicKey reads the real sandbox SSH public key, mirroring the
+// path-resolution runner.go's Ansible-phase key fallback already uses for the
+// matching private half (/app/sandbox/id_rsa under Docker, ../../sandbox/id_rsa
+// when running the API natively).
+func readSandboxPublicKey() (string, error) {
+	path := "/app/sandbox/id_rsa.pub"
+	if _, err := os.Stat(path); err != nil {
+		path = "../../sandbox/id_rsa.pub"
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
 }
 

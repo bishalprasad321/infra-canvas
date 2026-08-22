@@ -129,7 +129,12 @@ func handleSessionChannel(channel ssh.Channel, requests <-chan *ssh.Request) {
 // and streams stdout to the channel incrementally rather than buffering the
 // whole output, so this is a real test of streaming and not just of transfer.
 func runExec(channel ssh.Channel, command string) {
-	cmd := exec.Command("/bin/sh", "-c", command)
+	// "sh" (PATH-resolved) rather than a hardcoded "/bin/sh": on native Windows
+	// dev machines the literal absolute path doesn't resolve since exec.Command
+	// talks straight to CreateProcess with no MSYS path translation, but "sh" on
+	// PATH finds Git Bash's sh.exe there while still resolving to /bin/sh on
+	// Linux/macOS, matching the real sandbox containers (see obsidian_memory/03.1).
+	cmd := exec.Command("sh", "-c", command)
 	cmd.Stdout = channel
 	cmd.Stderr = channel.Stderr()
 

@@ -2,6 +2,7 @@ package runner
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -94,5 +95,37 @@ func TestSandboxHostsIPReplacement(t *testing.T) {
 		if output != c.expected {
 			t.Errorf("For %q, expected %q, got %q", c.input, c.expected, output)
 		}
+	}
+}
+
+func TestLocalAgentHostsINI(t *testing.T) {
+	got := localAgentHostsINI()
+	if !strings.Contains(got, "ansible_host=agent-tunnel ansible_port=2222") {
+		t.Errorf("localAgentHostsINI() = %q, want a placeholder agent-tunnel host entry", got)
+	}
+	if strings.Contains(got, "__COLON__") {
+		t.Errorf("localAgentHostsINI() = %q, want __COLON__ placeholder fully substituted", got)
+	}
+}
+
+func TestLocalAgentSSHCommonArgs(t *testing.T) {
+	agentCtx := &AgentContext{AgentID: "agent-abc123", GatewayURL: "https://gateway.example.com"}
+	got := localAgentSSHCommonArgs(agentCtx)
+
+	want := `-o StrictHostKeyChecking=no -o ProxyCommand="infracanvas sandbox proxy --agent-id=agent-abc123 --service=ssh:2222 --gateway=https://gateway.example.com"`
+	if got != want {
+		t.Errorf("localAgentSSHCommonArgs() = %q, want %q", got, want)
+	}
+}
+
+func TestCLIHelperPathRespectsOverrideEnvVar(t *testing.T) {
+	t.Setenv("INFRACANVAS_CLI_PATH", "")
+	if got := cliHelperPath(); got != "infracanvas" {
+		t.Errorf("cliHelperPath() with no override = %q, want %q", got, "infracanvas")
+	}
+
+	t.Setenv("INFRACANVAS_CLI_PATH", "/opt/infracanvas/bin/infracanvas")
+	if got := cliHelperPath(); got != "/opt/infracanvas/bin/infracanvas" {
+		t.Errorf("cliHelperPath() with override = %q, want %q", got, "/opt/infracanvas/bin/infracanvas")
 	}
 }
