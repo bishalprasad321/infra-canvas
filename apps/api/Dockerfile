@@ -1,13 +1,10 @@
 FROM golang:1.23 AS builder
 WORKDIR /src
-COPY go.mod go.sum ./
+COPY go.mod ./
 ENV GOPROXY=direct
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
+RUN go mod download
 COPY . .
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=cache,target=/go/pkg/mod \
-    CGO_ENABLED=0 GOOS=linux go build -o api-server .
+RUN CGO_ENABLED=0 GOOS=linux go build -o api-server .
 
 # Pull prebuilt tools baseline from GHCR (installs nothing locally)
 FROM ghcr.io/bishalprasad321/infra-canvas-runner-base:latest
