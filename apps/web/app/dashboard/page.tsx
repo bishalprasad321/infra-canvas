@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Icon } from '@iconify/react';
 import { useAuthStore } from '../store/useAuthStore';
 import { ProjectSettingsModal } from '../components/ProjectSettingsModal';
+import { TiltCard } from '../components/landing/TiltCard';
 
 interface Project {
 	id: string;
@@ -262,7 +263,7 @@ function DashboardContent() {
 
 	if (!user) {
 		return (
-			<div className="min-h-screen w-full bg-[#0A0F1D] flex items-center justify-center text-slate-400">
+			<div className="min-h-screen w-full bg-background flex items-center justify-center text-slate-400">
 				<div className="flex flex-col items-center gap-3">
 					<Icon icon="lucide:loader-2" className="animate-spin text-3xl text-primary" />
 					<p className="text-sm font-medium tracking-wide">Securing session...</p>
@@ -281,22 +282,22 @@ function DashboardContent() {
 	);
 
 	return (
-		<div className="min-h-screen w-full bg-[#0A0F1D] flex flex-col text-slate-200 font-sans">
+		<div className="min-h-screen w-full bg-background flex flex-col text-slate-200 font-sans">
 			{/* Top Header */}
-			<header className="sticky top-0 z-20 border-b border-slate-800/60 bg-[#0D1324]/80 backdrop-blur-xl">
+			<header className="sticky top-0 z-20 border-b border-border/60 bg-card/80 backdrop-blur-xl">
 				<div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 lg:px-10">
 					<Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity" title="Home">
-						<div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700/50 bg-[#1A233D] shadow-md">
-							<div className="h-4 w-4 rounded-md bg-gradient-to-br from-primary to-cyan-400"></div>
+						<div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-input shadow-md">
+							<div className="h-4 w-4 rounded-md bg-gradient-to-br from-primary to-amber-400"></div>
 						</div>
 						<div>
-							<p className="text-sm font-semibold tracking-wide text-white">OrchestrateOS</p>
+							<p className="text-sm font-semibold tracking-wide text-white">InfraCanvas</p>
 							<p className="text-xs text-slate-400">Workspace Dashboard</p>
 						</div>
 					</Link>
 
 					<div className="flex items-center gap-4">
-						<div className="flex items-center gap-3 px-3 py-1.5 rounded-xl border border-slate-800 bg-[#131A30]/50">
+						<div className="flex items-center gap-3 px-3 py-1.5 rounded-xl border border-border bg-secondary/50">
 							<div className="h-7 w-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold uppercase border border-primary/20">
 								{user.name.slice(0, 2)}
 							</div>
@@ -307,14 +308,14 @@ function DashboardContent() {
 						</div>
 						<Link
 							href="/"
-							className="p-2.5 rounded-xl border border-slate-800 bg-[#131A30]/50 hover:bg-primary/10 hover:border-primary/20 text-slate-400 hover:text-primary transition cursor-pointer"
+							className="p-2.5 rounded-xl border border-border bg-secondary/50 hover:bg-primary/10 hover:border-primary/20 text-slate-400 hover:text-primary transition cursor-pointer"
 							title="Home"
 						>
 							<Icon icon="lucide:home" className="text-lg" />
 						</Link>
 						<button
 							onClick={handleLogout}
-							className="p-2.5 rounded-xl border border-slate-800 bg-[#131A30]/50 hover:bg-red-500/10 hover:border-red-500/20 text-slate-400 hover:text-red-400 transition cursor-pointer"
+							className="p-2.5 rounded-xl border border-border bg-secondary/50 hover:bg-red-500/10 hover:border-red-500/20 text-slate-400 hover:text-red-400 transition cursor-pointer"
 							title="Logout"
 						>
 							<Icon icon="lucide:log-out" className="text-lg" />
@@ -326,7 +327,7 @@ function DashboardContent() {
 			{/* Main Content Area */}
 			<main className="flex-grow mx-auto w-full max-w-7xl px-6 py-12 lg:px-10 flex flex-col gap-10">
 				{/* Welcome Banner */}
-				<div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/40 pb-8">
+				<div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/40 pb-8">
 					<div>
 						<h1 className="text-3xl font-bold tracking-tight text-white">Welcome back, {user.name}!</h1>
 						<p className="text-sm text-slate-400 mt-1">Select a workspace to design and deploy, or request access to other teams' projects.</p>
@@ -349,13 +350,13 @@ function DashboardContent() {
 						</div>
 						<div className="grid gap-4 md:grid-cols-2">
 							{joinRequests.map(req => (
-								<div key={req.id} className="bg-[#131A30]/50 border border-slate-800 p-4 rounded-xl flex flex-col justify-between gap-3">
+								<div key={req.id} className="bg-secondary/50 border border-border p-4 rounded-xl flex flex-col justify-between gap-3">
 									<div>
 										<p className="text-xs text-slate-400">
 											User <span className="text-white font-semibold">{req.user_name}</span> ({req.user_email}) requested access to project <span className="text-white font-semibold">{req.project_name}</span>.
 										</p>
 										{req.note && (
-											<p className="mt-2 text-xs italic text-slate-500 bg-[#0A0F1D] px-2.5 py-1.5 rounded-lg border border-slate-900">
+											<p className="mt-2 text-xs italic text-slate-500 bg-background px-2.5 py-1.5 rounded-lg border border-border/80">
 												"{req.note}"
 											</p>
 										)}
@@ -381,8 +382,8 @@ function DashboardContent() {
 				)}
 
 				{/* Dashboard Navigation Tabs */}
-				<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800/30 pb-4">
-					<div className="flex gap-3 bg-[#131A30]/40 p-1 rounded-xl border border-slate-850">
+				<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/30 pb-4">
+					<div className="flex gap-3 bg-secondary/40 p-1 rounded-xl border border-border">
 						<button
 							onClick={() => setActiveFilter('my')}
 							className={`px-4 py-2 text-xs font-semibold rounded-lg cursor-pointer transition ${
@@ -408,7 +409,7 @@ function DashboardContent() {
 							value={searchQuery}
 							onChange={(e) => setSearchQuery(e.target.value)}
 							placeholder="Search workspaces..."
-							className="w-full bg-[#0D1324] border border-slate-800/80 rounded-xl py-2 pl-9 pr-4 text-xs text-white placeholder:text-slate-600 outline-none focus:border-primary transition"
+							className="w-full bg-card border border-border/80 rounded-xl py-2 pl-9 pr-4 text-xs text-white placeholder:text-slate-600 outline-none focus:border-primary transition"
 						/>
 					</div>
 				</div>
@@ -420,7 +421,7 @@ function DashboardContent() {
 						<p className="text-xs">Fetching projects...</p>
 					</div>
 				) : filteredProjects.length === 0 ? (
-					<div className="py-20 border border-dashed border-slate-800 rounded-3xl flex flex-col items-center justify-center text-center p-6 bg-[#131A30]/10 select-none animate-in fade-in duration-200">
+					<div className="py-20 border border-dashed border-border rounded-3xl flex flex-col items-center justify-center text-center p-6 bg-secondary/10 select-none animate-in fade-in duration-200">
 						<div className="text-3xl mb-3">📁</div>
 						<h3 className="font-bold text-white text-sm">No workspaces found</h3>
 						<p className="text-xs text-slate-500 mt-1 max-w-[280px] leading-normal">
@@ -432,9 +433,12 @@ function DashboardContent() {
 				) : (
 					<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 						{filteredProjects.map((project) => (
-							<div
+							<TiltCard
 								key={project.id}
-								className="rounded-[24px] border border-slate-850 bg-[#131A30]/30 hover:bg-[#131A30]/50 hover:border-slate-800 hover:shadow-2xl transition duration-300 p-6 flex flex-col justify-between shadow-xl relative group"
+								tiltLimit={0}
+								scale={1}
+								spotlight
+								className="rounded-[24px] border border-border bg-secondary/30 hover:bg-secondary/50 hover:border-primary/30 hover:shadow-2xl transition-colors duration-300 p-6 flex flex-col justify-between shadow-xl group cursor-default"
 							>
 								<div>
 									<div className="flex items-center justify-between mb-4">
@@ -458,7 +462,7 @@ function DashboardContent() {
 									</p>
 								</div>
 
-								<div className="mt-6 flex flex-col gap-4 border-t border-slate-800/40 pt-4">
+								<div className="mt-6 flex flex-col gap-4 border-t border-border/40 pt-4">
 									<div className="flex items-center justify-between">
 										<div className="flex items-center gap-1 text-slate-500">
 											<Icon icon="lucide:user" className="text-sm" />
@@ -475,7 +479,7 @@ function DashboardContent() {
 															setSelectedProjectForSettings(project);
 															setIsSettingsOpen(true);
 														}}
-														className="p-2 rounded-xl border border-slate-850 bg-[#0D1324] hover:bg-primary/10 hover:border-primary/20 text-slate-450 hover:text-primary transition cursor-pointer flex items-center justify-center h-8 w-8"
+														className="p-2 rounded-xl border border-border bg-card hover:bg-primary/10 hover:border-primary/20 text-slate-450 hover:text-primary transition cursor-pointer flex items-center justify-center h-8 w-8"
 														title="Project Settings"
 													>
 														<Icon icon="lucide:settings" className="text-sm" />
@@ -483,7 +487,7 @@ function DashboardContent() {
 												)}
 												<button
 													onClick={() => handleOpenWorkspace(project.id)}
-													className="rounded-xl bg-slate-800 hover:bg-primary hover:text-white px-4 py-2 text-xs font-bold text-slate-300 transition duration-200 cursor-pointer flex items-center gap-1"
+													className="rounded-xl bg-secondary hover:bg-primary hover:text-white px-4 py-2 text-xs font-bold text-slate-300 transition duration-200 cursor-pointer flex items-center gap-1"
 												>
 													<span>Open Workspace</span>
 													<Icon icon="lucide:chevron-right" className="text-sm" />
@@ -503,7 +507,7 @@ function DashboardContent() {
 										)}
 									</div>
 								</div>
-							</div>
+							</TiltCard>
 						))}
 					</div>
 				)}
@@ -512,10 +516,10 @@ function DashboardContent() {
 			{/* Create Project Modal */}
 			{isCreateModalOpen && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-[#000]/70 backdrop-blur-sm">
-					<div className="w-full max-w-md bg-[#131A30] border border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col gap-5 animate-in zoom-in-95 duration-200">
+					<div className="w-full max-w-md bg-secondary border border-border rounded-3xl p-6 shadow-2xl flex flex-col gap-5 animate-in zoom-in-95 duration-200">
 						<div className="flex justify-between items-center">
 							<h3 className="text-lg font-bold text-white">Create New Workspace</h3>
-							<button onClick={() => setIsCreateModalOpen(false)} className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 cursor-pointer">
+							<button onClick={() => setIsCreateModalOpen(false)} className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-secondary cursor-pointer">
 								<Icon icon="lucide:x" className="text-xl" />
 							</button>
 						</div>
@@ -536,7 +540,7 @@ function DashboardContent() {
 									value={newProjName}
 									onChange={(e) => setNewProjName(e.target.value)}
 									placeholder="e.g. AWS Cloud Sandbox"
-									className="w-full bg-[#0D1324] border border-slate-800 rounded-xl py-3 px-4 text-sm text-white placeholder:text-slate-600 outline-none focus:border-primary transition"
+									className="w-full bg-card border border-border rounded-xl py-3 px-4 text-sm text-white placeholder:text-slate-600 outline-none focus:border-primary transition"
 								/>
 							</div>
 
@@ -547,7 +551,7 @@ function DashboardContent() {
 									value={newProjDesc}
 									onChange={(e) => setNewProjDesc(e.target.value)}
 									placeholder="Describe the stack, templates, and targets..."
-									className="w-full bg-[#0D1324] border border-slate-800 rounded-xl py-3 px-4 text-sm text-white placeholder:text-slate-600 outline-none focus:border-primary resize-none transition"
+									className="w-full bg-card border border-border rounded-xl py-3 px-4 text-sm text-white placeholder:text-slate-600 outline-none focus:border-primary resize-none transition"
 								/>
 							</div>
 
@@ -556,7 +560,7 @@ function DashboardContent() {
 								<select
 									value={newProjTeamId}
 									onChange={(e) => setNewProjTeamId(e.target.value)}
-									className="w-full bg-[#0D1324] border border-slate-800 rounded-xl py-3 px-4 text-sm text-white outline-none focus:border-primary transition cursor-pointer"
+									className="w-full bg-card border border-border rounded-xl py-3 px-4 text-sm text-white outline-none focus:border-primary transition cursor-pointer"
 								>
 									{teams.map(t => (
 										<option key={t.id} value={t.id}>{t.name}</option>
@@ -569,7 +573,7 @@ function DashboardContent() {
 								<select
 									value={newProjVisibility}
 									onChange={(e) => setNewProjVisibility(e.target.value)}
-									className="w-full bg-[#0D1324] border border-slate-800 rounded-xl py-3 px-4 text-sm text-white outline-none focus:border-primary transition cursor-pointer"
+									className="w-full bg-card border border-border rounded-xl py-3 px-4 text-sm text-white outline-none focus:border-primary transition cursor-pointer"
 								>
 									<option value="PRIVATE">Private (Explicit Invites Only)</option>
 									<option value="TEAM">Team (Accessible to Organization members)</option>
@@ -591,10 +595,10 @@ function DashboardContent() {
 			{/* Join Project Request Modal */}
 			{isJoinModalOpen && selectedProjToJoin && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-[#000]/70 backdrop-blur-sm">
-					<div className="w-full max-w-md bg-[#131A30] border border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col gap-5 animate-in zoom-in-95 duration-200">
+					<div className="w-full max-w-md bg-secondary border border-border rounded-3xl p-6 shadow-2xl flex flex-col gap-5 animate-in zoom-in-95 duration-200">
 						<div className="flex justify-between items-center">
 							<h3 className="text-lg font-bold text-white">Request Access</h3>
-							<button onClick={() => setIsJoinModalOpen(false)} className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 cursor-pointer">
+							<button onClick={() => setIsJoinModalOpen(false)} className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-secondary cursor-pointer">
 								<Icon icon="lucide:x" className="text-xl" />
 							</button>
 						</div>
@@ -613,7 +617,7 @@ function DashboardContent() {
 							</div>
 						)}
 
-						<div className="bg-[#0D1324] border border-slate-800/40 p-4 rounded-xl">
+						<div className="bg-card border border-border/40 p-4 rounded-xl">
 							<p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Project</p>
 							<p className="text-sm font-bold text-white mt-1">{selectedProjToJoin.name}</p>
 							<p className="text-xs text-slate-400 mt-2">{selectedProjToJoin.description || "No description provided."}</p>
@@ -627,7 +631,7 @@ function DashboardContent() {
 									value={joinNote}
 									onChange={(e) => setJoinNote(e.target.value)}
 									placeholder="Explain your role or reason for requesting access..."
-									className="w-full bg-[#0D1324] border border-slate-800 rounded-xl py-3 px-4 text-sm text-white placeholder:text-slate-600 outline-none focus:border-primary resize-none transition"
+									className="w-full bg-card border border-border rounded-xl py-3 px-4 text-sm text-white placeholder:text-slate-600 outline-none focus:border-primary resize-none transition"
 								/>
 							</div>
 
@@ -667,7 +671,7 @@ function DashboardContent() {
 export default function DashboardPage() {
 	return (
 		<Suspense fallback={
-			<div className="min-h-screen w-full bg-[#0A0F1D] flex items-center justify-center text-slate-400">
+			<div className="min-h-screen w-full bg-background flex items-center justify-center text-slate-400">
 				<Icon icon="lucide:loader-2" className="animate-spin text-2xl text-primary" />
 			</div>
 		}>

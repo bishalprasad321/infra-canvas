@@ -59,11 +59,11 @@ export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCan
 
   const techColorClass = {
     Terraform: 'bg-primary',
-    Ansible: 'bg-[#00A4FF]',
-    Kubernetes: 'bg-[#326CE5]',
-    Source: 'bg-[#D97706]',
-    Target: 'bg-[#0D9488]',
-  }[data.tech] || 'bg-[#00A4FF]';
+    Ansible: 'bg-[#8B5CF6]',
+    Kubernetes: 'bg-[#0EA5E9]',
+    Source: 'bg-[#F59E0B]',
+    Target: 'bg-[#14B8A6]',
+  }[data.tech] || 'bg-[#8B5CF6]';
 
   const borderClass = isActive
     ? 'border-2 border-primary shadow-2xl shadow-primary/10'
@@ -117,7 +117,7 @@ export default function ReactFlowCanvasNode({ id, data, selected }: ReactFlowCan
 
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5 pr-6">
-            <Icon icon={data.icon} className={clsx("text-base", data.tech === 'Terraform' ? 'text-primary' : data.tech === 'Ansible' ? 'text-[#00A4FF]' : data.tech === 'Source' ? 'text-[#D97706]' : data.tech === 'Target' ? 'text-[#0D9488]' : 'text-[#326CE5]')} />
+            <Icon icon={data.icon} className={clsx("text-base", data.tech === 'Terraform' ? 'text-primary' : data.tech === 'Ansible' ? 'text-[#8B5CF6]' : data.tech === 'Source' ? 'text-[#F59E0B]' : data.tech === 'Target' ? 'text-[#14B8A6]' : 'text-[#0EA5E9]')} />
             <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate max-w-[90px]">{data.categoryLabel}</span>
             {data.isCustom && (
               <span className="px-1 py-0.5 bg-purple-500/15 text-purple-400 text-[8px] font-bold uppercase rounded border border-purple-500/25 shrink-0">Custom</span>

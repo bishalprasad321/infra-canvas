@@ -117,11 +117,14 @@ const Header: React.FC<HeaderProps> = ({
       {/* Left: Workspace breadcrumbs & OS Toggle */}
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-md">
-            <Icon icon="lucide:layers" className="text-primary-foreground text-lg" />
+          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-amber-600 flex items-center justify-center shadow-md shadow-indigo-500/20">
+            <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM9 14H5a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1v-4a1 1 0 00-1-1z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14 15h5M14 19h5" />
+            </svg>
           </div>
-          <span className="font-heading font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-            InfraFlow
+          <span className="font-heading font-bold text-lg tracking-tight text-white">
+            InfraCanvas
           </span>
         </div>
 
@@ -174,11 +177,11 @@ const Header: React.FC<HeaderProps> = ({
             <div 
               key={`${c.id}-${idx}`} 
               className="h-8 w-8 rounded-full border-2 overflow-hidden relative flex items-center justify-center text-[10px] font-bold text-white uppercase select-none cursor-pointer"
-              style={{ backgroundColor: c.color, borderColor: '#0A0F1D' }}
+              style={{ backgroundColor: c.color, borderColor: '#07080B' }}
               title={`${c.name} (Collaborator)`}
             >
               {c.name.slice(0, 2)}
-              <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-emerald-500 border border-slate-900"></span>
+              <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-emerald-500 border border-border/80"></span>
             </div>
           ))}
           {collaborators.length === 0 && (
@@ -256,14 +259,14 @@ const Header: React.FC<HeaderProps> = ({
                     onClick={() => { onExportFormat('yml'); setDropdownOpen(false); }}
                     className="w-full text-left px-3 py-2 text-xs rounded hover:bg-muted flex items-center gap-2 transition-colors"
                   >
-                    <Icon icon="lucide:clipboard" className="text-[#00A4FF] text-sm" />
+                    <Icon icon="lucide:clipboard" className="text-[#8B5CF6] text-sm" />
                     <span>Ansible YAML (.yml)</span>
                   </button>
                   <button
                     onClick={() => { onExportFormat('json'); setDropdownOpen(false); }}
                     className="w-full text-left px-3 py-2 text-xs rounded hover:bg-muted flex items-center gap-2 transition-colors"
                   >
-                    <Icon icon="lucide:layers" className="text-[#326CE5] text-sm" />
+                    <Icon icon="lucide:layers" className="text-[#0EA5E9] text-sm" />
                     <span>Kubernetes JSON (.json)</span>
                   </button>
                   <div className="h-[1px] bg-border my-1"></div>
@@ -363,18 +366,18 @@ interface NodeCardProps {
 const NodeCard: React.FC<NodeCardProps> = ({ node, onAddNode, isReadOnly = false }) => {
   const techColorClass = {
     Terraform: 'bg-primary/10 text-primary border-primary/20',
-    Ansible: 'bg-[#00A4FF]/10 text-[#00A4FF] border-[#00A4FF]/20',
-    Kubernetes: 'bg-[#326CE5]/10 text-[#326CE5] border-[#326CE5]/20',
-    Source: 'bg-[#D97706]/10 text-[#D97706] border-[#D97706]/20',
-    Target: 'bg-[#0D9488]/10 text-[#0D9488] border-[#0D9488]/20',
+    Ansible: 'bg-[#8B5CF6]/10 text-[#8B5CF6] border-[#8B5CF6]/20',
+    Kubernetes: 'bg-[#0EA5E9]/10 text-[#0EA5E9] border-[#0EA5E9]/20',
+    Source: 'bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/20',
+    Target: 'bg-[#14B8A6]/10 text-[#14B8A6] border-[#14B8A6]/20',
   }[node.tech];
 
   const hoverBorderClass = {
     Terraform: 'hover:border-primary/50 hover:shadow-primary/5',
-    Ansible: 'hover:border-[#00A4FF]/50 hover:shadow-[#00A4FF]/5',
-    Kubernetes: 'hover:border-[#326CE5]/50 hover:shadow-[#326CE5]/5',
-    Source: 'hover:border-[#D97706]/50 hover:shadow-[#D97706]/5',
-    Target: 'hover:border-[#0D9488]/50 hover:shadow-[#0D9488]/5',
+    Ansible: 'hover:border-[#8B5CF6]/50 hover:shadow-[#8B5CF6]/5',
+    Kubernetes: 'hover:border-[#0EA5E9]/50 hover:shadow-[#0EA5E9]/5',
+    Source: 'hover:border-[#F59E0B]/50 hover:shadow-[#F59E0B]/5',
+    Target: 'hover:border-[#14B8A6]/50 hover:shadow-[#14B8A6]/5',
   }[node.tech];
 
   const onDragStart = (event: React.DragEvent) => {
@@ -405,7 +408,7 @@ const NodeCard: React.FC<NodeCardProps> = ({ node, onAddNode, isReadOnly = false
       className={clsx(
         "group border border-border rounded-xl p-3 transition-all transform select-none",
         isReadOnly
-          ? "bg-muted/30 opacity-40 cursor-not-allowed border-slate-800"
+          ? "bg-muted/30 opacity-40 cursor-not-allowed border-border"
           : "bg-muted/60 hover:bg-muted cursor-grab hover:cursor-grabbing hover:shadow-lg hover:-translate-y-0.5",
         !isReadOnly && hoverBorderClass
       )}
@@ -417,7 +420,7 @@ const NodeCard: React.FC<NodeCardProps> = ({ node, onAddNode, isReadOnly = false
         {!isReadOnly && <Icon icon="lucide:plus" className="text-muted-foreground group-hover:text-foreground text-sm transition-colors" />}
       </div>
       <h4 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-1.5">
-        <Icon icon={node.icon} className={clsx("text-sm", node.tech === 'Terraform' ? 'text-primary' : node.tech === 'Ansible' ? 'text-[#00A4FF]' : node.tech === 'Source' ? 'text-[#D97706]' : node.tech === 'Target' ? 'text-[#0D9488]' : 'text-[#326CE5]')} />
+        <Icon icon={node.icon} className={clsx("text-sm", node.tech === 'Terraform' ? 'text-primary' : node.tech === 'Ansible' ? 'text-[#8B5CF6]' : node.tech === 'Source' ? 'text-[#F59E0B]' : node.tech === 'Target' ? 'text-[#14B8A6]' : 'text-[#0EA5E9]')} />
         {node.title}
       </h4>
       <p className="text-xs text-muted-foreground leading-relaxed">{node.description}</p>
@@ -902,7 +905,7 @@ const CodeBlock: React.FC<{ file: PreviewFile }> = ({ file }) => {
           {copied ? 'Copied!' : 'Copy'}
         </button>
       </div>
-      <div className="flex-1 bg-[#080B11] border border-border rounded-lg p-3 overflow-auto font-mono text-[11px] text-muted-foreground leading-relaxed">
+      <div className="flex-1 bg-background border border-border rounded-lg p-3 overflow-auto font-mono text-[11px] text-muted-foreground leading-relaxed">
         <pre className="whitespace-pre-wrap break-all"><code>{highlighted}</code></pre>
       </div>
     </div>
@@ -969,8 +972,8 @@ const LiveCodePreview: React.FC<LiveCodePreviewProps> = ({ selectedNode, nodes, 
   // --- NO NODE SELECTED: canvas overview ---
   const sections: { label: string; color: string; paths: string[] }[] = [
     { label: 'Terraform', color: 'text-primary', paths: ['terraform/'] },
-    { label: 'Ansible', color: 'text-[#00A4FF]', paths: ['ansible/'] },
-    { label: 'Kubernetes', color: 'text-[#326CE5]', paths: ['k8s/'] },
+    { label: 'Ansible', color: 'text-[#8B5CF6]', paths: ['ansible/'] },
+    { label: 'Kubernetes', color: 'text-[#0EA5E9]', paths: ['k8s/'] },
   ];
 
   const hasTech = (paths: string[]) =>
@@ -1076,8 +1079,8 @@ const CanvasSummary: React.FC<{
       <div className="space-y-4">
         {srcNodes.length > 0 && (
           <div className="space-y-2">
-            <h5 className="text-[10px] font-bold text-[#D97706] uppercase tracking-wider flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#D97706] animate-pulse"></span>
+            <h5 className="text-[10px] font-bold text-[#F59E0B] uppercase tracking-wider flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#F59E0B] animate-pulse"></span>
               Source ({srcNodes.length})
             </h5>
             <div className="grid gap-1.5">
@@ -1085,10 +1088,10 @@ const CanvasSummary: React.FC<{
                 <button
                   key={node.id}
                   onClick={() => onSelectNode(node.id)}
-                  className="w-full text-left bg-muted/30 hover:bg-muted/70 border border-border/60 hover:border-[#D97706]/40 rounded-lg p-2.5 flex items-center justify-between text-xs text-foreground transition-all duration-200 group cursor-pointer"
+                  className="w-full text-left bg-muted/30 hover:bg-muted/70 border border-border/60 hover:border-[#F59E0B]/40 rounded-lg p-2.5 flex items-center justify-between text-xs text-foreground transition-all duration-200 group cursor-pointer"
                 >
                   <span className="font-semibold truncate max-w-[200px] flex items-center gap-2">
-                    <Icon icon={node.data.icon as string} className="text-[#D97706] text-sm flex-shrink-0" />
+                    <Icon icon={node.data.icon as string} className="text-[#F59E0B] text-sm flex-shrink-0" />
                     {node.data.label as string}
                   </span>
                   <Icon icon="lucide:chevron-right" className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all text-xs" />
@@ -1100,8 +1103,8 @@ const CanvasSummary: React.FC<{
 
         {targetNodes.length > 0 && (
           <div className="space-y-2">
-            <h5 className="text-[10px] font-bold text-[#0D9488] uppercase tracking-wider flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#0D9488] animate-pulse"></span>
+            <h5 className="text-[10px] font-bold text-[#14B8A6] uppercase tracking-wider flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#14B8A6] animate-pulse"></span>
               Target ({targetNodes.length})
             </h5>
             <div className="grid gap-1.5">
@@ -1109,10 +1112,10 @@ const CanvasSummary: React.FC<{
                 <button
                   key={node.id}
                   onClick={() => onSelectNode(node.id)}
-                  className="w-full text-left bg-muted/30 hover:bg-muted/70 border border-border/60 hover:border-[#0D9488]/40 rounded-lg p-2.5 flex items-center justify-between text-xs text-foreground transition-all duration-200 group cursor-pointer"
+                  className="w-full text-left bg-muted/30 hover:bg-muted/70 border border-border/60 hover:border-[#14B8A6]/40 rounded-lg p-2.5 flex items-center justify-between text-xs text-foreground transition-all duration-200 group cursor-pointer"
                 >
                   <span className="font-semibold truncate max-w-[200px] flex items-center gap-2">
-                    <Icon icon={node.data.icon as string} className="text-[#0D9488] text-sm flex-shrink-0" />
+                    <Icon icon={node.data.icon as string} className="text-[#14B8A6] text-sm flex-shrink-0" />
                     {node.data.label as string}
                   </span>
                   <Icon icon="lucide:chevron-right" className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all text-xs" />
@@ -1148,8 +1151,8 @@ const CanvasSummary: React.FC<{
 
         {ansNodes.length > 0 && (
           <div className="space-y-2">
-            <h5 className="text-[10px] font-bold text-[#00A4FF] uppercase tracking-wider flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#00A4FF] animate-pulse"></span>
+            <h5 className="text-[10px] font-bold text-[#8B5CF6] uppercase tracking-wider flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#8B5CF6] animate-pulse"></span>
               Ansible ({ansNodes.length})
             </h5>
             <div className="grid gap-1.5">
@@ -1157,10 +1160,10 @@ const CanvasSummary: React.FC<{
                 <button
                   key={node.id}
                   onClick={() => onSelectNode(node.id)}
-                  className="w-full text-left bg-muted/30 hover:bg-muted/70 border border-border/60 hover:border-[#00A4FF]/40 rounded-lg p-2.5 flex items-center justify-between text-xs text-foreground transition-all duration-200 group cursor-pointer"
+                  className="w-full text-left bg-muted/30 hover:bg-muted/70 border border-border/60 hover:border-[#8B5CF6]/40 rounded-lg p-2.5 flex items-center justify-between text-xs text-foreground transition-all duration-200 group cursor-pointer"
                 >
                   <span className="font-semibold truncate max-w-[200px] flex items-center gap-2">
-                    <Icon icon={node.data.icon as string} className="text-[#00A4FF] text-sm flex-shrink-0" />
+                    <Icon icon={node.data.icon as string} className="text-[#8B5CF6] text-sm flex-shrink-0" />
                     {node.data.label as string}
                   </span>
                   <Icon icon="lucide:chevron-right" className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all text-xs" />
@@ -1172,8 +1175,8 @@ const CanvasSummary: React.FC<{
 
         {k8sNodes.length > 0 && (
           <div className="space-y-2">
-            <h5 className="text-[10px] font-bold text-[#326CE5] uppercase tracking-wider flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#326CE5] animate-pulse"></span>
+            <h5 className="text-[10px] font-bold text-[#0EA5E9] uppercase tracking-wider flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#0EA5E9] animate-pulse"></span>
               Kubernetes ({k8sNodes.length})
             </h5>
             <div className="grid gap-1.5">
@@ -1181,10 +1184,10 @@ const CanvasSummary: React.FC<{
                 <button
                   key={node.id}
                   onClick={() => onSelectNode(node.id)}
-                  className="w-full text-left bg-muted/30 hover:bg-muted/70 border border-border/60 hover:border-[#326CE5]/40 rounded-lg p-2.5 flex items-center justify-between text-xs text-foreground transition-all duration-200 group cursor-pointer"
+                  className="w-full text-left bg-muted/30 hover:bg-muted/70 border border-border/60 hover:border-[#0EA5E9]/40 rounded-lg p-2.5 flex items-center justify-between text-xs text-foreground transition-all duration-200 group cursor-pointer"
                 >
                   <span className="font-semibold truncate max-w-[200px] flex items-center gap-2">
-                    <Icon icon={node.data.icon as string} className="text-[#326CE5] text-sm flex-shrink-0" />
+                    <Icon icon={node.data.icon as string} className="text-[#0EA5E9] text-sm flex-shrink-0" />
                     {node.data.label as string}
                   </span>
                   <Icon icon="lucide:chevron-right" className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all text-xs" />
@@ -1311,7 +1314,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <div className="h-6 w-6 rounded bg-primary/10 border border-primary/20 flex items-center justify-center">
                 <Icon
                   icon={(selectedNode?.data?.icon as string) || "lucide:globe"}
-                  className={clsx("text-sm", (selectedNode?.data?.tech as string) === 'Terraform' ? 'text-primary' : (selectedNode?.data?.tech as string) === 'Ansible' ? 'text-[#00A4FF]' : (selectedNode?.data?.tech as string) === 'Source' ? 'text-[#D97706]' : (selectedNode?.data?.tech as string) === 'Target' ? 'text-[#0D9488]' : 'text-[#326CE5]')}
+                  className={clsx("text-sm", (selectedNode?.data?.tech as string) === 'Terraform' ? 'text-primary' : (selectedNode?.data?.tech as string) === 'Ansible' ? 'text-[#8B5CF6]' : (selectedNode?.data?.tech as string) === 'Source' ? 'text-[#F59E0B]' : (selectedNode?.data?.tech as string) === 'Target' ? 'text-[#14B8A6]' : 'text-[#0EA5E9]')}
                 />
               </div>
               <div>
@@ -3488,14 +3491,14 @@ function WorkspaceCanvas({ deployStatus, peerCursors = {}, handleMouseMove }: Wo
         selectionOnDrag={activeTool === 'select'}
         deleteKeyCode={isReadOnly ? null : ['Backspace', 'Delete']}
       >
-        <Background color="#242F41" gap={24} size={1} />
+        <Background color="#232A3D" gap={24} size={1} />
         <Controls showInteractive={false} className="!bg-card !border-border !text-foreground" />
       </ReactFlow>
 
       {nodes.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 p-6 select-none animate-in fade-in zoom-in duration-300">
-          <div className="max-w-md w-full bg-slate-900/80 border border-slate-700/50 backdrop-blur-md rounded-2xl p-6 text-center shadow-2xl flex flex-col items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-lg">
+          <div className="max-w-md w-full bg-card/80 border border-border backdrop-blur-md rounded-2xl p-6 text-center shadow-2xl flex flex-col items-center gap-4">
+            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-amber-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <Icon icon="lucide:layers" className="text-white text-2xl animate-pulse" />
             </div>
             <div>
@@ -3506,8 +3509,8 @@ function WorkspaceCanvas({ deployStatus, peerCursors = {}, handleMouseMove }: Wo
             </div>
             <div className="flex items-center gap-6 mt-2 text-slate-500 text-[11px] font-semibold uppercase tracking-wider">
               <span className="flex items-center gap-1.5"><Icon icon="lucide:code" className="text-primary text-xs" /> Terraform</span>
-              <span className="flex items-center gap-1.5"><Icon icon="lucide:zap" className="text-[#00A4FF] text-xs" /> Ansible</span>
-              <span className="flex items-center gap-1.5"><Icon icon="lucide:layers" className="text-[#326CE5] text-xs" /> Kubernetes</span>
+              <span className="flex items-center gap-1.5"><Icon icon="lucide:zap" className="text-[#8B5CF6] text-xs" /> Ansible</span>
+              <span className="flex items-center gap-1.5"><Icon icon="lucide:layers" className="text-[#0EA5E9] text-xs" /> Kubernetes</span>
             </div>
           </div>
         </div>
@@ -3517,12 +3520,12 @@ function WorkspaceCanvas({ deployStatus, peerCursors = {}, handleMouseMove }: Wo
       <svg style={{ position: 'absolute', width: 0, height: 0 }}>
         <defs>
           <linearGradient id="grad-tf-ansible" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#844FBA" />
-            <stop offset="100%" stopColor="#00A4FF" />
+            <stop offset="0%" stopColor="#6366F1" />
+            <stop offset="100%" stopColor="#8B5CF6" />
           </linearGradient>
           <linearGradient id="grad-ansible-k8s" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#00A4FF" />
-            <stop offset="100%" stopColor="#326CE5" />
+            <stop offset="0%" stopColor="#8B5CF6" />
+            <stop offset="100%" stopColor="#0EA5E9" />
           </linearGradient>
         </defs>
       </svg>
@@ -4290,9 +4293,9 @@ function WorkspaceContent() {
 
           {/* Terminal Drawer */}
           {isTerminalOpen && (
-            <div className="absolute bottom-0 left-0 w-full h-72 bg-[#05080E]/95 border-t border-border z-30 flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
+            <div className="absolute bottom-0 left-0 w-full h-72 bg-background/95 border-t border-border z-30 flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
               {/* Terminal Header */}
-              <div className="h-10 px-4 border-b border-border bg-[#0C121D]/90 flex items-center justify-between select-none">
+              <div className="h-10 px-4 border-b border-border bg-card/90 flex items-center justify-between select-none">
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                     <Icon icon="lucide:terminal" className="text-primary text-xs" />
@@ -4381,7 +4384,7 @@ export default function WorkspacePage() {
     <div className="h-screen w-full bg-background text-foreground flex flex-col relative font-sans overflow-hidden">
       <ReactFlowProvider>
         <Suspense fallback={
-          <div className="min-h-screen w-full bg-[#0A0F1D] flex items-center justify-center text-slate-400">
+          <div className="min-h-screen w-full bg-background flex items-center justify-center text-slate-400">
             <Icon icon="lucide:loader-2" className="animate-spin text-2xl text-primary" />
           </div>
         }>
