@@ -97,9 +97,9 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="w-64 bg-gradient-to-b from-slate-900 to-slate-950 border-r border-slate-700/50 flex flex-col h-full overflow-hidden">
+    <aside className="w-64 bg-gradient-to-b from-slate-900 to-slate-950 border-r border-border/50 flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-slate-700/50 bg-slate-900/50 backdrop-blur-sm">
+      <div className="p-4 border-b border-border/50 bg-card/50 backdrop-blur-sm">
         <h1 className="text-lg font-bold text-white mb-1">InfraCanvas</h1>
         <p className="text-xs text-slate-400">Drag modules to build infrastructure</p>
       </div>
@@ -118,11 +118,11 @@ export default function Sidebar() {
                   onClick={() =>
                     setExpandedCategory(isExpanded ? null : category)
                   }
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200 group"
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-secondary/50 hover:text-white transition-all duration-200 group"
                 >
                   <span className="flex items-center gap-2">
                     <span
-                      className={`w-1.5 h-1.5 rounded-full bg-blue-400 transition-all duration-200 ${isExpanded ? 'bg-emerald-400' : ''}`}
+                      className={`w-1.5 h-1.5 rounded-full bg-primary transition-all duration-200 ${isExpanded ? 'bg-emerald-400' : ''}`}
                     />
                     {category}
                   </span>
@@ -143,7 +143,7 @@ export default function Sidebar() {
                         onDragStart={(event) =>
                           onDragStart(event, module.type, module.label)
                         }
-                        className="px-3 py-2.5 bg-slate-800/40 border border-slate-700/50 rounded-md cursor-grab hover:cursor-grabbing hover:bg-slate-700/60 hover:border-slate-600 transition-all duration-200 group/item"
+                        className="px-3 py-2.5 bg-secondary/40 border border-border/50 rounded-md cursor-grab hover:cursor-grabbing hover:bg-input/60 hover:border-input transition-all duration-200 group/item"
                       >
                         <div className="flex items-start gap-2">
                           <span className="text-lg flex-shrink-0 group-hover/item:scale-110 transition-transform duration-200">
@@ -169,7 +169,7 @@ export default function Sidebar() {
       </div>
 
       {/* Footer Info */}
-      <div className="px-4 py-3 border-t border-slate-700/50 bg-slate-900/50 backdrop-blur-sm">
+      <div className="px-4 py-3 border-t border-border/50 bg-card/50 backdrop-blur-sm">
         <p className="text-xs text-slate-500 text-center">
           💡 Drag modules onto the canvas to start
         </p>

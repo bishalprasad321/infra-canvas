@@ -30,7 +30,7 @@ export default function OAuthCallbackPage() {
   }, [router, setSessionFromToken]);
 
   return (
-    <div className="min-h-screen w-full bg-[#0A0F1D] flex items-center justify-center text-slate-400">
+    <div className="min-h-screen w-full bg-background flex items-center justify-center text-slate-400">
       {error ? (
         <div className="flex flex-col items-center gap-3 text-center px-6">
           <Icon icon="lucide:alert-circle" className="text-3xl text-red-400" />
