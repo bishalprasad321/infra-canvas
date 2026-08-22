@@ -126,6 +126,52 @@ func registerLocalStackAMI(localstackHost string) (string, error) {
 	return string(m[1]), nil
 }
 
+// AgentContext carries the resolved local sandbox agent for a project's
+// `local_agent` deployment target (Phase 1 opt-in beta — see
+// obsidian_memory/08.4 and 03.6). It is resolved by the caller (main.go's
+// handleDeploy/handleDestroy, via a DB lookup) and passed in, keeping this
+// package free of database/sql — it never talks to the DB itself.
+type AgentContext struct {
+	AgentID       string
+	GatewayURL    string
+	PrivateKeyPEM string
+}
+
+// localAgentHostsINI is the placeholder Ansible inventory for a local_agent
+// run: the host/port here are never dialed directly over TCP/IP — the
+// ProxyCommand built by localAgentSSHCommonArgs carries the actual connection
+// through the Gateway tunnel.
+func localAgentHostsINI() string {
+	return strings.ReplaceAll(`[webservers]
+agent-tunnel ansible_host=agent-tunnel ansible_port=2222 ansible_user=ubuntu
+
+[all__COLON__vars]
+ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
+}
+
+// localAgentSSHCommonArgs builds the --ssh-common-args value that bridges
+// Ansible's SSH connection through the Gateway tunnel via a ProxyCommand,
+// instead of a direct dial (see obsidian_memory/08.4's Phase 1 design).
+// OpenSSH itself spawns this as a subprocess, feeding it stdin/stdout as the
+// transport; the ansible-playbook subprocess model otherwise stays exactly as
+// it is for the live/docker targets.
+func localAgentSSHCommonArgs(agentCtx *AgentContext) string {
+	proxyCommand := fmt.Sprintf("%s sandbox proxy --agent-id=%s --service=ssh:2222 --gateway=%s",
+		cliHelperPath(), agentCtx.AgentID, agentCtx.GatewayURL)
+	return fmt.Sprintf("-o StrictHostKeyChecking=no -o ProxyCommand=%q", proxyCommand)
+}
+
+// cliHelperPath resolves the `infracanvas` CLI binary used as the SSH
+// ProxyCommand target for local_agent runs (see the ansibleArgs branch in
+// RunPipeline). The hosted Runner's host/container must have this binary
+// available — it already does, via the existing CLI release pipeline.
+func cliHelperPath() string {
+	if p := os.Getenv("INFRACANVAS_CLI_PATH"); p != "" {
+		return p
+	}
+	return "infracanvas"
+}
+
 // SecretRedactor masks sensitive credentials values inside log lines
 type SecretRedactor struct {
 	secrets []string
@@ -228,6 +274,7 @@ func RunPipeline(
 	autoDestroy bool,
 	extraEnv []string,
 	secretsToMask []string,
+	agentCtx *AgentContext,
 	logChan chan<- string,
 	onNodeStatus func(nodeId, status string),
 	onStatusChange func(status string),
@@ -235,6 +282,7 @@ func RunPipeline(
 ) {
 	isDocker := os.Getenv("IS_DOCKER") == "true"
 	isSandboxRun := isSandbox(canvasJSON)
+	isLocalAgentRun := agentCtx != nil && agentCtx.AgentID != ""
 	runDir := "/app/data/workspace/current"
 	if !isDocker {
 		runDir = "./data/workspace/current"
@@ -445,7 +493,9 @@ func RunPipeline(
 			content = strings.ReplaceAll(content, "http://localhost:4566", fmt.Sprintf("http://%s:4566", localstackHost))
 		}
 
-		if file.Path == "ansible/hosts.ini" && isSandboxRun && isDocker {
+		if file.Path == "ansible/hosts.ini" && isLocalAgentRun {
+			content = localAgentHostsINI()
+		} else if file.Path == "ansible/hosts.ini" && isSandboxRun && isDocker {
 			if !hasTfNodes {
 				content = strings.ReplaceAll(`[webservers]
 ubuntu_ssh_1 ansible_host=ubuntu_ssh_1 ansible_port=22 ansible_user=ubuntu
@@ -668,7 +718,15 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 		emit("=========================================\n")
 
 		var activeKeyPath string
-		if sshKeyFilePath != "" {
+		if isLocalAgentRun {
+			// Per-installation key uploaded once during pairing (see
+			// obsidian_memory/08.4) — decrypted by the caller and handed in via
+			// agentCtx, never persisted server-side outside the vault.
+			tmpKeyPath := fmt.Sprintf("/tmp/agent_key_%s", runID)
+			_ = os.WriteFile(tmpKeyPath, []byte(agentCtx.PrivateKeyPEM), 0600)
+			defer os.Remove(tmpKeyPath)
+			activeKeyPath = tmpKeyPath
+		} else if sshKeyFilePath != "" {
 			activeKeyPath = sshKeyFilePath
 		} else {
 			// Sandbox fallback
@@ -692,11 +750,15 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 			return
 		}
 
+		sshCommonArgs := "-o StrictHostKeyChecking=no"
+		if isLocalAgentRun {
+			sshCommonArgs = localAgentSSHCommonArgs(agentCtx)
+		}
 		ansibleArgs := []string{
 			"-i", "hosts.ini",
 			"playbook.yml",
 			"--private-key=" + activeKeyPath,
-			"--ssh-common-args=-o StrictHostKeyChecking=no",
+			"--ssh-common-args=" + sshCommonArgs,
 		}
 		if verboseMode {
 			ansibleArgs = append(ansibleArgs, "-vvv")

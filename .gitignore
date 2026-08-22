@@ -47,3 +47,10 @@ next-env.d.ts
 
 # build
 .turbo
+
+# Runner runtime state — apps/api/data is where the Go Runner materializes
+# and executes each deploy (Terraform/Ansible/K8s files, .terraform provider
+# binaries, terraform.tfstate, the SQLite dev DB). All of it is generated at
+# runtime, can be large (downloaded Terraform providers), and can contain
+# deploy-time secrets in tfstate — never commit it.
+/apps/api/data/
