@@ -62,6 +62,7 @@ function DashboardContent() {
 	const [newProjVisibility, setNewProjVisibility] = useState('PRIVATE');
 	const [newProjTeamId, setNewProjTeamId] = useState('');
 	const [createError, setCreateError] = useState<string | null>(null);
+	const [isCreating, setIsCreating] = useState(false);
 
 	// Request join state
 	const [selectedProjToJoin, setSelectedProjToJoin] = useState<Project | null>(null);
@@ -172,6 +173,7 @@ function DashboardContent() {
 			return;
 		}
 
+		setIsCreating(true);
 		try {
 			const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 			const res = await fetch(`${API_URL}/api/projects`, {
@@ -201,6 +203,7 @@ function DashboardContent() {
 			router.push(`/workspace?project=${newProject.id}`);
 		} catch (err: any) {
 			setCreateError(err.message || 'Internal Server Error');
+			setIsCreating(false);
 		}
 	};
 
@@ -583,9 +586,17 @@ function DashboardContent() {
 
 							<button
 								type="submit"
-								className="w-full bg-primary hover:opacity-90 active:scale-[0.98] text-white rounded-xl py-3 text-sm font-semibold transition mt-2 cursor-pointer shadow-lg shadow-primary/20"
+								disabled={isCreating}
+								className="w-full flex items-center justify-center gap-2 bg-primary hover:opacity-90 active:scale-[0.98] text-white rounded-xl py-3 text-sm font-semibold transition mt-2 cursor-pointer shadow-lg shadow-primary/20 disabled:opacity-50"
 							>
-								Create Workspace
+								{isCreating ? (
+									<>
+										<Icon icon="lucide:loader-2" className="animate-spin text-base" />
+										Creating Workspace...
+									</>
+								) : (
+									'Create Workspace'
+								)}
 							</button>
 						</form>
 					</div>

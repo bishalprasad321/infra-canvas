@@ -10,6 +10,7 @@ interface ProjectSettingsModalProps {
   projectDetails: any;
   onUpdateProjectDetails: (updated: any) => void;
   projectId: string;
+  onCredentialsChange?: (credentials: any[]) => void;
 }
 
 export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
@@ -17,7 +18,8 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   onClose,
   projectDetails,
   onUpdateProjectDetails,
-  projectId
+  projectId,
+  onCredentialsChange
 }) => {
   const [activeTab, setActiveTab] = useState<'general' | 'members' | 'credentials' | 'danger'>('general');
   const [name, setName] = useState(projectDetails?.name || '');
@@ -270,7 +272,11 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
           
           {/* CREDENTIALS TAB */}
           {activeTab === 'credentials' && (
-            <CredentialManagerTab projectId={projectId} token={activeToken} />
+            <CredentialManagerTab 
+              projectId={projectId} 
+              token={activeToken} 
+              onCredentialsChange={onCredentialsChange} 
+            />
           )}
 
           {/* GENERAL SETTINGS */}
