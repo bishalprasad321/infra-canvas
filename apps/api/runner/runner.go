@@ -133,6 +133,7 @@ func registerLocalStackAMI(localstackHost string) (string, error) {
 // package free of database/sql — it never talks to the DB itself.
 type AgentContext struct {
 	AgentID       string
+	ProjectID     string
 	GatewayURL    string
 	PrivateKeyPEM string
 }
@@ -156,8 +157,8 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 // transport; the ansible-playbook subprocess model otherwise stays exactly as
 // it is for the live/docker targets.
 func localAgentSSHCommonArgs(agentCtx *AgentContext) string {
-	proxyCommand := fmt.Sprintf("%s sandbox proxy --agent-id=%s --service=ssh:2222 --gateway=%s",
-		cliHelperPath(), agentCtx.AgentID, agentCtx.GatewayURL)
+	proxyCommand := fmt.Sprintf("%s sandbox proxy --agent-id=%s --service=ssh:2222 --gateway=%s --project=%s",
+		cliHelperPath(), agentCtx.AgentID, agentCtx.GatewayURL, agentCtx.ProjectID)
 	return fmt.Sprintf("-o StrictHostKeyChecking=no -o ProxyCommand=%q", proxyCommand)
 }
 

@@ -109,10 +109,10 @@ func TestLocalAgentHostsINI(t *testing.T) {
 }
 
 func TestLocalAgentSSHCommonArgs(t *testing.T) {
-	agentCtx := &AgentContext{AgentID: "agent-abc123", GatewayURL: "https://gateway.example.com"}
+	agentCtx := &AgentContext{AgentID: "agent-abc123", ProjectID: "proj_xyz789", GatewayURL: "https://gateway.example.com"}
 	got := localAgentSSHCommonArgs(agentCtx)
 
-	want := `-o StrictHostKeyChecking=no -o ProxyCommand="infracanvas sandbox proxy --agent-id=agent-abc123 --service=ssh:2222 --gateway=https://gateway.example.com"`
+	want := `-o StrictHostKeyChecking=no -o ProxyCommand="infracanvas sandbox proxy --agent-id=agent-abc123 --service=ssh:2222 --gateway=https://gateway.example.com --project=proj_xyz789"`
 	if got != want {
 		t.Errorf("localAgentSSHCommonArgs() = %q, want %q", got, want)
 	}
