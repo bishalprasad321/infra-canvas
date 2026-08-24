@@ -74,6 +74,15 @@ func extractRepositoryConfig(canvasJSON string) RepositoryConfig {
 }
 
 // isSandbox parses the canvas JSON and determines if the current deployment targets the sandbox environment.
+// IsSandbox is the exported entry point isSandbox's logic, used by main.go
+// (outside this package) to decide whether it's safe to fall back to the
+// shared sandbox SSH keypair for a deploy — see extractSecretsAndEnvironment
+// and readSandboxPublicKey in main.go. A real AWS/GCP/Azure deploy must never
+// silently reuse that shared key; only a LocalStack sandbox run may.
+func IsSandbox(canvasJSON string) bool {
+	return isSandbox(canvasJSON)
+}
+
 func isSandbox(canvasJSON string) bool {
 	var canvas struct {
 		Nodes []struct {
@@ -89,12 +98,27 @@ func isSandbox(canvasJSON string) bool {
 	for _, node := range canvas.Nodes {
 		if strings.HasPrefix(node.ID, "aws_target") {
 			hasCloudTarget = true
+			// The frontend's AWS Target inspector only writes an explicit
+			// "environment" value into the saved node data once the user
+			// actually touches the dropdown — a freshly dropped node just
+			// *displays* "LocalStack (Sandbox)" as its default without
+			// persisting it (see apps/web/app/workspace/page.tsx's
+			// `environmentVal = data?.environment || 'localstack'`). So an
+			// absent/empty environment field means the same thing the UI
+			// shows: LocalStack. Only an explicit non-"localstack" value
+			// (e.g. "aws") means a real live deploy.
+			env := ""
 			if params, ok := node.Data["parameters"].(map[string]interface{}); ok {
-				if env, ok := params["environment"].(string); ok && env == "localstack" {
-					return true
+				if e, ok := params["environment"].(string); ok {
+					env = e
 				}
 			}
-			if env, ok := node.Data["environment"].(string); ok && env == "localstack" {
+			if env == "" {
+				if e, ok := node.Data["environment"].(string); ok {
+					env = e
+				}
+			}
+			if env == "" || env == "localstack" {
 				return true
 			}
 		} else if strings.HasPrefix(node.ID, "gcp_target") {
@@ -510,8 +534,17 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 			}
 		}
 
-		// Inject custom SSH key path and username into hosts.ini if ANSIBLE_SSH_KEY_PATH is present
-		if file.Path == "ansible/hosts.ini" {
+		// Inject custom SSH key path and username into hosts.ini if ANSIBLE_SSH_KEY_PATH is present.
+		// Skipped entirely for a local_agent run: this block writes
+		// ansible_ssh_private_key_file / ansible_ssh_common_args into
+		// hosts.ini's [all:vars], and Ansible's inventory-level vars take
+		// precedence over the --private-key/--ssh-common-args CLI flags
+		// localAgentSSHCommonArgs already set — so leaving this block
+		// unconditional silently discarded the ProxyCommand tunnel bridge
+		// whenever a project had BOTH a paired agent and a separately
+		// configured project SSH credential, falling back to a direct
+		// (unreachable) connection to the "agent-tunnel" placeholder host.
+		if file.Path == "ansible/hosts.ini" && !isLocalAgentRun {
 			if !isSandboxRun {
 				var customSshUser string
 				for _, kv := range extraEnv {
@@ -627,7 +660,16 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 		// Clean up previous backend state pointer to avoid "Unsetting previously set backend s3" init errors when switching targets
 		_ = os.Remove(filepath.Join(tfDir, ".terraform", "terraform.tfstate"))
 
-		if err := spawnCommand("terraform", []string{"init", "-reconfigure", "-input=false"}, tfDir, tfEnv, redactor, logChan); err != nil {
+		// -force-copy answers "yes" to Terraform's backend state-migration
+		// prompt automatically. Without it, `-input=false` (required since
+		// this runs unattended) makes init fail outright with "Can't ask
+		// approval for state migration" whenever the backend config changes
+		// between runs of the same workspace and existing state needs
+		// migrating — e.g. LocalStack sandbox runs re-targeting the same
+		// state bucket after prior runs. Safe to force here: this is
+		// throwaway sandbox/live state Terraform manages itself, not a
+		// destructive action on user data.
+		if err := spawnCommand("terraform", []string{"init", "-reconfigure", "-input=false", "-force-copy"}, tfDir, tfEnv, redactor, logChan); err != nil {
 			emit(fmt.Sprintf("[ERROR] Terraform init failed: %v", err))
 			emitSliceStatus(tfNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
@@ -729,8 +771,15 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 			activeKeyPath = tmpKeyPath
 		} else if sshKeyFilePath != "" {
 			activeKeyPath = sshKeyFilePath
-		} else {
-			// Sandbox fallback
+		} else if isSandboxRun {
+			// Sandbox fallback — only for a LocalStack sandbox run. A real
+			// AWS/GCP/Azure deploy must never silently reuse this shared,
+			// every-install key; see the matching gate on the Terraform-side
+			// public key injection in apps/api/main.go's
+			// extractSecretsAndEnvironment. Falling through with
+			// activeKeyPath == "" here surfaces the "Private SSH key not
+			// found" error below instead, which is the correct outcome for a
+			// live deploy with no credential configured.
 			keySourcePath := "/app/sandbox/id_rsa"
 			if !fileExists(keySourcePath) {
 				keySourcePath = "../../sandbox/id_rsa"
@@ -745,7 +794,11 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 		}
 
 		if activeKeyPath == "" {
-			emit("[ERROR] Private SSH key not found. Ensure keys are configured.")
+			if isSandboxRun {
+				emit("[ERROR] Private SSH key not found. Ensure keys are configured.")
+			} else {
+				emit("[ERROR] This live deploy has no SSH credential configured. Add one under Project Credentials before deploying to a real cloud target — the shared sandbox key cannot be used for real infrastructure.")
+			}
 			emitSliceStatus(ansibleNodeIDs, "failed")
 			onComplete("FAILED", accumulatedLogs)
 			return
