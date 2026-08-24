@@ -520,6 +520,18 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Resolve credentials/env before committing to a run: a live cloud deploy
+	// (not a LocalStack sandbox run) with no SSH credential configured for
+	// this project is rejected here, cleanly, rather than being accepted and
+	// failing several seconds later deep inside a Terraform provider error
+	// about an invalid key format — see extractSecretsAndEnvironment.
+	extraEnv, secretsToMask, sshCredentialAvailable := extractSecretsAndEnvironment(projectID, canvasStr)
+	if !runner.IsSandbox(canvasStr) && !sshCredentialAvailable {
+		http.Error(w, "This live deploy has no SSH credential configured. Add one under Project Credentials before deploying to a real cloud target — the shared sandbox key cannot be used for real infrastructure.", http.StatusBadRequest)
+		return
+	}
+	agentCtx := resolvePairedAgent(projectID)
+
 	runID := generateUUID()
 
 	// Insert into DB as PENDING
@@ -568,9 +580,6 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 				broadcastToTracker(runID, "log", msg)
 			}
 		}()
-
-		extraEnv, secretsToMask := extractSecretsAndEnvironment(projectID, canvasStr)
-		agentCtx := resolvePairedAgent(projectID)
 
 		// Start executing runner
 		runner.RunPipeline(runID, canvasStr, payload.Files, "deploy", payload.AutoDestroy, extraEnv, secretsToMask, agentCtx, logChan, func(nodeId, status string) {
@@ -836,7 +845,7 @@ func handleDestroy(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 
-		extraEnv, secretsToMask := extractSecretsAndEnvironment(projectID, canvasStr)
+		extraEnv, secretsToMask, _ := extractSecretsAndEnvironment(projectID, canvasStr)
 		agentCtx := resolvePairedAgent(projectID)
 
 		runner.RunPipeline(runID, canvasStr, nil, "destroy", false, extraEnv, secretsToMask, agentCtx, logChan, func(nodeId, status string) {
@@ -1336,7 +1345,14 @@ func handleUpgradePlan(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func extractSecretsAndEnvironment(projectID string, canvasStr string) ([]string, []string) {
+// extractSecretsAndEnvironment returns the runner env vars, the secret
+// values to redact from logs, and whether a real SSH public key ended up
+// available (either from a configured project credential, or the sandbox
+// fallback for a LocalStack run) — the caller uses that third value to
+// reject a live cloud deploy upfront, before ever starting Terraform, rather
+// than letting it fail deep inside a confusing provider error. See the
+// pre-flight check in handleDeploy.
+func extractSecretsAndEnvironment(projectID string, canvasStr string) ([]string, []string, bool) {
 	var extraEnv []string
 	var secretsToMask []string
 	sshPubKeyInjected := false
@@ -1442,25 +1458,34 @@ func extractSecretsAndEnvironment(projectID string, canvasStr string) ([]string,
 		}
 	}
 
-	// No project SSH credential provided a real public key: fall back to the
-	// actual sandbox/id_rsa.pub content rather than leaving the placeholder
-	// dummy key baked into bundleGenerator.ts's Terraform template in place.
-	// That placeholder is not a syntactically valid OpenSSH key, so it fails
-	// aws_key_pair's real-AWS ImportKeyPair call with "Key is not in valid
-	// OpenSSH public key format" (LocalStack's mock doesn't validate this,
-	// which is why this only surfaces against real AWS/GCP/Azure). This also
-	// keeps the injected public key consistent with the private key the
-	// Ansible phase's sandbox-key fallback (below, in runner.go) actually uses
-	// when no custom SSH credential is configured.
-	if !sshPubKeyInjected {
+	// No project SSH credential provided a real public key. For a LocalStack
+	// sandbox run, fall back to the actual sandbox/id_rsa.pub content rather
+	// than leaving the placeholder dummy key baked into bundleGenerator.ts's
+	// Terraform template in place — that placeholder is not a syntactically
+	// valid OpenSSH key, so it fails aws_key_pair's real-AWS ImportKeyPair
+	// call with "Key is not in valid OpenSSH public key format" (LocalStack's
+	// mock doesn't validate this, which is why the placeholder silently
+	// "worked" there). This also keeps the injected public key consistent
+	// with the private key the Ansible phase's sandbox-key fallback (below,
+	// in runner.go) actually uses when no custom SSH credential is configured.
+	//
+	// For a real AWS/GCP/Azure deploy, this fallback must NOT apply — an SSH
+	// credential is mandatory there. Silently reusing the shared sandbox
+	// keypair against a real cloud resource is exactly the "shared key baked
+	// into every install" risk flagged in obsidian_memory/08.4; the deploy
+	// should fail clearly instead, prompting the user to configure a real
+	// credential, not succeed with a key nobody but every sandbox install can
+	// use to SSH in.
+	if !sshPubKeyInjected && runner.IsSandbox(canvasStr) {
 		if pubKeyStr, err := readSandboxPublicKey(); err == nil {
 			extraEnv = append(extraEnv, "TF_VAR_aws_ssh_pub_key="+pubKeyStr)
 			extraEnv = append(extraEnv, "TF_VAR_gcp_ssh_pub_key="+pubKeyStr)
 			extraEnv = append(extraEnv, "TF_VAR_azure_ssh_pub_key="+pubKeyStr)
+			sshPubKeyInjected = true
 		}
 	}
 
-	return extraEnv, secretsToMask
+	return extraEnv, secretsToMask, sshPubKeyInjected
 }
 
 // readSandboxPublicKey reads the real sandbox SSH public key, mirroring the

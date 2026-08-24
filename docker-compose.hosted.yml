@@ -1,7 +1,14 @@
 # Simulates the "hosted backend" half of the local sandbox agent architecture
 # (obsidian_memory/08.4's Phase 1 / 03.6's bridging protocol) as its own,
-# separate container group — api + agent-gateway only, no LocalStack or SSH
-# target containers, and no shared network with them.
+# separate container group — api + agent-gateway + LocalStack, no SSH target
+# containers, and no shared network with those.
+#
+# LocalStack belongs here, not with the SSH targets: it's a cloud-API mock the
+# Runner calls directly over the network, exactly like real AWS would be — it
+# has nothing to do with the Agent/tunnel bridging, which is specifically
+# about reaching Ansible/SSH targets the Runner can't dial directly. Only the
+# SSH targets (the user's simulated "local machine") live in the separate
+# stack below.
 #
 # The "local machine" half is intentionally a *separate* Compose project:
 # sandbox/docker-compose.sandbox.yml (driven by `infracanvas sandbox up`),
@@ -47,6 +54,7 @@ services:
       - hosted-api-db-data:/app/data
     depends_on:
       - agent-gateway
+      - localstack
 
   agent-gateway:
     build:
@@ -58,6 +66,17 @@ services:
       - "--listen=:9090"
       - "--api-url=http://api:8080"
       - "--runner-secret=${GATEWAY_RUNNER_SECRET:-hosted-dev-secret}"
+
+  localstack:
+    container_name: infra-localstack-hosted
+    image: localstack/localstack:3.4.0
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=ec2,s3
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
 
 volumes:
   hosted-api-db-data:

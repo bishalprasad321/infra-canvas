@@ -1,15 +1,15 @@
+# The "local machine" half of the sandbox agent split (see
+# docker-compose.hosted.yml and obsidian_memory/08.4's Phase 1) — driven by
+# `infracanvas sandbox up/down`. Only the SSH targets the Agent bridges to
+# live here; LocalStack deliberately does not. LocalStack mocks cloud APIs
+# the Runner calls directly over the network (same as it would call real
+# AWS) — it has nothing to do with the Agent/tunnel bridging, which is
+# specifically for reaching Ansible/SSH targets the Runner can't dial
+# directly. It lives in docker-compose.hosted.yml instead, alongside api and
+# agent-gateway. Keeping it out of this file also avoids a port 4566
+# collision when both stacks run side by side, which is the normal case for
+# testing the local_agent bridge.
 services:
-  localstack:
-    container_name: infra-localstack
-    image: localstack/localstack:3.4.0
-    ports:
-      - "4566:4566"
-    environment:
-      - SERVICES=ec2,s3
-      - DOCKER_HOST=unix:///var/run/docker.sock
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock"
-
   ubuntu_ssh_1:
     container_name: ubuntu_ssh_1
     build:

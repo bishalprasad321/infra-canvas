@@ -61,6 +61,49 @@ func TestExtractRepositoryConfig(t *testing.T) {
 	}
 }
 
+func TestIsSandboxTreatsMissingEnvironmentAsLocalStack(t *testing.T) {
+	tests := []struct {
+		name       string
+		canvasJSON string
+		want       bool
+	}{
+		{
+			name: "aws_target with no environment field at all (freshly dropped node) is sandbox",
+			canvasJSON: `{"nodes": [
+				{"id": "aws_target_1", "data": {"tech": "Target"}}
+			]}`,
+			want: true,
+		},
+		{
+			name: "aws_target with explicit environment=localstack is sandbox",
+			canvasJSON: `{"nodes": [
+				{"id": "aws_target_1", "data": {"tech": "Target", "environment": "localstack"}}
+			]}`,
+			want: true,
+		},
+		{
+			name: "aws_target with explicit environment=aws is live, not sandbox",
+			canvasJSON: `{"nodes": [
+				{"id": "aws_target_1", "data": {"tech": "Target", "environment": "aws"}}
+			]}`,
+			want: false,
+		},
+		{
+			name:       "no cloud target node at all (ansible-only canvas) is sandbox",
+			canvasJSON: `{"nodes": [{"id": "open-port_1", "data": {"tech": "Ansible"}}]}`,
+			want:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isSandbox(tt.canvasJSON); got != tt.want {
+				t.Errorf("isSandbox() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSandboxHostsIPReplacement(t *testing.T) {
 	re := regexp.MustCompile(`(?:aws_instance\.[a-zA-Z0-9_-]+\.public_ip|google_compute_instance\.[a-zA-Z0-9_-]+\.public_ip|azurerm_public_ip\.pip\.ip_address|{{\s*(?:nodes\.)?[a-zA-Z0-9_-]+\.public_ip\s*}})`)
 
