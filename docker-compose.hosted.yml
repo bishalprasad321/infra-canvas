@@ -52,6 +52,16 @@ services:
       - INFRACANVAS_GATEWAY_SECRET=${GATEWAY_RUNNER_SECRET:-hosted-dev-secret}
     volumes:
       - hosted-api-db-data:/app/data
+      # Read-only: the api container only ever *reads* the shared sandbox
+      # public key (readSandboxPublicKey in main.go) as a fallback for
+      # LocalStack runs with no project SSH credential configured. Writing a
+      # fresh per-installation key here is `infracanvas sandbox up`'s job,
+      # on the separate "local machine" stack, never this container. Missing
+      # this mount (as this file originally did) makes that fallback fail
+      # silently, and Terraform falls back to bundleGenerator.ts's invalid
+      # placeholder key instead — the exact "InvalidKeyPair.Format" bug this
+      # mount fixes.
+      - ./sandbox:/app/sandbox:ro
     depends_on:
       - agent-gateway
       - localstack
