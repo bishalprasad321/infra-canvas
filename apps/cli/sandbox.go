@@ -126,10 +126,12 @@ func runSandboxUp(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	if _, err := os.Stat(filepath.Join("sandbox", "docker-compose.sandbox.yml")); err != nil {
-		fmt.Println("Error: sandbox/docker-compose.sandbox.yml not found. Run this command from the repository root.")
+	composeDir, err := extractEmbeddedSandboxFiles()
+	if err != nil {
+		fmt.Printf("Failed to prepare sandbox compose files: %v\n", err)
 		return
 	}
+	composeFile := filepath.Join(composeDir, "docker-compose.sandbox.yml")
 
 	agentID := "agent-" + randomHex(8)
 	fmt.Printf("Generating per-installation SSH keypair for %s...\n", agentID)
@@ -153,17 +155,17 @@ func runSandboxUp(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// Bake the public half into the local SSH target container(s) — overwrites
-	// the gitignored shared dev key so this installation's containers only
+	// Bake the public half into the local SSH target container(s) — written
+	// fresh into this run's extracted compose directory so the containers only
 	// trust this installation's key, per obsidian_memory/03.6's per-machine key
 	// requirement.
-	if err := os.WriteFile(filepath.Join("sandbox", "id_rsa.pub"), []byte(publicKeyLine), 0644); err != nil {
-		fmt.Printf("Failed to write sandbox/id_rsa.pub: %v\n", err)
+	if err := os.WriteFile(filepath.Join(composeDir, "id_rsa.pub"), []byte(publicKeyLine), 0644); err != nil {
+		fmt.Printf("Failed to write id_rsa.pub: %v\n", err)
 		return
 	}
 
 	fmt.Println("Building and starting local sandbox containers (docker compose)...")
-	if err := runDockerCompose("up", "-d", "--build"); err != nil {
+	if err := runDockerCompose(composeFile, "up", "-d", "--build"); err != nil {
 		fmt.Printf("docker compose up failed: %v\n", err)
 		return
 	}
@@ -253,8 +255,14 @@ func runSandboxDown(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println("Stopping local sandbox containers...")
-	if err := runDockerCompose("down"); err != nil {
-		fmt.Printf("docker compose down failed: %v\n", err)
+	composeDir, err := extractEmbeddedSandboxFiles()
+	if err != nil {
+		fmt.Printf("Failed to prepare sandbox compose files: %v\n", err)
+	} else {
+		composeFile := filepath.Join(composeDir, "docker-compose.sandbox.yml")
+		if err := runDockerCompose(composeFile, "down"); err != nil {
+			fmt.Printf("docker compose down failed: %v\n", err)
+		}
 	}
 
 	st, err := loadSandboxState()
@@ -279,8 +287,8 @@ func runSandboxDown(cmd *cobra.Command, args []string) {
 // docker-compose.hosted.yml (see obsidian_memory/08.4's Phase 1 notes).
 const dockerComposeProjectName = "infracanvas-sandbox"
 
-func runDockerCompose(args ...string) error {
-	fullArgs := append([]string{"compose", "-p", dockerComposeProjectName, "-f", filepath.Join("sandbox", "docker-compose.sandbox.yml")}, args...)
+func runDockerCompose(composeFile string, args ...string) error {
+	fullArgs := append([]string{"compose", "-p", dockerComposeProjectName, "-f", composeFile}, args...)
 	cmd := exec.Command("docker", fullArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

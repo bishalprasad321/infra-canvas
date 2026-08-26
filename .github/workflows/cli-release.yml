@@ -40,6 +40,10 @@ jobs:
           go-version-file: 'apps/cli/go.mod'
           cache-dependency-path: 'apps/cli/go.sum'
 
+      - name: Run Tests
+        working-directory: apps/cli
+        run: go test ./...
+
       - name: Build CLI Binary
         working-directory: apps/cli
         run: |
