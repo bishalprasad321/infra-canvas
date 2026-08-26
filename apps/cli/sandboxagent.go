@@ -15,6 +15,8 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"sort"
+	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
@@ -119,13 +121,24 @@ func runSandboxAgentRun(cmd *cobra.Command, args []string) {
 		log.Fatal("sandbox agent-run: --agent-id, --gateway, and INFRACANVAS_AGENT_TOKEN are all required")
 	}
 
-	// Fixed allowlist matching the sandbox compose's exposed SSH port. This is
-	// the security boundary from obsidian_memory/03.6: the Agent only ever
+	// Fixed allowlist matching the sandbox compose's exposed SSH ports (both
+	// ubuntu_ssh_1:2222 and ubuntu_ssh_2:2223 — see
+	// apps/cli/embedded/sandbox/docker-compose.sandbox.yml). This is the
+	// security boundary from obsidian_memory/03.6: the Agent only ever
 	// proxies to services it declares itself, never an arbitrary host:port
-	// supplied by the Gateway/Runner.
+	// supplied by the Gateway/Runner. Reported to the Gateway itself via
+	// allowed_services below, so the Gateway can enforce it independently of
+	// this process's own per-stream ack/reject (see
+	// obsidian_memory/08.4's Phase 2 allowlist-hardening entry).
 	allowlist := map[string]string{
 		"ssh:2222": "localhost:2222",
+		"ssh:2223": "localhost:2223",
 	}
+	allowedServices := make([]string, 0, len(allowlist))
+	for svc := range allowlist {
+		allowedServices = append(allowedServices, svc)
+	}
+	sort.Strings(allowedServices)
 
 	u, err := url.Parse(gatewayURL)
 	if err != nil {
@@ -141,6 +154,7 @@ func runSandboxAgentRun(cmd *cobra.Command, args []string) {
 	q := u.Query()
 	q.Set("token", token)
 	q.Set("agent_id", agentID)
+	q.Set("allowed_services", strings.Join(allowedServices, ","))
 	u.RawQuery = q.Encode()
 
 	ws, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
