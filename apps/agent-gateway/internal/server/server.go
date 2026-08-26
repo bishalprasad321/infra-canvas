@@ -20,15 +20,18 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
+	"golang.org/x/time/rate"
 
 	"apps/agent-gateway/internal/apiclient"
 	"apps/agent-gateway/internal/pairing"
@@ -38,6 +41,15 @@ import (
 type agentSession struct {
 	identity pairing.AgentIdentity
 	session  *yamux.Session
+
+	// allowedServices is the fixed set of logical services this Agent
+	// declared it will proxy to, reported once at connect time (see
+	// handleAgentConnect). The Gateway checks a dial's requested service
+	// against this set itself in handleRunnerDial, rather than trusting the
+	// Agent's own per-stream ack/reject as the sole enforcement point — the
+	// "Agent itself defines" allowlist model from obsidian_memory/03.6's
+	// security section, point 1.
+	allowedServices map[string]struct{}
 }
 
 // Server is the Agent Gateway. It owns the pairing flow, the live agent
@@ -49,23 +61,86 @@ type Server struct {
 	APIClient    *apiclient.Client
 	RunnerSecret string
 
+	// MaxStreamsPerProject and BytesPerSecPerProject implement obsidian_memory/03.6's
+	// rate-limiting requirement (point 6): cap concurrent streams and bytes/sec
+	// per project regardless of tier, so a bug in the destination allowlist
+	// above isn't the only thing standing between this tunnel and an open relay.
+	MaxStreamsPerProject  int
+	BytesPerSecPerProject int64
+
 	upgrader websocket.Upgrader
 
 	mu     sync.Mutex
 	agents map[string]*agentSession // keyed by agent_id
+
+	// limitsMu guards streamCounts and limiters together — bookkeeping for a
+	// different concern (per-request dial limits) than mu (agent connect/
+	// disconnect), kept under its own lock so the two never contend.
+	//
+	// Both maps are keyed by project_id and, unlike agents, have no natural
+	// eviction hook (an agent disconnecting doesn't mean its project is done
+	// dialing). Every distinct project_id ever seen leaves one small entry in
+	// each map for the life of the process — negligible at beta scale, a
+	// known and intentionally-deferred gap rather than something worth
+	// over-engineering away here.
+	limitsMu     sync.Mutex
+	streamCounts map[string]int
+	limiters     map[string]*rate.Limiter
 }
 
 // New creates a Gateway. verificationBaseURI is passed through to the pairing
 // server (see pairing.NewServer). apiClient reports agent connect/disconnect
 // status back to apps/api. runnerSecret authenticates /runner/dial callers.
-func New(verificationBaseURI string, apiClient *apiclient.Client, runnerSecret string) *Server {
+// maxStreamsPerProject and bytesPerSecPerProject are the per-project_id caps
+// described above.
+func New(verificationBaseURI string, apiClient *apiclient.Client, runnerSecret string, maxStreamsPerProject int, bytesPerSecPerProject int64) *Server {
 	return &Server{
-		Pairing:      pairing.NewServer(verificationBaseURI),
-		APIClient:    apiClient,
-		RunnerSecret: runnerSecret,
-		upgrader:     websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
-		agents:       make(map[string]*agentSession),
+		Pairing:               pairing.NewServer(verificationBaseURI),
+		APIClient:             apiClient,
+		RunnerSecret:          runnerSecret,
+		MaxStreamsPerProject:  maxStreamsPerProject,
+		BytesPerSecPerProject: bytesPerSecPerProject,
+		upgrader:              websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
+		agents:                make(map[string]*agentSession),
+		streamCounts:          make(map[string]int),
+		limiters:              make(map[string]*rate.Limiter),
 	}
+}
+
+// acquireStreamSlot reports whether projectID is under MaxStreamsPerProject
+// concurrent /runner/dial streams and, if so, reserves one. Callers that get
+// true back must call releaseStreamSlot exactly once, via a defer placed
+// immediately after the successful acquire so no later return path (including
+// a recovered panic) can leak the slot.
+func (s *Server) acquireStreamSlot(projectID string) bool {
+	s.limitsMu.Lock()
+	defer s.limitsMu.Unlock()
+	if s.streamCounts[projectID] >= s.MaxStreamsPerProject {
+		return false
+	}
+	s.streamCounts[projectID]++
+	return true
+}
+
+func (s *Server) releaseStreamSlot(projectID string) {
+	s.limitsMu.Lock()
+	defer s.limitsMu.Unlock()
+	s.streamCounts[projectID]--
+}
+
+// limiterFor returns the shared bytes/sec token bucket for projectID,
+// creating it on first use and reusing it thereafter so every concurrent
+// stream for that project — in both directions — draws from one budget
+// instead of each stream getting its own.
+func (s *Server) limiterFor(projectID string) *rate.Limiter {
+	s.limitsMu.Lock()
+	defer s.limitsMu.Unlock()
+	lim, ok := s.limiters[projectID]
+	if !ok {
+		lim = rate.NewLimiter(rate.Limit(s.BytesPerSecPerProject), int(s.BytesPerSecPerProject))
+		s.limiters[projectID] = lim
+	}
+	return lim
 }
 
 // Mux builds an http.ServeMux wired to every Gateway endpoint, ready to hand to
@@ -174,6 +249,29 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// allowed_services is the small, fixed set of logical services this
+	// Agent itself defines at registration time (obsidian_memory/03.6,
+	// security section point 1) — required so the Gateway can reject a dial
+	// for anything else itself, rather than relying solely on the Agent's
+	// own per-stream ack. Sent as a comma-separated query param alongside
+	// token/agent_id, matching this same request's existing style; service
+	// names (proto:port) never contain commas, so no escaping is needed.
+	rawServices := r.URL.Query().Get("allowed_services")
+	if rawServices == "" {
+		http.Error(w, "missing allowed_services", http.StatusBadRequest)
+		return
+	}
+	allowedServices := make(map[string]struct{})
+	for _, svc := range strings.Split(rawServices, ",") {
+		if svc != "" {
+			allowedServices[svc] = struct{}{}
+		}
+	}
+	if len(allowedServices) == 0 {
+		http.Error(w, "missing allowed_services", http.StatusBadRequest)
+		return
+	}
+
 	ident, ok := s.Pairing.LookupToken(token)
 	if !ok {
 		http.Error(w, "invalid agent token", http.StatusUnauthorized)
@@ -194,7 +292,7 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
-	s.agents[agentID] = &agentSession{identity: ident, session: session}
+	s.agents[agentID] = &agentSession{identity: ident, session: session, allowedServices: allowedServices}
 	s.mu.Unlock()
 
 	log.Printf("gateway: agent %s connected (project=%s)", agentID, ident.ProjectID)
@@ -250,6 +348,28 @@ func (s *Server) handleRunnerDial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Destination allowlisting (03.6, security section point 1): reject a
+	// service the Agent never declared at connect time ourselves, instead of
+	// forwarding every request and trusting the Agent's own ack/reject as the
+	// only check — a bug in that check would otherwise turn this tunnel into
+	// a general proxy.
+	if _, allowed := as.allowedServices[service]; !allowed {
+		http.Error(w, fmt.Sprintf("service %q not in agent's declared allowlist", service), http.StatusForbidden)
+		return
+	}
+
+	// Rate limiting (03.6, security section point 6): cap concurrent streams
+	// per project regardless of tier, closing off the abuse vector in point 1
+	// even if the allowlist check above has a bug. The release is deferred
+	// immediately after a successful acquire, before any other statement, so
+	// every later return path here — including a recovered panic — can never
+	// leak the slot.
+	if !s.acquireStreamSlot(projectID) {
+		http.Error(w, "too many concurrent sandbox streams for this project", http.StatusTooManyRequests)
+		return
+	}
+	defer s.releaseStreamSlot(projectID)
+
 	stream, err := as.session.Open()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("could not open tunnel stream: %v", err), http.StatusBadGateway)
@@ -283,23 +403,49 @@ func (s *Server) handleRunnerDial(w http.ResponseWriter, r *http.Request) {
 	defer ws.Close()
 	defer stream.Close()
 
-	splice(wsconn.New(ws), stream)
+	splice(wsconn.New(ws), stream, s.limiterFor(projectID))
 }
 
 // splice copies bytes in both directions until either side closes or errors,
 // then returns. This is the entire job of the Gateway's data plane: it never
-// looks at what is inside these bytes.
-func splice(a io.ReadWriteCloser, b io.ReadWriteCloser) {
+// looks at what is inside these bytes. lim throttles both directions to a
+// shared bytes/sec budget (03.6's rate-limiting requirement) — the same
+// *rate.Limiter is reused across every concurrent stream for one project, so
+// the budget is per-project, not per-stream.
+func splice(a io.ReadWriteCloser, b io.ReadWriteCloser, lim *rate.Limiter) {
 	done := make(chan struct{}, 2)
 	go func() {
-		io.Copy(a, b)
+		io.Copy(a, &rateLimitedReader{r: b, lim: lim})
 		done <- struct{}{}
 	}()
 	go func() {
-		io.Copy(b, a)
+		io.Copy(b, &rateLimitedReader{r: a, lim: lim})
 		done <- struct{}{}
 	}()
 	<-done
+}
+
+// rateLimitedReader wraps an io.Reader so each Read draws from a shared
+// bytes/sec token bucket before returning data. Reads are clamped to the
+// limiter's burst size so a single Read can never need more tokens than the
+// bucket will ever hold (which would otherwise block forever) — as a result,
+// WaitN never blocks longer than roughly one burst's worth of time.
+type rateLimitedReader struct {
+	r   io.Reader
+	lim *rate.Limiter
+}
+
+func (rr *rateLimitedReader) Read(p []byte) (int, error) {
+	if burst := rr.lim.Burst(); len(p) > burst {
+		p = p[:burst]
+	}
+	n, err := rr.r.Read(p)
+	if n > 0 {
+		if werr := rr.lim.WaitN(context.Background(), n); werr != nil {
+			return n, werr
+		}
+	}
+	return n, err
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

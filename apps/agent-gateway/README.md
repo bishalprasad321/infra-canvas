@@ -28,6 +28,11 @@ go run ./cmd/agent-gateway --runner-secret=<shared-secret> --api-url=http://loca
 `apps/api` must be started with the matching `GATEWAY_RUNNER_SECRET` env var
 and `SANDBOX_AGENT_BETA=true` for pairing/status callbacks to work.
 
+`--max-streams-per-project` (default 10) and `--bytes-per-sec-per-project`
+(default 2 MiB/s, i.e. `2097152`) cap concurrent `/runner/dial` streams and
+throughput per `project_id` — see `obsidian_memory/08.4`'s Phase 2
+allowlist/rate-limiting entry for the reasoning behind the defaults.
+
 ## Relationship to `apps/api`
 
 The Gateway never touches the database directly. `apps/api` is the single
@@ -48,5 +53,3 @@ an Agent's tunnel connects.
 - **No heartbeat/reconnect UX.** An Agent's tunnel dying (laptop sleep, WiFi
   drop) is only visible as the yamux session closing — no "Sandbox
   Disconnected" status is surfaced yet. Phase 2 scope.
-- **No destination-allowlist hardening beyond the Agent's own fixed
-  allowlist, and no rate limiting.** Also Phase 2 scope.

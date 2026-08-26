@@ -19,6 +19,10 @@ func main() {
 	apiURL := flag.String("api-url", "http://localhost:8080", "base URL of the InfraCanvas API (apps/api)")
 	verificationURI := flag.String("verification-uri", "http://localhost:3000/pair", "browser-facing pairing approval page")
 	runnerSecret := flag.String("runner-secret", "", "shared secret required on X-Gateway-Runner-Secret for /runner/dial and the apps/api status callback (required)")
+	maxStreamsPerProject := flag.Int("max-streams-per-project", 10,
+		"maximum concurrent /runner/dial streams allowed per project_id at once (obsidian_memory/03.6 rate limiting)")
+	bytesPerSecPerProject := flag.Int64("bytes-per-sec-per-project", 2*1024*1024,
+		"sustained bytes/sec budget shared across all concurrent streams for one project_id — sized for interactive SSH/Ansible output, not bulk transfer")
 	flag.Parse()
 
 	if *runnerSecret == "" {
@@ -26,7 +30,7 @@ func main() {
 	}
 
 	apiClient := apiclient.New(*apiURL, *runnerSecret)
-	srv := server.New(*verificationURI, apiClient, *runnerSecret)
+	srv := server.New(*verificationURI, apiClient, *runnerSecret, *maxStreamsPerProject, *bytesPerSecPerProject)
 
 	log.Printf("agent-gateway: listening on %s (api-url=%s)", *listen, *apiURL)
 	if err := http.ListenAndServe(*listen, srv.Mux()); err != nil {
