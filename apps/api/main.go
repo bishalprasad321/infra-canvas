@@ -212,7 +212,7 @@ func main() {
 	CREATE TABLE IF NOT EXISTS cloud_credentials (
 		id TEXT PRIMARY KEY,
 		project_id TEXT NOT NULL,
-		provider TEXT NOT NULL CHECK (provider IN ('AWS', 'GCP', 'SSH')),
+		provider TEXT NOT NULL CHECK (provider IN ('AWS', 'GCP', 'SSH', 'GITHUB')),
 		name TEXT NOT NULL,
 		encrypted_data BLOB NOT NULL,
 		nonce BLOB NOT NULL,
@@ -233,6 +233,9 @@ func main() {
 	_, _ = db.Exec("ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT 'FREE' CHECK (plan IN ('FREE', 'PRO', 'ENTERPRISE'));")
 	if err := migrateUsersPasswordHashNullable(); err != nil {
 		log.Fatalf("[DB] Failed to migrate users.password_hash to nullable: %v\n", err)
+	}
+	if err := migrateCloudCredentialsProviderGithub(); err != nil {
+		log.Fatalf("[DB] Failed to migrate cloud_credentials to allow GITHUB: %v\n", err)
 	}
 	log.Println("[DB] Database initialized successfully.")
 
@@ -1379,6 +1382,14 @@ func extractSecretsAndEnvironment(projectID string, canvasStr string) ([]string,
 					extraEnv = append(extraEnv, "TF_VAR_azure_ssh_pub_key="+pubKeyStr)
 				}
 			}
+		} else if provider == "GITHUB" {
+			var creds struct {
+				Token string `json:"token"`
+			}
+			if err := json.Unmarshal(decrypted, &creds); err == nil && creds.Token != "" {
+				extraEnv = append(extraEnv, "GITHUB_PAT="+creds.Token)
+				secretsToMask = append(secretsToMask, creds.Token)
+			}
 		}
 	}
 
@@ -1414,4 +1425,73 @@ func extractSecretsAndEnvironment(projectID string, canvasStr string) ([]string,
 
 	return extraEnv, secretsToMask
 }
+
+// migrateCloudCredentialsProviderGithub performs a table-rebuild migration on the
+// cloud_credentials table in SQLite to allow the 'GITHUB' provider.
+func migrateCloudCredentialsProviderGithub() error {
+	var sqlStr string
+	err := db.QueryRow("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'cloud_credentials'").Scan(&sqlStr)
+	if err != nil {
+		return fmt.Errorf("failed to query sqlite_master for cloud_credentials: %w", err)
+	}
+
+	if strings.Contains(sqlStr, "GITHUB") {
+		// Already migrated
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// 1. Create table cloud_credentials_new
+	_, err = tx.Exec(`
+		CREATE TABLE cloud_credentials_new (
+			id TEXT PRIMARY KEY,
+			project_id TEXT NOT NULL,
+			provider TEXT NOT NULL CHECK (provider IN ('AWS', 'GCP', 'SSH', 'GITHUB')),
+			name TEXT NOT NULL,
+			encrypted_data BLOB NOT NULL,
+			nonce BLOB NOT NULL,
+			auth_tag BLOB NOT NULL,
+			key_fingerprint TEXT NOT NULL,
+			created_by TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+			FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+		);
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create cloud_credentials_new: %w", err)
+	}
+
+	// 2. Copy data
+	_, err = tx.Exec(`
+		INSERT INTO cloud_credentials_new (id, project_id, provider, name, encrypted_data, nonce, auth_tag, key_fingerprint, created_by, created_at, updated_at)
+		SELECT id, project_id, provider, name, encrypted_data, nonce, auth_tag, key_fingerprint, created_by, created_at, updated_at
+		FROM cloud_credentials;
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to copy cloud_credentials data: %w", err)
+	}
+
+	// 3. Drop old table
+	_, err = tx.Exec("DROP TABLE cloud_credentials;")
+	if err != nil {
+		return fmt.Errorf("failed to drop old cloud_credentials: %w", err)
+	}
+
+	// 4. Rename
+	_, err = tx.Exec("ALTER TABLE cloud_credentials_new RENAME TO cloud_credentials;")
+	if err != nil {
+		return fmt.Errorf("failed to rename cloud_credentials_new: %w", err)
+	}
+
+	log.Println("[DB] Migrated cloud_credentials provider check constraint to allow 'GITHUB'")
+	return tx.Commit()
+}
+
 

@@ -374,6 +374,68 @@ export function generateAnsibleYAML(nodes: Node[], edges: Edge[]): string {
         owner: "${owner}"
         mode: "${mode}"\n\n`;
     }
+    else if ((node.data as any)?.tech === 'Source' || id.startsWith('code_repository')) {
+      const repoUrl = (node.data as any).repoUrl || '';
+      const branch = (node.data as any).branch || 'main';
+      const destPath = (node.data as any).destPath || '/home/ubuntu/app';
+      const buildCommand = (node.data as any).buildCommand || '';
+      const startCommand = (node.data as any).startCommand || '';
+      const credentialId = (node.data as any).credentialId || '';
+      const appType = (node.data as any).appType || '';
+
+      let gitRepoUrl = repoUrl;
+      if (credentialId && repoUrl.startsWith('https://')) {
+        const cleanUrl = repoUrl.substring(8);
+        gitRepoUrl = `https://{{ lookup('env', 'GITHUB_PAT') | default('') }}@${cleanUrl}`;
+      }
+
+      tasksString += `    # Code Repository Deployment - ${label}
+    - name: Ensure destination directory exists
+      ansible.builtin.file:
+        path: "${destPath}"
+        state: directory
+        owner: ubuntu
+        mode: '0755'
+
+    - name: Clone source repository
+      ansible.builtin.git:
+        repo: "${gitRepoUrl}"
+        dest: "${destPath}"
+        version: "${branch}"
+        clone: yes
+        update: yes
+        force: yes
+      ignore_errors: yes\n\n`;
+
+      if (buildCommand) {
+        tasksString += `    # Run Build Commands
+    - name: Run build command
+      ansible.builtin.shell:
+        cmd: "${buildCommand}"
+        chdir: "${destPath}"\n\n`;
+      }
+
+      if (startCommand) {
+        if (startCommand.includes('pm2 ') || appType === 'Node.js') {
+          tasksString += `    # Ensure PM2 is installed
+    - name: Check if PM2 is installed
+      ansible.builtin.command: which pm2
+      register: pm2_check
+      failed_when: false
+      changed_when: false
+
+    - name: Install PM2 process manager if missing
+      ansible.builtin.command: npm install -g pm2
+      when: pm2_check.rc != 0\n\n`;
+        }
+
+        tasksString += `    # Run Start Commands
+    - name: Start application daemon
+      ansible.builtin.shell:
+        cmd: "${startCommand}"
+        chdir: "${destPath}"\n\n`;
+      }
+    }
     else if ((node.data as any)?.isCustom && (node.data as any)?.tech === 'Ansible') {
       let customTasks = (node.data as any).rawCode || '';
       const lines = customTasks.split('\n').map((line: string) => {

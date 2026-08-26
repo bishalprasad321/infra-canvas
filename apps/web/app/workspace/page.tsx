@@ -1304,6 +1304,9 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const gcpZoneVal = (selectedNode?.data?.gcpZone as string) || 'us-central1-a';
   const startCommandVal = (selectedNode?.data?.startCommand as string) || '';
   const appPortVal = (selectedNode?.data?.appPort as string) || '';
+  const appTypeVal = (selectedNode?.data?.appType as string) || '';
+  const buildCommandVal = (selectedNode?.data?.buildCommand as string) || '';
+  const destPathVal = (selectedNode?.data?.destPath as string) || '/home/ubuntu/app';
 
   return (
     <aside className={clsx(
@@ -2545,7 +2548,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   {selectedNode.data.tech === 'Source' && (
                     <div className="space-y-4">
                       <p className="text-[11px] text-muted-foreground">
-                        The pipeline clones this repository onto the target server before the configuration steps run.
+                        The pipeline clones this repository onto the target server and deploys the application using the configuration below.
                       </p>
                       <div>
                         <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Repository URL</label>
@@ -2564,6 +2567,112 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                           value={branchVal}
                           onChange={(e) => updateNodeData(selectedNode.id, { branch: e.target.value })}
                           placeholder="main"
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">GitHub Credential (for Private Repos)</label>
+                        <div className="relative">
+                          <select
+                            value={credentialIdVal}
+                            onChange={(e) => updateNodeData(selectedNode.id, { credentialId: e.target.value })}
+                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                          >
+                            <option value="">-- Public Repository (No Auth) --</option>
+                            {availableCredentials.filter(c => c.provider === 'GITHUB').map(c => (
+                              <option key={c.id} value={c.id}>{c.name} ({c.key_fingerprint})</option>
+                            ))}
+                          </select>
+                          <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">App Stack / Preset</label>
+                        <div className="relative">
+                          <select
+                            value={appTypeVal}
+                            onChange={(e) => {
+                              const type = e.target.value;
+                              let buildCmd = '';
+                              let startCmd = '';
+                              let port = '';
+                              if (type === 'Node.js') {
+                                buildCmd = 'npm install';
+                                startCmd = 'pm2 start "npm start" --name app';
+                                port = '3000';
+                              } else if (type === 'Python') {
+                                buildCmd = 'pip install -r requirements.txt';
+                                startCmd = 'pm2 start "gunicorn app:app" --name app';
+                                port = '8000';
+                              } else if (type === 'Go') {
+                                buildCmd = 'go build -o app_binary';
+                                startCmd = 'pm2 start "./app_binary" --name app';
+                                port = '8080';
+                              } else if (type === 'Static Site') {
+                                buildCmd = 'npm install && npm run build';
+                                startCmd = 'cp -r dist/* /var/www/html/';
+                                port = '80';
+                              } else if (type === 'Java') {
+                                buildCmd = 'mvn clean package';
+                                startCmd = 'pm2 start "java -jar target/app.jar" --name app';
+                                port = '8080';
+                              }
+                              updateNodeData(selectedNode.id, {
+                                appType: type,
+                                buildCommand: buildCmd,
+                                startCommand: startCmd,
+                                appPort: port
+                              });
+                            }}
+                            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs text-foreground appearance-none focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer"
+                          >
+                            <option value="">-- Custom / Manual Setup --</option>
+                            <option value="Node.js">Node.js (Express/Next)</option>
+                            <option value="Python">Python (Django/Flask/FastAPI)</option>
+                            <option value="Go">Go Binary</option>
+                            <option value="Static Site">Static HTML (Nginx)</option>
+                            <option value="Java">Java (Spring Boot)</option>
+                          </select>
+                          <Icon icon="lucide:chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Destination Directory</label>
+                        <input
+                          type="text"
+                          value={destPathVal}
+                          onChange={(e) => updateNodeData(selectedNode.id, { destPath: e.target.value })}
+                          placeholder="/home/ubuntu/app"
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Build Command</label>
+                        <input
+                          type="text"
+                          value={buildCommandVal}
+                          onChange={(e) => updateNodeData(selectedNode.id, { buildCommand: e.target.value })}
+                          placeholder="npm install"
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Start Command</label>
+                        <input
+                          type="text"
+                          value={startCommandVal}
+                          onChange={(e) => updateNodeData(selectedNode.id, { startCommand: e.target.value })}
+                          placeholder="pm2 start 'npm start' --name app"
+                          className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">App Port (Optional)</label>
+                        <input
+                          type="text"
+                          value={appPortVal}
+                          onChange={(e) => updateNodeData(selectedNode.id, { appPort: e.target.value })}
+                          placeholder="3000"
                           className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
                         />
                       </div>
