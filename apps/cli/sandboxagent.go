@@ -8,6 +8,7 @@ package main
 // distributable artifact (see apps/cli's existing CI release pipeline).
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -116,12 +118,61 @@ func sandboxAgentRunCmd() *cobra.Command {
 func runSandboxAgentRun(cmd *cobra.Command, args []string) {
 	agentID, _ := cmd.Flags().GetString("agent-id")
 	gatewayURL, _ := cmd.Flags().GetString("gateway")
-	token := os.Getenv("INFRACANVAS_AGENT_TOKEN")
-
-	if agentID == "" || gatewayURL == "" || token == "" {
-		log.Fatal("sandbox agent-run: --agent-id, --gateway, and INFRACANVAS_AGENT_TOKEN are all required")
+	if agentID == "" || gatewayURL == "" {
+		log.Fatal("sandbox agent-run: --agent-id and --gateway are required")
+	}
+	token, err := resolveAgentToken(agentID)
+	if err != nil {
+		log.Fatalf("sandbox agent-run: %v", err)
 	}
 
+	// context.Background(): this is a long-running background process
+	// (spawned detached by `sandbox up`'s startAgentProcess) that only stops
+	// via `sandbox down` killing its PID (sandboxState.PID in sandbox.go), so
+	// runAgentReconnectLoop never returns here. The installed-service path
+	// (`agent-service-run`, see sandboxservice.go) runs the same loop with a
+	// cancellable context instead, so its Stop() can return promptly.
+	_ = runAgentReconnectLoop(context.Background(), agentID, gatewayURL, token)
+}
+
+// resolveAgentToken prefers INFRACANVAS_AGENT_TOKEN (the env var
+// startAgentProcess sets for the plain background-process path — kept so the
+// secret never shows up in `ps`/process logs for that path) and falls back to
+// the token file `sandbox up` also writes at pairing time
+// (~/.infracanvas/sandbox/<agentID>_token, mode 0600 — see
+// generateAgentKeyPair's private-key file for the same permission pattern).
+// The file exists specifically so an installed OS service can read the token
+// on every start, including after a reboot long after the `sandbox up`
+// process that received it has exited — see obsidian_memory/08.4's Phase 2
+// daemon-install entry.
+func resolveAgentToken(agentID string) (string, error) {
+	if tok := os.Getenv("INFRACANVAS_AGENT_TOKEN"); tok != "" {
+		return tok, nil
+	}
+	path, err := agentTokenFilePath(agentID)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("no INFRACANVAS_AGENT_TOKEN env var and no token file at %s (run `infracanvas sandbox up` first): %w", path, err)
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+func agentTokenFilePath(agentID string) (string, error) {
+	dir, err := sandboxStateDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, agentID+"_token"), nil
+}
+
+// buildAgentConnectURL builds the /agent/connect URL (including the
+// allowed_services declaration — see obsidian_memory/03.6's security section,
+// point 1) and the matching local-dial allowlist, shared by every caller of
+// runAgentReconnectLoop.
+func buildAgentConnectURL(gatewayURL, agentID, token string) (connectURL string, allowlist map[string]string, err error) {
 	// Fixed allowlist matching the sandbox compose's exposed SSH ports (both
 	// ubuntu_ssh_1:2222 and ubuntu_ssh_2:2223 — see
 	// apps/cli/embedded/sandbox/docker-compose.sandbox.yml). This is the
@@ -131,7 +182,7 @@ func runSandboxAgentRun(cmd *cobra.Command, args []string) {
 	// allowed_services below, so the Gateway can enforce it independently of
 	// this process's own per-stream ack/reject (see
 	// obsidian_memory/08.4's Phase 2 allowlist-hardening entry).
-	allowlist := map[string]string{
+	allowlist = map[string]string{
 		"ssh:2222": "localhost:2222",
 		"ssh:2223": "localhost:2223",
 	}
@@ -143,7 +194,7 @@ func runSandboxAgentRun(cmd *cobra.Command, args []string) {
 
 	u, err := url.Parse(gatewayURL)
 	if err != nil {
-		log.Fatalf("sandbox agent-run: invalid gateway url: %v", err)
+		return "", nil, fmt.Errorf("invalid gateway url: %w", err)
 	}
 	switch u.Scheme {
 	case "http":
@@ -157,37 +208,57 @@ func runSandboxAgentRun(cmd *cobra.Command, args []string) {
 	q.Set("agent_id", agentID)
 	q.Set("allowed_services", strings.Join(allowedServices, ","))
 	u.RawQuery = q.Encode()
-	connectURL := u.String()
+	return u.String(), allowlist, nil
+}
 
-	// Outer reconnect loop. This is a long-running background process
-	// (spawned detached by `sandbox up`'s startAgentProcess) that only stops
-	// via `sandbox down` killing its PID (sandboxState.PID in sandbox.go) —
-	// unlike a one-shot CLI command, a dial/session failure here must never
-	// end the process, only the current attempt. Dead-tunnel detection itself
-	// is free (yamux's own keepalive — see the comment in connectAndServe);
-	// this loop's only job is to reconnect after that, with the same
-	// long-lived INFRACANVAS_AGENT_TOKEN (safe to reuse — see
+// runAgentReconnectLoop builds the connect URL/allowlist once and then loops
+// connectAndServe with exponential backoff until ctx is cancelled. Shared by
+// the plain `sandbox agent-run` command (ctx = context.Background(), so this
+// never returns on its own — a dial/session failure must never end that
+// process, only the current attempt) and the installed-service program's
+// Start/Stop (ctx cancelled by Stop, so this returns promptly and cleanly
+// instead of relying on the OS to forcibly kill the process).
+func runAgentReconnectLoop(ctx context.Context, agentID, gatewayURL, token string) error {
+	connectURL, allowlist, err := buildAgentConnectURL(gatewayURL, agentID, token)
+	if err != nil {
+		return err
+	}
+
+	// Dead-tunnel detection itself is free (yamux's own keepalive — see the
+	// comment in connectAndServe); this loop's only job is to reconnect after
+	// that, with the same long-lived token (safe to reuse — see
 	// obsidian_memory/08.4's Phase 2 heartbeat/reconnect entry: token lookup
 	// on the Gateway side isn't single-use).
 	backoff := newReconnectBackoff()
 	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		connectedAt := time.Now()
-		err := connectAndServe(connectURL, agentID, gatewayURL, allowlist)
+		err := connectAndServe(ctx, connectURL, agentID, gatewayURL, allowlist)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		log.Printf("sandbox agent-run: connection to gateway ended: %v", err)
 		if time.Since(connectedAt) >= reconnectStableThreshold {
 			backoff.reset()
 		}
 		delay := backoff.next()
 		log.Printf("sandbox agent-run: reconnecting to %s in %s", gatewayURL, delay)
-		time.Sleep(delay)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
 	}
 }
 
 // connectAndServe dials the Gateway once, serves accepted streams until the
-// session dies, and returns the reason it ended. Never calls log.Fatal — the
-// caller (the reconnect loop above) decides how to react, so this function
-// stays independently testable and safely re-callable across reconnects.
-func connectAndServe(connectURL, agentID, gatewayURL string, allowlist map[string]string) error {
+// session dies or ctx is cancelled, and returns the reason it ended. Never
+// calls log.Fatal — the caller (runAgentReconnectLoop) decides how to react,
+// so this function stays independently testable and safely re-callable
+// across reconnects.
+func connectAndServe(ctx context.Context, connectURL, agentID, gatewayURL string, allowlist map[string]string) error {
 	ws, _, err := websocket.DefaultDialer.Dial(connectURL, nil)
 	if err != nil {
 		return fmt.Errorf("dial gateway: %w", err)
@@ -203,6 +274,21 @@ func connectAndServe(connectURL, agentID, gatewayURL string, allowlist map[strin
 		return fmt.Errorf("yamux client setup: %w", err)
 	}
 	defer session.Close()
+
+	// Closing the session unblocks the Accept() loop below promptly when the
+	// caller cancels ctx (e.g. an installed service's Stop()) — without this,
+	// a cancelled context would have no effect until the next yamux keepalive
+	// ping fails, up to ~30-40s later, which is too slow for an OS service
+	// manager's stop timeout.
+	stopWatch := make(chan struct{})
+	defer close(stopWatch)
+	go func() {
+		select {
+		case <-ctx.Done():
+			session.Close()
+		case <-stopWatch:
+		}
+	}()
 
 	log.Printf("sandbox agent-run: connected to gateway %s as %s", gatewayURL, agentID)
 

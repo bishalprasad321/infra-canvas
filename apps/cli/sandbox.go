@@ -56,7 +56,7 @@ func sandboxCmd() *cobra.Command {
 		Run:   runSandboxDown,
 	}
 
-	cmd.AddCommand(upCmd, statusCmd, downCmd, sandboxAgentRunCmd(), sandboxProxyCmd())
+	cmd.AddCommand(upCmd, statusCmd, downCmd, sandboxAgentCmd(), sandboxAgentRunCmd(), sandboxAgentServiceRunCmd(), sandboxProxyCmd())
 	return cmd
 }
 
@@ -185,11 +185,30 @@ func runSandboxUp(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	fmt.Println("Starting the local Agent process...")
-	pid, err := startAgentProcess(cfg, agentID, agentToken)
+	// Persisted (mode 0600, same permission pattern as the private key above)
+	// so an installed OS service (`sandbox agent install`) can read it on
+	// every start, including after a reboot long after this process has
+	// exited — see obsidian_memory/08.4's Phase 2 daemon-install entry.
+	tokenPath, err := agentTokenFilePath(agentID)
 	if err != nil {
-		fmt.Printf("Failed to start Agent process: %v\n", err)
+		fmt.Printf("Failed to resolve token file path: %v\n", err)
 		return
+	}
+	if err := os.WriteFile(tokenPath, []byte(agentToken), 0600); err != nil {
+		fmt.Printf("Failed to save agent token: %v\n", err)
+		return
+	}
+
+	var pid int
+	if running, _ := agentServiceIsRunning(agentID, cfg.GatewayURL); running {
+		fmt.Println("Agent is already running as an installed service — skipping foreground process start.")
+	} else {
+		fmt.Println("Starting the local Agent process...")
+		pid, err = startAgentProcess(cfg, agentID, agentToken)
+		if err != nil {
+			fmt.Printf("Failed to start Agent process: %v\n", err)
+			return
+		}
 	}
 
 	if err := saveSandboxState(&sandboxState{AgentID: agentID, ProjectID: projectID, PID: pid}); err != nil {

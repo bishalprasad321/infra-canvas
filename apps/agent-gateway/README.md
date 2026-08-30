@@ -42,6 +42,32 @@ an Agent's tunnel connects — and, as of `obsidian_memory/08.4`'s Phase 2
 heartbeat/reconnect item, when it disconnects too (`DISCONNECTED`), so
 `paired_agents.status` doesn't stay stuck at `ACTIVE` after a dead tunnel.
 
+## Load testing
+
+`internal/server/loadtest_test.go` hammers the Gateway with many concurrent
+agents and, per agent, more concurrent `/runner/dial` attempts than
+`MaxStreamsPerProject` allows — proving the allowlist/rate-limit enforcement
+holds under real concurrent goroutines, not just the sequential calls the
+other tests in that package make. Gated behind an env var so routine
+`go test ./...` stays fast:
+
+```bash
+RUN_GATEWAY_LOAD_TEST=1 go test ./internal/server/... -race -v -run TestGatewayLoad
+```
+
+**Run this with `-race`.** On a Windows host whose gcc can't build the race
+detector's cgo runtime ("sorry, unimplemented: 64-bit mode not compiled in"),
+run it inside a Linux Go container instead, which sidesteps the host
+toolchain entirely:
+
+```bash
+docker run --rm -v "$(pwd):/src" -w /src -e GOTOOLCHAIN=auto -e RUN_GATEWAY_LOAD_TEST=1 \
+  golang:1.25 sh -c "go test ./... -race -v -run TestGatewayLoad"
+```
+
+Use `-count=1` if repeating the command in a loop to check for flakiness —
+`go test` otherwise reports a cached prior result instead of re-running.
+
 ## Known Phase 1 limitations (not silent gaps — tracked for Phase 2)
 
 - **`/runner/dial` auth is a single shared secret** (`X-Gateway-Runner-Secret`),
