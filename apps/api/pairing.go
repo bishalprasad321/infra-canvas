@@ -218,14 +218,19 @@ func handleAgentStatusCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid payload: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if payload.Status != "ACTIVE" && payload.Status != "REVOKED" {
-		http.Error(w, "status must be ACTIVE or REVOKED", http.StatusBadRequest)
+	if payload.Status != "ACTIVE" && payload.Status != "REVOKED" && payload.Status != "DISCONNECTED" {
+		http.Error(w, "status must be ACTIVE, REVOKED, or DISCONNECTED", http.StatusBadRequest)
 		return
 	}
 
 	res, err := db.Exec(`UPDATE paired_agents SET status = ?, last_seen_at = datetime('now') WHERE agent_id = ?`,
 		payload.Status, agentID)
 	if err != nil {
+		// http.Error only writes the response body — it does not log
+		// server-side, so without this the real error was only ever visible
+		// in the HTTP response the Gateway's apiclient discarded (see
+		// obsidian_memory/07.2's SQLite-locking incident this was found from).
+		log.Printf("[SANDBOX AGENT] Failed to update status for agent %s to %s: %v\n", agentID, payload.Status, err)
 		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -277,6 +282,97 @@ func resolvePairedAgent(projectID string) *runner.AgentContext {
 		GatewayURL:    gatewayURL,
 		PrivateKeyPEM: string(plainText),
 	}
+}
+
+// latestPairedAgentStatus returns the status of a project's most-recently-
+// registered paired agent (by registered_at), if any. Unlike
+// resolvePairedAgent, this does not filter to status = 'ACTIVE' — the whole
+// point is to see PENDING/DISCONNECTED rows resolvePairedAgent's nil would
+// otherwise hide, so handleDeploy can reject cleanly instead of silently
+// falling back to Docker-sandbox/live behavior (see obsidian_memory/08.4's
+// Phase 2 heartbeat/reconnect entry). ok is false when the beta flag is off,
+// no agent has ever been registered for this project, or the query fails
+// (logged, then treated like "no data" so a DB hiccup here fails open to
+// existing deploy behavior rather than blocking every deploy).
+func latestPairedAgentStatus(projectID string) (status string, ok bool) {
+	if os.Getenv("SANDBOX_AGENT_BETA") != "true" {
+		return "", false
+	}
+	err := db.QueryRow(`SELECT status FROM paired_agents WHERE project_id = ?
+		ORDER BY registered_at DESC LIMIT 1`, projectID).Scan(&status)
+	if err != nil {
+		if err != sql.ErrNoRows {
+			log.Printf("[SANDBOX AGENT] Failed to look up latest paired agent status for project %s: %v\n", projectID, err)
+		}
+		return "", false
+	}
+	return status, true
+}
+
+// migratePairedAgentsStatusAllowsDisconnected rebuilds the paired_agents
+// table so its status CHECK constraint allows 'DISCONNECTED', added by
+// obsidian_memory/08.4's Phase 2 heartbeat/reconnect item so the Gateway can
+// report a dead tunnel distinctly from a never-paired or revoked agent.
+// SQLite has no ALTER TABLE ... ALTER COLUMN, and a CHECK constraint isn't
+// even visible via PRAGMA table_info (unlike migrateUsersPasswordHashNullable's
+// NOT NULL flag, see oauth.go) — this inspects the table's DDL directly via
+// sqlite_master and does the same create/copy/drop/rename dance if
+// 'DISCONNECTED' isn't present yet. Idempotent: a no-op on every boot after
+// the first successful run, and a no-op if the table doesn't exist yet
+// (schemaQuery's own CREATE TABLE already has DISCONNECTED baked in for a
+// fresh database).
+func migratePairedAgentsStatusAllowsDisconnected() error {
+	var ddl string
+	err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'paired_agents'`).Scan(&ddl)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if strings.Contains(ddl, "'DISCONNECTED'") {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+		CREATE TABLE paired_agents_new (
+			id TEXT PRIMARY KEY,
+			project_id TEXT NOT NULL,
+			agent_id TEXT UNIQUE NOT NULL,
+			name TEXT NOT NULL,
+			public_key TEXT NOT NULL,
+			encrypted_private_key BLOB NOT NULL,
+			nonce BLOB NOT NULL,
+			auth_tag BLOB NOT NULL,
+			key_fingerprint TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'ACTIVE', 'REVOKED', 'DISCONNECTED')),
+			created_by TEXT NOT NULL,
+			registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			last_seen_at DATETIME,
+			FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+			FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+		);
+	`); err != nil {
+		return fmt.Errorf("create paired_agents_new: %w", err)
+	}
+	if _, err := tx.Exec(`INSERT INTO paired_agents_new SELECT id, project_id, agent_id, name, public_key, encrypted_private_key, nonce, auth_tag, key_fingerprint, status, created_by, registered_at, last_seen_at FROM paired_agents;`); err != nil {
+		return fmt.Errorf("copy paired_agents rows: %w", err)
+	}
+	if _, err := tx.Exec(`DROP TABLE paired_agents;`); err != nil {
+		return fmt.Errorf("drop old paired_agents: %w", err)
+	}
+	if _, err := tx.Exec(`ALTER TABLE paired_agents_new RENAME TO paired_agents;`); err != nil {
+		return fmt.Errorf("rename paired_agents_new: %w", err)
+	}
+
+	log.Println("[DB] Migrated paired_agents.status CHECK constraint to allow DISCONNECTED")
+	return tx.Commit()
 }
 
 func isUniqueConstraintErr(err error) bool {
