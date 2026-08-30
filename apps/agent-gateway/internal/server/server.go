@@ -304,16 +304,33 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 
 	// Block for the lifetime of the connection so the HTTP handler (and the
 	// underlying WS conn) stays open; clean up once the session dies (closed
-	// tunnel, dropped WiFi, process exit). Full reconnect UX and a distinct
-	// "disconnected" status are Phase 2 scope (see obsidian_memory/08.4).
+	// tunnel, dropped WiFi, process exit). Detection itself is free: yamux's
+	// DefaultConfig() already pings every 30s with a 10s pong timeout, so a
+	// dead tunnel closes this session within roughly 30-40s on its own — see
+	// obsidian_memory/08.4's Phase 2 heartbeat/reconnect entry.
 	<-session.CloseChan()
 
 	s.mu.Lock()
+	isCurrentSession := false
 	if cur, ok := s.agents[agentID]; ok && cur.session == session {
 		delete(s.agents, agentID)
+		isCurrentSession = true
 	}
 	s.mu.Unlock()
 	log.Printf("gateway: agent %s disconnected", agentID)
+
+	// Skip the notify if a reconnect already replaced this session in s.agents
+	// before this goroutine's check ran — that newer connection's own ACTIVE
+	// notify already reflects reality, and sending DISCONNECTED here too could
+	// race it and arrive second, incorrectly flipping status back. Narrows the
+	// common case a lot; does not fully eliminate the race (two independent
+	// HTTP requests have no cross-request ordering guarantee) — accepted
+	// residual risk, documented in obsidian_memory/08.4, not engineered further.
+	if isCurrentSession && s.APIClient != nil {
+		if err := s.APIClient.NotifyStatus(agentID, "DISCONNECTED"); err != nil {
+			log.Printf("gateway: failed to notify apps/api of agent %s DISCONNECTED status: %v", agentID, err)
+		}
+	}
 }
 
 // ---- Runner-side dial (WebSocket in, spliced to a new yamux stream) ----

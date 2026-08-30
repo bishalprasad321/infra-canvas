@@ -19,6 +19,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
 
+	"apps/agent-gateway/internal/apiclient"
 	"apps/agent-gateway/internal/server"
 	"apps/agent-gateway/internal/wsconn"
 )
@@ -452,4 +454,80 @@ func TestGatewayEnforcesBytesPerSecRateLimit(t *testing.T) {
 	if elapsed < minExpected {
 		t.Fatalf("expected the rate limit to make this transfer take at least %v, but it took %v", minExpected, elapsed)
 	}
+}
+
+type recordedCallback struct {
+	agentID string
+	status  string
+}
+
+// fakeAPIServer stands in for apps/api's POST /api/internal/agents/{agentId}/callback
+// endpoint, recording every call the Gateway makes so a test can assert on it.
+func fakeAPIServer(t *testing.T) (url string, callbacks func() []recordedCallback) {
+	t.Helper()
+	var mu sync.Mutex
+	var received []recordedCallback
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		agentID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/internal/agents/"), "/callback")
+		var body struct {
+			Status string `json:"status"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		mu.Lock()
+		received = append(received, recordedCallback{agentID: agentID, status: body.Status})
+		mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	return srv.URL, func() []recordedCallback {
+		mu.Lock()
+		defer mu.Unlock()
+		out := make([]recordedCallback, len(received))
+		copy(out, received)
+		return out
+	}
+}
+
+// waitForCallback polls callbacks() until one matching agentID/status shows
+// up or timeout elapses, rather than a fixed sleep-and-hope.
+func waitForCallback(t *testing.T, callbacks func() []recordedCallback, agentID, status string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		for _, cb := range callbacks() {
+			if cb.agentID == agentID && cb.status == status {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out after %v waiting for a %s callback for agent %s; got %+v", timeout, status, agentID, callbacks())
+}
+
+// TestGatewayReportsDisconnectedOnSessionClose proves the Gateway notifies
+// apps/api when an Agent's tunnel dies, closing the gap where
+// paired_agents.status stayed ACTIVE forever after a real disconnect (see
+// obsidian_memory/08.4's Phase 2 heartbeat/reconnect entry). Detection itself
+// (yamux's keepalive) isn't exercised here — this test closes the fake
+// Agent's session directly, which is the same CloseChan() signal a real dead
+// tunnel produces.
+func TestGatewayReportsDisconnectedOnSessionClose(t *testing.T) {
+	apiURL, callbacks := fakeAPIServer(t)
+	apiClient := apiclient.New(apiURL, testRunnerSecret)
+
+	srv := server.New("https://www.infracanvas.dev/pair", apiClient, testRunnerSecret, 10, 1<<20)
+	httpSrv := httptest.NewServer(srv.Mux())
+	t.Cleanup(httpSrv.Close)
+
+	token := pairAgent(t, httpSrv.URL, testProjectID)
+	target := listenAndHold(t)
+	fa := connectFakeAgent(t, httpSrv.URL, token, "agent-disconnect", map[string]string{"ssh:2222": target})
+
+	waitForCallback(t, callbacks, "agent-disconnect", "ACTIVE", 2*time.Second)
+
+	fa.session.Close() // simulate the tunnel dying, same signal yamux's own keepalive timeout produces
+
+	waitForCallback(t, callbacks, "agent-disconnect", "DISCONNECTED", 2*time.Second)
 }

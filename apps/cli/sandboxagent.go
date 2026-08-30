@@ -17,6 +17,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
@@ -156,16 +157,50 @@ func runSandboxAgentRun(cmd *cobra.Command, args []string) {
 	q.Set("agent_id", agentID)
 	q.Set("allowed_services", strings.Join(allowedServices, ","))
 	u.RawQuery = q.Encode()
+	connectURL := u.String()
 
-	ws, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	// Outer reconnect loop. This is a long-running background process
+	// (spawned detached by `sandbox up`'s startAgentProcess) that only stops
+	// via `sandbox down` killing its PID (sandboxState.PID in sandbox.go) —
+	// unlike a one-shot CLI command, a dial/session failure here must never
+	// end the process, only the current attempt. Dead-tunnel detection itself
+	// is free (yamux's own keepalive — see the comment in connectAndServe);
+	// this loop's only job is to reconnect after that, with the same
+	// long-lived INFRACANVAS_AGENT_TOKEN (safe to reuse — see
+	// obsidian_memory/08.4's Phase 2 heartbeat/reconnect entry: token lookup
+	// on the Gateway side isn't single-use).
+	backoff := newReconnectBackoff()
+	for {
+		connectedAt := time.Now()
+		err := connectAndServe(connectURL, agentID, gatewayURL, allowlist)
+		log.Printf("sandbox agent-run: connection to gateway ended: %v", err)
+		if time.Since(connectedAt) >= reconnectStableThreshold {
+			backoff.reset()
+		}
+		delay := backoff.next()
+		log.Printf("sandbox agent-run: reconnecting to %s in %s", gatewayURL, delay)
+		time.Sleep(delay)
+	}
+}
+
+// connectAndServe dials the Gateway once, serves accepted streams until the
+// session dies, and returns the reason it ended. Never calls log.Fatal — the
+// caller (the reconnect loop above) decides how to react, so this function
+// stays independently testable and safely re-callable across reconnects.
+func connectAndServe(connectURL, agentID, gatewayURL string, allowlist map[string]string) error {
+	ws, _, err := websocket.DefaultDialer.Dial(connectURL, nil)
 	if err != nil {
-		log.Fatalf("sandbox agent-run: dial gateway: %v", err)
+		return fmt.Errorf("dial gateway: %w", err)
 	}
 
+	// yamux.DefaultConfig() enables a 30s keepalive ping with a 10s pong
+	// timeout, so a dead tunnel (laptop sleep, WiFi drop) is detected and
+	// this session closed within roughly 30-40s with no extra code here —
+	// see obsidian_memory/08.4's Phase 2 heartbeat/reconnect entry.
 	session, err := yamux.Client(&wsAdapter{ws: ws}, yamux.DefaultConfig())
 	if err != nil {
 		ws.Close()
-		log.Fatalf("sandbox agent-run: yamux client setup: %v", err)
+		return fmt.Errorf("yamux client setup: %w", err)
 	}
 	defer session.Close()
 
@@ -174,11 +209,47 @@ func runSandboxAgentRun(cmd *cobra.Command, args []string) {
 	for {
 		stream, err := session.Accept()
 		if err != nil {
-			log.Printf("sandbox agent-run: tunnel closed: %v", err)
-			return
+			return fmt.Errorf("tunnel closed: %w", err)
 		}
 		go handleAgentStream(stream, allowlist)
 	}
+}
+
+// reconnectBackoff implements simple exponential backoff with a cap. A pure
+// struct with no I/O, so it's directly unit-testable (see sandboxagent_test.go).
+type reconnectBackoff struct {
+	delay time.Duration
+}
+
+const (
+	reconnectInitialDelay = 1 * time.Second
+	reconnectMaxDelay     = 30 * time.Second
+	reconnectGrowthFactor = 2
+	// reconnectStableThreshold: a session that stayed up at least this long
+	// counts as "was working," so backoff resets to reconnectInitialDelay
+	// rather than staying maxed out from an earlier flaky period. Set above
+	// yamux's ~30-40s dead-tunnel detection window so a connection that
+	// merely survived one keepalive cycle isn't mistaken for "stable."
+	reconnectStableThreshold = 60 * time.Second
+)
+
+func newReconnectBackoff() *reconnectBackoff { return &reconnectBackoff{} }
+
+func (b *reconnectBackoff) reset() { b.delay = 0 }
+
+// next returns the delay to sleep before the next attempt and advances
+// internal state: reconnectInitialDelay on first call, doubling thereafter
+// up to reconnectMaxDelay.
+func (b *reconnectBackoff) next() time.Duration {
+	if b.delay == 0 {
+		b.delay = reconnectInitialDelay
+	} else {
+		b.delay *= reconnectGrowthFactor
+		if b.delay > reconnectMaxDelay {
+			b.delay = reconnectMaxDelay
+		}
+	}
+	return b.delay
 }
 
 func handleAgentStream(stream net.Conn, allowlist map[string]string) {

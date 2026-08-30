@@ -72,6 +72,20 @@ func main() {
 	}
 	defer db.Close()
 
+	// SQLite only ever allows one writer at a time, but database/sql's
+	// connection pool opens multiple physical connections to this file by
+	// default — a second writer then gets an immediate "database is locked"
+	// error (SQLITE_BUSY) instead of waiting, since no busy_timeout is set.
+	// Forcing a single connection makes Go's pool respect SQLite's actual
+	// concurrency model instead of fighting it; busy_timeout is kept as a
+	// belt-and-suspenders guard against an external lock (e.g. a manual
+	// sqlite3 CLI session touching the same file). See
+	// obsidian_memory/07.2 for the incident this was found from.
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec("PRAGMA busy_timeout = 5000;"); err != nil {
+		log.Fatalf("[DB] Failed to set busy_timeout pragma: %v\n", err)
+	}
+
 	// Create table if not exists
 	schemaQuery := `
 	CREATE TABLE IF NOT EXISTS pipeline_runs (
@@ -234,7 +248,7 @@ func main() {
 		nonce BLOB NOT NULL,
 		auth_tag BLOB NOT NULL,
 		key_fingerprint TEXT NOT NULL,
-		status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'ACTIVE', 'REVOKED')),
+		status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'ACTIVE', 'REVOKED', 'DISCONNECTED')),
 		created_by TEXT NOT NULL,
 		registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		last_seen_at DATETIME,
@@ -250,6 +264,9 @@ func main() {
 	_, _ = db.Exec("ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT 'FREE' CHECK (plan IN ('FREE', 'PRO', 'ENTERPRISE'));")
 	if err := migrateUsersPasswordHashNullable(); err != nil {
 		log.Fatalf("[DB] Failed to migrate users.password_hash to nullable: %v\n", err)
+	}
+	if err := migratePairedAgentsStatusAllowsDisconnected(); err != nil {
+		log.Fatalf("[DB] Failed to migrate paired_agents.status CHECK constraint: %v\n", err)
 	}
 	log.Println("[DB] Database initialized successfully.")
 
@@ -530,6 +547,21 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "This live deploy has no SSH credential configured. Add one under Project Credentials before deploying to a real cloud target — the shared sandbox key cannot be used for real infrastructure.", http.StatusBadRequest)
 		return
 	}
+	// A project's most-recently-registered paired agent being PENDING (pairing
+	// never finished) or DISCONNECTED (was ACTIVE, its tunnel died — see
+	// obsidian_memory/08.4's Phase 2 heartbeat item) must not be allowed to
+	// silently fall through to the normal Docker-sandbox/live path:
+	// RunPipeline's local_agent branch is project-wide and automatic whenever
+	// resolvePairedAgent finds an ACTIVE row, so once status leaves ACTIVE, the
+	// very next deploy would otherwise route to Ansible targets the user never
+	// intended. A REVOKED latest agent is deliberately NOT blocked here — that
+	// status means the user intentionally turned off the local-agent
+	// integration for this project, so it correctly falls back to normal
+	// sandbox/live behavior exactly like "never paired."
+	if latestStatus, ok := latestPairedAgentStatus(projectID); ok && (latestStatus == "PENDING" || latestStatus == "DISCONNECTED") {
+		http.Error(w, "This project's local Sandbox Agent is not connected (status: "+latestStatus+"). Run `infracanvas sandbox up` (or check `infracanvas sandbox status`) before deploying, or revoke the paired agent under Project Credentials to deploy without it.", http.StatusBadRequest)
+		return
+	}
 	agentCtx := resolvePairedAgent(projectID)
 
 	runID := generateUUID()
@@ -796,6 +828,16 @@ func handleDestroy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		canvasStr = string(canvasBytes)
+	}
+
+	// Same pre-flight rejection as handleDeploy, and for the same reason:
+	// RunPipeline's local_agent branch is automatic whenever resolvePairedAgent
+	// finds an ACTIVE row, so a PENDING/DISCONNECTED latest paired agent must
+	// not be allowed to silently fall through to the Docker-sandbox/live path
+	// here either — see obsidian_memory/08.4's Phase 2 heartbeat item.
+	if latestStatus, ok := latestPairedAgentStatus(projectID); ok && (latestStatus == "PENDING" || latestStatus == "DISCONNECTED") {
+		http.Error(w, "This project's local Sandbox Agent is not connected (status: "+latestStatus+"). Run `infracanvas sandbox up` (or check `infracanvas sandbox status`) before destroying, or revoke the paired agent under Project Credentials to proceed without it.", http.StatusBadRequest)
+		return
 	}
 
 	runID := generateUUID()

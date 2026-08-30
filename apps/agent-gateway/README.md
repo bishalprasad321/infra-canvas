@@ -38,7 +38,9 @@ allowlist/rate-limiting entry for the reasoning behind the defaults.
 The Gateway never touches the database directly. `apps/api` is the single
 source of truth for `paired_agents.status`; the Gateway only calls back into
 it over HTTP (`POST /api/internal/agents/{agentId}/callback`) to report when
-an Agent's tunnel connects.
+an Agent's tunnel connects — and, as of `obsidian_memory/08.4`'s Phase 2
+heartbeat/reconnect item, when it disconnects too (`DISCONNECTED`), so
+`paired_agents.status` doesn't stay stuck at `ACTIVE` after a dead tunnel.
 
 ## Known Phase 1 limitations (not silent gaps — tracked for Phase 2)
 
@@ -50,6 +52,3 @@ an Agent's tunnel connects.
 - **In-memory pairing state.** A single Gateway process holds all pending and
   active pairings; horizontal scaling / a shared store is out of scope for the
   beta.
-- **No heartbeat/reconnect UX.** An Agent's tunnel dying (laptop sleep, WiFi
-  drop) is only visible as the yamux session closing — no "Sandbox
-  Disconnected" status is surfaced yet. Phase 2 scope.

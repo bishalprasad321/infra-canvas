@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -28,8 +29,9 @@ func New(apiBaseURL, secret string) *Client {
 }
 
 // NotifyStatus reports an agent's tunnel status (ACTIVE once its WebSocket
-// connects, REVOKED if the API should stop trusting it) so apps/api's
-// paired_agents.status stays in sync with what the Gateway actually sees.
+// connects, DISCONNECTED once that session closes, REVOKED if the API should
+// stop trusting it) so apps/api's paired_agents.status stays in sync with
+// what the Gateway actually sees.
 func (c *Client) NotifyStatus(agentID, status string) error {
 	body, err := json.Marshal(map[string]string{"status": status})
 	if err != nil {
@@ -51,7 +53,14 @@ func (c *Client) NotifyStatus(agentID, status string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("apiclient: notify status: unexpected response %d", resp.StatusCode)
+		// Read the body (apps/api's http.Error responses carry the actual
+		// failure reason, e.g. "Database error: ...") rather than discarding
+		// it — a bare status code alone sent debugging a real failure down a
+		// dead end once already (see obsidian_memory/07.2's SQLite-locking
+		// incident this was found from). Capped so a misbehaving endpoint
+		// can't make this balloon.
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("apiclient: notify status: unexpected response %d: %s", resp.StatusCode, respBody)
 	}
 	return nil
 }
