@@ -8,8 +8,10 @@ package main
 // left as manual-verification-only; see obsidian_memory/08.4 for why.
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -35,6 +37,48 @@ func TestReconnectBackoff(t *testing.T) {
 	b.reset()
 	if got := b.next(); got != reconnectInitialDelay {
 		t.Fatalf("reset() should restart at %v, got %v", reconnectInitialDelay, got)
+	}
+}
+
+// TestResolveAgentTokenPrefersEnvOverFile proves the two-source precedence
+// resolveAgentToken depends on: the env var (the plain background-process
+// path, kept so the secret never shows up in `ps`) wins when set, and the
+// token file (~/.infracanvas/sandbox/<agentID>_token — what the installed
+// service reads across reboots, since it has no parent process to hand it an
+// env var) is the fallback.
+func TestResolveAgentTokenPrefersEnvOverFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir) // os.UserHomeDir() checks USERPROFILE on Windows, HOME elsewhere
+
+	const agentID = "agent-token-test"
+	path, err := agentTokenFilePath(agentID)
+	if err != nil {
+		t.Fatalf("agentTokenFilePath: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("file-token"), 0600); err != nil {
+		t.Fatalf("write token file: %v", err)
+	}
+
+	t.Setenv("INFRACANVAS_AGENT_TOKEN", "env-token")
+	if got, err := resolveAgentToken(agentID); err != nil || got != "env-token" {
+		t.Fatalf("expected the env var to take precedence: got %q, err %v", got, err)
+	}
+
+	t.Setenv("INFRACANVAS_AGENT_TOKEN", "")
+	if got, err := resolveAgentToken(agentID); err != nil || got != "file-token" {
+		t.Fatalf("expected fallback to the token file: got %q, err %v", got, err)
+	}
+}
+
+func TestResolveAgentTokenErrorsWhenNeitherAvailable(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+	t.Setenv("INFRACANVAS_AGENT_TOKEN", "")
+
+	if _, err := resolveAgentToken("agent-does-not-exist"); err == nil {
+		t.Fatal("expected an error when neither the env var nor a token file is available")
 	}
 }
 
@@ -84,7 +128,7 @@ func TestConnectAndServeReconnectsAcrossCalls(t *testing.T) {
 	allowlist := map[string]string{}
 
 	for i := 0; i < 2; i++ {
-		err := connectAndServe(wsURL, "agent-test", wsURL, allowlist)
+		err := connectAndServe(context.Background(), wsURL, "agent-test", wsURL, allowlist)
 		if err == nil {
 			t.Fatalf("call %d: expected connectAndServe to return once the tunnel closed, got nil", i+1)
 		}
@@ -92,5 +136,60 @@ func TestConnectAndServeReconnectsAcrossCalls(t *testing.T) {
 
 	if got := connectionCount(); got != 2 {
 		t.Fatalf("expected the fake gateway to see 2 separate connections, got %d", got)
+	}
+}
+
+// startFakeGatewayHoldOpen is like startFakeGateway but never closes the
+// session itself — it blocks on session.CloseChan(), which only fires once
+// the *client* side disconnects. Used to prove connectAndServe's own
+// ctx-cancellation tears the connection down promptly, rather than relying
+// on the server to hang up first.
+func startFakeGatewayHoldOpen(t *testing.T) (wsURL string) {
+	t.Helper()
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/agent/connect", func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		session, err := yamux.Server(&wsAdapter{ws: ws}, yamux.DefaultConfig())
+		if err != nil {
+			ws.Close()
+			return
+		}
+		<-session.CloseChan()
+	})
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return "ws" + strings.TrimPrefix(srv.URL, "http") + "/agent/connect"
+}
+
+// TestConnectAndServeStopsPromptlyOnContextCancel proves the property an
+// installed OS service's Stop() callback depends on: cancelling ctx tears the
+// connection down immediately, rather than waiting for yamux's own ~30-40s
+// keepalive timeout to notice the tunnel is gone.
+func TestConnectAndServeStopsPromptlyOnContextCancel(t *testing.T) {
+	wsURL := startFakeGatewayHoldOpen(t)
+	allowlist := map[string]string{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- connectAndServe(ctx, wsURL, "agent-test", wsURL, allowlist)
+	}()
+
+	time.Sleep(50 * time.Millisecond) // let the connection establish before cancelling
+	cancel()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected connectAndServe to return an error once cancelled, got nil")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("connectAndServe did not return within 2s of context cancellation — an OS service's Stop() would not be prompt")
 	}
 }
