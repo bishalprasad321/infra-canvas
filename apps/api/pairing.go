@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -563,6 +564,126 @@ func latestPairedAgentStatus(projectID string) (status string, ok bool) {
 		return "", false
 	}
 	return status, true
+}
+
+// ---- Phase 3: default-flip gating (obsidian_memory/08.4) ----
+//
+// New free-tier signups default to local-sandbox-only; the hosted in-
+// container sandbox is repositioned as a paid convenience. Existing free
+// users already on the hosted sandbox get a migration notice and a grace
+// period rather than an unannounced cutoff — but per the product decision
+// recorded in 08.4, the cutoff at the end of that grace period is hard, not
+// an indefinite grandfather clause. Modeled with two dates instead of one:
+//   - SANDBOX_AGENT_DEFAULT_CUTOFF: a brand-new signup created on/after this
+//     date is gated immediately.
+//   - SANDBOX_AGENT_GRACE_PERIOD_DAYS after that cutoff: the date existing
+//     (pre-cutoff) signups also become gated. Until then they are exempt.
+// Both env vars are opt-in — with no cutoff configured, gating never applies
+// at all, the same safe-by-default posture as SANDBOX_AGENT_BETA itself.
+
+// sandboxAgentDefaultEnabled reports whether Phase 3's default-flip gating is
+// switched on at all. Deliberately requires SANDBOX_AGENT_BETA too: gating
+// without it would block every FREE sandbox deploy with no way to ever
+// satisfy it, since the pairing routes wouldn't even be registered — that's
+// a misconfiguration to guard against, not a valid "gate everyone" mode.
+func sandboxAgentDefaultEnabled() bool {
+	return os.Getenv("SANDBOX_AGENT_BETA") == "true" && os.Getenv("SANDBOX_AGENT_DEFAULT") == "true"
+}
+
+// sandboxAgentDefaultCutoff parses SANDBOX_AGENT_DEFAULT_CUTOFF (YYYY-MM-DD).
+// ok is false when unset or unparseable, in which case gating never applies
+// — an operator must deliberately set a real date to turn this on.
+func sandboxAgentDefaultCutoff() (cutoff time.Time, ok bool) {
+	raw := os.Getenv("SANDBOX_AGENT_DEFAULT_CUTOFF")
+	if raw == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		log.Printf("[SANDBOX AGENT] Invalid SANDBOX_AGENT_DEFAULT_CUTOFF %q (want YYYY-MM-DD), ignoring: %v\n", raw, err)
+		return time.Time{}, false
+	}
+	return t, true
+}
+
+// sandboxAgentGracePeriodEnd is when an existing (pre-cutoff) FREE user's
+// grace period on the hosted sandbox ends and they become gated too, same as
+// a new signup. Defaults to 30 days after cutoff.
+func sandboxAgentGracePeriodEnd(cutoff time.Time) time.Time {
+	days := 30
+	if raw := os.Getenv("SANDBOX_AGENT_GRACE_PERIOD_DAYS"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v >= 0 {
+			days = v
+		}
+	}
+	return cutoff.AddDate(0, 0, days)
+}
+
+// sandboxDeployGatedForFreeTier reports whether a sandbox deploy must be
+// rejected under the default flip: a FREE-plan user, gating actually active,
+// and — depending on whether they signed up before or after the cutoff —
+// either past the flip date outright or past their grace period. Fails open
+// (returns false) on any DB error, matching this file's existing style for
+// non-critical lookups (e.g. latestPairedAgentStatus) — a lookup hiccup here
+// should not block every free user's deploy.
+func sandboxDeployGatedForFreeTier(userID, plan string) bool {
+	if plan != "FREE" || !sandboxAgentDefaultEnabled() {
+		return false
+	}
+	cutoff, ok := sandboxAgentDefaultCutoff()
+	if !ok {
+		return false
+	}
+	now := time.Now()
+	if now.Before(cutoff) {
+		return false
+	}
+
+	var createdAtStr string
+	if err := db.QueryRow("SELECT created_at FROM users WHERE id = ?", userID).Scan(&createdAtStr); err != nil {
+		log.Printf("[SANDBOX AGENT] Failed to look up user %s created_at for default-flip gating: %v\n", userID, err)
+		return false
+	}
+	createdAt, err := time.Parse("2006-01-02 15:04:05", strings.Replace(createdAtStr, "T", " ", 1))
+	if err != nil {
+		log.Printf("[SANDBOX AGENT] Failed to parse created_at %q for user %s: %v\n", createdAtStr, userID, err)
+		return false
+	}
+
+	if !createdAt.Before(cutoff) {
+		return true // signed up on/after the flip date — gated immediately
+	}
+	return now.After(sandboxAgentGracePeriodEnd(cutoff)) // existing user — gated once their grace period ends
+}
+
+// GET /api/projects/{id}/sandbox-migration-status
+// Lets the workspace header show a migration-notice banner before a deploy
+// ever gets rejected by sandboxDeployGatedForFreeTier — the "migration
+// notice and a grace period, not an unannounced cutoff" half of Phase 3.
+// 404 when the default-flip isn't configured at all, or the caller isn't on
+// the FREE plan — both mean "nothing to show," matching the existing
+// agents/latest badge-hiding convention.
+func handleGetSandboxMigrationStatus(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+	user, ok := GetUserFromContext(r)
+	if !ok || user.Plan != "FREE" {
+		http.Error(w, "Not applicable", http.StatusNotFound)
+		return
+	}
+	cutoff, cutoffOK := sandboxAgentDefaultCutoff()
+	if !sandboxAgentDefaultEnabled() || !cutoffOK {
+		http.Error(w, "Sandbox Agent default-flip not configured", http.StatusNotFound)
+		return
+	}
+
+	resp := map[string]interface{}{
+		"gated":            sandboxDeployGatedForFreeTier(user.ID, user.Plan),
+		"has_active_agent": resolvePairedAgent(projectID) != nil,
+		"cutoff":           cutoff.Format("2006-01-02"),
+		"grace_period_end": sandboxAgentGracePeriodEnd(cutoff).Format("2006-01-02"),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // migratePairedAgentsStatusAllowsDisconnected rebuilds the paired_agents
