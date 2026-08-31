@@ -75,6 +75,14 @@ Use `-count=1` if repeating the command in a loop to check for flakiness —
   authentication to keep the Gateway from being an open relay for this beta;
   real Runner↔Gateway authentication hardening is Phase 2 scope per
   `obsidian_memory/08.4`.
-- **In-memory pairing state.** A single Gateway process holds all pending and
-  active pairings; horizontal scaling / a shared store is out of scope for the
-  beta.
+- **In-memory pairing state, partially.** A single Gateway process still holds
+  all pending device-code/user-code handshakes (`byDevice`/`byUser`) in
+  memory only — a ~10 minute window where a restart mid-pairing means
+  re-running `sandbox up`, an accepted edge case. Issued agent *tokens* no
+  longer share this limitation: `apps/api`'s `agent_pairing_tokens` table
+  (via the internal `/api/internal/agent-tokens` endpoints) is now the
+  durable source of truth `handleAgentConnect` falls back to on an in-memory
+  miss, so a Gateway restart no longer strands a previously-paired Agent (see
+  `obsidian_memory/08.4`'s Phase 3 prerequisite entry). Horizontal scaling
+  (multiple concurrent Gateway replicas sharing pairing state) is still out
+  of scope for the beta.

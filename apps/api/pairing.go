@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -29,6 +31,16 @@ import (
 // Runner spawns — both present it as X-Gateway-Runner-Secret.
 func gatewayRunnerSecret() string {
 	return os.Getenv("GATEWAY_RUNNER_SECRET")
+}
+
+// gatewayBaseURL resolves the Agent Gateway's base URL, shared by every
+// apps/api -> Gateway server-to-server call (pairing approval, agent
+// resolution, and the revoke-triggered disconnect below).
+func gatewayBaseURL() string {
+	if u := os.Getenv("GATEWAY_URL"); u != "" {
+		return u
+	}
+	return "http://localhost:9090"
 }
 
 // POST /api/projects/{id}/agents/register
@@ -106,6 +118,7 @@ func handlePairAgent(w http.ResponseWriter, r *http.Request) {
 
 	var payload struct {
 		UserCode string `json:"user_code"`
+		AgentID  string `json:"agent_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, "Invalid payload: "+err.Error(), http.StatusBadRequest)
@@ -116,7 +129,7 @@ func handlePairAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := approveAgentPairing(payload.UserCode, projectID); err != nil {
+	if err := approveAgentPairing(payload.UserCode, projectID, payload.AgentID); err != nil {
 		http.Error(w, "Failed to approve pairing: "+err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -127,15 +140,13 @@ func handlePairAgent(w http.ResponseWriter, r *http.Request) {
 // approveAgentPairing calls the Agent Gateway's internal-only /device/approve
 // endpoint (see apps/agent-gateway/internal/server), authenticated with the
 // same shared secret used for /runner/dial and the status callback.
-func approveAgentPairing(userCode, projectID string) error {
-	gatewayURL := os.Getenv("GATEWAY_URL")
-	if gatewayURL == "" {
-		gatewayURL = "http://localhost:9090"
-	}
+func approveAgentPairing(userCode, projectID, agentID string) error {
+	gatewayURL := gatewayBaseURL()
 
 	body, err := json.Marshal(map[string]string{
 		"user_code":  userCode,
 		"project_id": projectID,
+		"agent_id":   agentID,
 	})
 	if err != nil {
 		return err
@@ -234,6 +245,115 @@ func handleGetLatestAgentStatus(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// GET /api/projects/{id}/agents
+// Lists every agent ever paired to a project, newest first — the management
+// view 06.3 originally specced ("listing paired agents with the ability to
+// revoke any one of them") but that was never built in Phase 1/2. Returns an
+// empty array (not 404) when none have ever been paired, unlike
+// handleGetLatestAgentStatus — a settings page rendering a list wants "no
+// rows," not a 404 to special-case.
+func handleListAgents(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+
+	rows, err := db.Query(`SELECT agent_id, name, status, key_fingerprint, registered_at, last_seen_at
+		FROM paired_agents WHERE project_id = ? ORDER BY registered_at DESC`, projectID)
+	if err != nil {
+		log.Printf("[SANDBOX AGENT] Failed to list paired agents for project %s: %v\n", projectID, err)
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	agents := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var agentID, name, status, fingerprint, registeredAt string
+		var lastSeenAt sql.NullString
+		if err := rows.Scan(&agentID, &name, &status, &fingerprint, &registeredAt, &lastSeenAt); err != nil {
+			log.Printf("[SANDBOX AGENT] Failed to scan paired agent row for project %s: %v\n", projectID, err)
+			http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		entry := map[string]interface{}{
+			"agent_id":        agentID,
+			"name":            name,
+			"status":          status,
+			"key_fingerprint": fingerprint,
+			"registered_at":   registeredAt,
+		}
+		if lastSeenAt.Valid {
+			entry["last_seen_at"] = lastSeenAt.String
+		}
+		agents = append(agents, entry)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(agents)
+}
+
+// POST /api/projects/{id}/agents/{agentId}/revoke
+// Closes the other half of the management-view gap: marks the agent REVOKED,
+// invalidates any tokens issued for it (agent_pairing_tokens — see
+// handleRegisterAgentToken above), and best-effort asks the Gateway to drop
+// the tunnel immediately if it's currently connected, rather than leaving a
+// revoked-but-still-live session to be caught only by its own next
+// disconnect. A DB-side revoke is what actually matters (it blocks every
+// future reconnect and deploy pre-flight, per latestPairedAgentStatus/
+// resolvePairedAgent) — the Gateway disconnect is a responsiveness nicety on
+// top of that, so its failure is logged, not fatal to this request.
+func handleRevokeAgent(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+	agentID := r.PathValue("agentId")
+
+	res, err := db.Exec(`UPDATE paired_agents SET status = 'REVOKED' WHERE project_id = ? AND agent_id = ?`,
+		projectID, agentID)
+	if err != nil {
+		log.Printf("[SANDBOX AGENT] Failed to revoke agent %s for project %s: %v\n", agentID, projectID, err)
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		http.Error(w, "Agent not found", http.StatusNotFound)
+		return
+	}
+
+	if _, err := db.Exec(`UPDATE agent_pairing_tokens SET revoked_at = datetime('now')
+		WHERE agent_id = ? AND revoked_at IS NULL`, agentID); err != nil {
+		log.Printf("[SANDBOX AGENT] Failed to revoke pairing tokens for agent %s: %v\n", agentID, err)
+	}
+
+	if err := disconnectAgentOnGateway(agentID); err != nil {
+		log.Printf("[SANDBOX AGENT] Failed to disconnect agent %s from gateway after revoke: %v\n", agentID, err)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// disconnectAgentOnGateway asks the Gateway to close agentID's live tunnel
+// session right now, if it has one, via the same shared-secret server-to-
+// server auth used by approveAgentPairing. A 404 (agent not currently
+// connected) is expected and not an error — the DB-side revoke above is
+// what matters for an agent that isn't live at revoke time.
+func disconnectAgentOnGateway(agentID string) error {
+	req, err := http.NewRequest(http.MethodPost,
+		fmt.Sprintf("%s/internal/agents/disconnect?agent_id=%s", gatewayBaseURL(), agentID), nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Gateway-Runner-Secret", gatewayRunnerSecret())
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("gateway returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // POST /api/internal/agents/{agentId}/callback
 // Called by the Agent Gateway (not a browser/CLI client) once an Agent's
 // tunnel actually connects, authenticated via the shared X-Gateway-Runner-Secret
@@ -279,6 +399,110 @@ func handleAgentStatusCallback(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// hashAgentToken returns the hex SHA-256 digest of a Gateway-issued agent
+// token. apps/api never sees or stores the raw token — only the Gateway and
+// the CLI ever hold it in plaintext (the CLI's own on-disk copy is already
+// permission-restricted, see obsidian_memory/08.4's daemon-install entry) —
+// this store only needs to answer "does this token exist and is it live,"
+// which a one-way hash comparison does exactly as well as a stored plaintext
+// value would, with a smaller blast radius if this database were ever read.
+func hashAgentToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+// POST /api/internal/agent-tokens
+// Called by the Agent Gateway immediately after it issues a new agent token
+// (PollToken's first successful poll after approval — see
+// apps/agent-gateway/internal/server's handleToken). This is what lets a
+// token issued by one Gateway process still validate after that process
+// restarts: obsidian_memory/08.4 tracked the Gateway's previously in-memory-
+// only pairing.Server.byToken map as a real Phase 3 prerequisite ("every
+// Gateway restart silently strands every currently-connected user's agent"),
+// and this is the persistence half of the fix — apps/api stays the single
+// source of truth, the Gateway stays DB-agnostic per its own README, matching
+// the existing /api/internal/agents/{agentId}/callback pattern exactly.
+func handleRegisterAgentToken(w http.ResponseWriter, r *http.Request) {
+	secret := gatewayRunnerSecret()
+	if secret == "" || r.Header.Get("X-Gateway-Runner-Secret") != secret {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var payload struct {
+		Token     string `json:"token"`
+		ProjectID string `json:"project_id"`
+		AgentID   string `json:"agent_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if payload.Token == "" || payload.ProjectID == "" {
+		http.Error(w, "Missing token or project_id in payload", http.StatusBadRequest)
+		return
+	}
+
+	_, err := db.Exec(`INSERT OR REPLACE INTO agent_pairing_tokens (token_hash, project_id, agent_id, issued_at, revoked_at)
+		VALUES (?, ?, ?, datetime('now'), NULL)`,
+		hashAgentToken(payload.Token), payload.ProjectID, payload.AgentID)
+	if err != nil {
+		log.Printf("[SANDBOX AGENT] Failed to persist agent pairing token for project %s: %v\n", payload.ProjectID, err)
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /api/internal/agent-tokens/validate
+// Called by the Gateway's handleAgentConnect only as a fallback, after its own
+// in-memory pairing.Server.LookupToken misses — the common case (a token
+// looked up by the same process that issued it) never reaches this endpoint,
+// keeping the hot path free of a network round-trip. A miss here means either
+// the token never existed, or it was revoked (see the future agent-revoke
+// endpoint tracked alongside this in obsidian_memory/08.4).
+func handleValidateAgentToken(w http.ResponseWriter, r *http.Request) {
+	secret := gatewayRunnerSecret()
+	if secret == "" || r.Header.Get("X-Gateway-Runner-Secret") != secret {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var payload struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if payload.Token == "" {
+		http.Error(w, "Missing token in payload", http.StatusBadRequest)
+		return
+	}
+
+	var projectID string
+	var agentID sql.NullString
+	err := db.QueryRow(`SELECT project_id, agent_id FROM agent_pairing_tokens
+		WHERE token_hash = ? AND revoked_at IS NULL`, hashAgentToken(payload.Token)).
+		Scan(&projectID, &agentID)
+	if err == sql.ErrNoRows {
+		http.Error(w, "Token not found or revoked", http.StatusNotFound)
+		return
+	} else if err != nil {
+		log.Printf("[SANDBOX AGENT] Failed to validate agent pairing token: %v\n", err)
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := map[string]interface{}{"project_id": projectID}
+	if agentID.Valid {
+		resp["agent_id"] = agentID.String
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 // resolvePairedAgent looks up the active paired agent for a project (if any)
 // and decrypts its private key, returning an *runner.AgentContext for
 // RunPipeline. Returns nil whenever the beta flag is off, no agent is paired,
@@ -308,15 +532,10 @@ func resolvePairedAgent(projectID string) *runner.AgentContext {
 		return nil
 	}
 
-	gatewayURL := os.Getenv("GATEWAY_URL")
-	if gatewayURL == "" {
-		gatewayURL = "http://localhost:9090"
-	}
-
 	return &runner.AgentContext{
 		AgentID:       agentID,
 		ProjectID:     projectID,
-		GatewayURL:    gatewayURL,
+		GatewayURL:    gatewayBaseURL(),
 		PrivateKeyPEM: string(plainText),
 	}
 }

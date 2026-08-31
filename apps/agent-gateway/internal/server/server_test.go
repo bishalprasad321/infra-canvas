@@ -462,22 +462,56 @@ type recordedCallback struct {
 }
 
 // fakeAPIServer stands in for apps/api's POST /api/internal/agents/{agentId}/callback
-// endpoint, recording every call the Gateway makes so a test can assert on it.
+// and /api/internal/agent-tokens(/validate) endpoints, recording every status
+// callback the Gateway makes so a test can assert on it, and persisting
+// issued agent tokens in a plain in-memory map (a real apps/api hashes the
+// token before storing it — see pairing.go's hashAgentToken — but that's an
+// implementation detail of the real store, not part of the wire contract
+// these tests exercise).
 func fakeAPIServer(t *testing.T) (url string, callbacks func() []recordedCallback) {
 	t.Helper()
 	var mu sync.Mutex
 	var received []recordedCallback
+	tokens := make(map[string]struct{ projectID, agentID string })
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		agentID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/internal/agents/"), "/callback")
-		var body struct {
-			Status string `json:"status"`
+		switch {
+		case r.URL.Path == "/api/internal/agent-tokens":
+			var body struct {
+				Token     string `json:"token"`
+				ProjectID string `json:"project_id"`
+				AgentID   string `json:"agent_id"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			tokens[body.Token] = struct{ projectID, agentID string }{body.ProjectID, body.AgentID}
+			mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+		case r.URL.Path == "/api/internal/agent-tokens/validate":
+			var body struct {
+				Token string `json:"token"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			entry, ok := tokens[body.Token]
+			mu.Unlock()
+			if !ok {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"project_id": entry.projectID, "agent_id": entry.agentID})
+		default:
+			agentID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/internal/agents/"), "/callback")
+			var body struct {
+				Status string `json:"status"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			received = append(received, recordedCallback{agentID: agentID, status: body.Status})
+			mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
 		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		mu.Lock()
-		received = append(received, recordedCallback{agentID: agentID, status: body.Status})
-		mu.Unlock()
-		w.WriteHeader(http.StatusNoContent)
 	}))
 	t.Cleanup(srv.Close)
 
@@ -562,4 +596,99 @@ func TestServerShutdownNotifiesAllConnectedAgents(t *testing.T) {
 
 	waitForCallback(t, callbacks, "agent-shutdown-1", "DISCONNECTED", 2*time.Second)
 	waitForCallback(t, callbacks, "agent-shutdown-2", "DISCONNECTED", 2*time.Second)
+}
+
+// TestAgentConnectSurvivesGatewayRestartViaPersistedToken proves the fix for
+// the Phase 3 prerequisite recorded in obsidian_memory/08.4: pairing.Server's
+// byToken map used to be the Gateway's only record of an issued token, so a
+// Gateway restart made every previously-issued token permanently invalid,
+// stranding every connected Agent with no way to recover short of re-running
+// `sandbox up` for a fresh one.
+//
+// This test issues a token against one Gateway process (srv1), then connects
+// against a second, completely independent Gateway process (srv2) — same
+// stand-in for a Gateway restart as two independent `server.New` calls, since
+// each owns its own fresh, empty pairing.Server. Both share the same fake
+// apps/api backing, exactly as two real Gateway processes would share the
+// real apps/api. srv2's in-memory LookupToken must miss (it never saw this
+// token issued) and fall through to APIClient.ValidateToken, which succeeds
+// because srv1's handleToken already persisted it there.
+func TestAgentConnectSurvivesGatewayRestartViaPersistedToken(t *testing.T) {
+	apiURL, callbacks := fakeAPIServer(t)
+
+	apiClient1 := apiclient.New(apiURL, testRunnerSecret)
+	srv1 := server.New("https://www.infracanvas.dev/pair", apiClient1, testRunnerSecret, 10, 1<<20)
+	httpSrv1 := httptest.NewServer(srv1.Mux())
+	defer httpSrv1.Close()
+
+	token := pairAgent(t, httpSrv1.URL, testProjectID)
+	httpSrv1.Close() // srv1 is done being used as a live Gateway from here on
+
+	// A fresh Gateway instance/process: its pairing.Server has never heard of
+	// `token`, so this only works if handleAgentConnect's apps/api fallback
+	// (added alongside RegisterToken/ValidateToken) actually fires.
+	apiClient2 := apiclient.New(apiURL, testRunnerSecret)
+	srv2 := server.New("https://www.infracanvas.dev/pair", apiClient2, testRunnerSecret, 10, 1<<20)
+	httpSrv2 := httptest.NewServer(srv2.Mux())
+	t.Cleanup(httpSrv2.Close)
+
+	target := listenAndHold(t)
+	connectFakeAgent(t, httpSrv2.URL, token, "agent-restart-survivor", map[string]string{"ssh:2222": target})
+
+	waitForCallback(t, callbacks, "agent-restart-survivor", "ACTIVE", 2*time.Second)
+}
+
+// TestHandleDisconnectAgentClosesLiveSession proves the Gateway-side half of
+// apps/api's new agent-revoke feature (obsidian_memory/08.4's Phase 3
+// management-view gap): a revoke should drop an agent's tunnel immediately,
+// not wait for its next natural disconnect. Reuses the exact same
+// DISCONNECTED-notify path TestGatewayReportsDisconnectedOnSessionClose
+// exercises for an organic session death — this test just triggers it via
+// the new endpoint instead of closing the fake Agent's session directly.
+func TestHandleDisconnectAgentClosesLiveSession(t *testing.T) {
+	apiURL, callbacks := fakeAPIServer(t)
+	apiClient := apiclient.New(apiURL, testRunnerSecret)
+
+	srv := server.New("https://www.infracanvas.dev/pair", apiClient, testRunnerSecret, 10, 1<<20)
+	httpSrv := httptest.NewServer(srv.Mux())
+	t.Cleanup(httpSrv.Close)
+
+	token := pairAgent(t, httpSrv.URL, testProjectID)
+	target := listenAndHold(t)
+	connectFakeAgent(t, httpSrv.URL, token, "agent-revoke-target", map[string]string{"ssh:2222": target})
+	waitForCallback(t, callbacks, "agent-revoke-target", "ACTIVE", 2*time.Second)
+
+	req, err := http.NewRequest(http.MethodPost, httpSrv.URL+"/internal/agents/disconnect?agent_id=agent-revoke-target", nil)
+	if err != nil {
+		t.Fatalf("build disconnect request: %v", err)
+	}
+	req.Header.Set("X-Gateway-Runner-Secret", testRunnerSecret)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("disconnect request: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("disconnect: expected 204, got %d", resp.StatusCode)
+	}
+
+	waitForCallback(t, callbacks, "agent-revoke-target", "DISCONNECTED", 2*time.Second)
+}
+
+// TestHandleDisconnectAgentRequiresSecret proves the endpoint isn't an open
+// door: it's an internal, server-to-server call and must reject a missing or
+// wrong X-Gateway-Runner-Secret exactly like /runner/dial already does.
+func TestHandleDisconnectAgentRequiresSecret(t *testing.T) {
+	srv := server.New("https://www.infracanvas.dev/pair", nil, testRunnerSecret, 10, 1<<20)
+	httpSrv := httptest.NewServer(srv.Mux())
+	t.Cleanup(httpSrv.Close)
+
+	resp, err := http.Post(httpSrv.URL+"/internal/agents/disconnect?agent_id=whatever", "application/json", nil)
+	if err != nil {
+		t.Fatalf("disconnect request: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("disconnect with no secret: expected 401, got %d", resp.StatusCode)
+	}
 }

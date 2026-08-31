@@ -66,6 +66,7 @@ type DeviceAuth struct {
 // project's laptop.
 type AgentIdentity struct {
 	ProjectID string
+	AgentID   string
 	Token     string
 	IssuedAt  time.Time
 }
@@ -74,6 +75,7 @@ type entry struct {
 	userCode  string
 	status    status
 	projectID string
+	agentID   string
 	token     string // set once a token has been issued; codes are single-use.
 	consumed  bool
 	expiresAt time.Time
@@ -139,7 +141,7 @@ func (s *Server) RequestDeviceCode() (DeviceAuth, error) {
 
 // Approve is called from the browser-side handler once the already-authenticated
 // user confirms pairing and picks which project the Agent should be scoped to.
-func (s *Server) Approve(userCode, projectID string) error {
+func (s *Server) Approve(userCode, projectID, agentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -152,6 +154,7 @@ func (s *Server) Approve(userCode, projectID string) error {
 	}
 	e.status = statusApproved
 	e.projectID = projectID
+	e.agentID = agentID
 	return nil
 }
 
@@ -200,6 +203,7 @@ func (s *Server) PollToken(deviceCode string) (AgentIdentity, error) {
 		e.consumed = true
 		ident := AgentIdentity{
 			ProjectID: e.projectID,
+			AgentID:   e.agentID,
 			Token:     token,
 			IssuedAt:  time.Now(),
 		}
@@ -209,13 +213,19 @@ func (s *Server) PollToken(deviceCode string) (AgentIdentity, error) {
 
 	return AgentIdentity{
 		ProjectID: e.projectID,
+		AgentID:   e.agentID,
 		Token:     e.token,
 		IssuedAt:  time.Now(),
 	}, nil
 }
 
-// LookupToken validates a previously issued agent token, as the Gateway does on
-// every incoming agent connection.
+// LookupToken validates a previously issued agent token against this
+// process's own in-memory cache, as the Gateway does on every incoming agent
+// connection. This only ever has entries for tokens issued since this
+// process started — it deliberately does not reach out to apps/api itself
+// (see internal/server's handleAgentConnect, which does that as a fallback
+// on a miss here) so the common case — a token looked up by the same process
+// that issued it — never pays for a network round-trip.
 func (s *Server) LookupToken(token string) (AgentIdentity, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -226,6 +236,7 @@ func (s *Server) LookupToken(token string) (AgentIdentity, bool) {
 	}
 	return AgentIdentity{
 		ProjectID: e.projectID,
+		AgentID:   e.agentID,
 		Token:     e.token,
 	}, true
 }

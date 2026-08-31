@@ -180,6 +180,7 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("/device/token", s.handleToken)
 	mux.HandleFunc("/agent/connect", s.handleAgentConnect)
 	mux.HandleFunc("/runner/dial", s.handleRunnerDial)
+	mux.HandleFunc("/internal/agents/disconnect", s.handleDisconnectAgent)
 	return mux
 }
 
@@ -223,12 +224,13 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		UserCode  string `json:"user_code"`
 		ProjectID string `json:"project_id"`
+		AgentID   string `json:"agent_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
-	if err := s.Pairing.Approve(body.UserCode, body.ProjectID); err != nil {
+	if err := s.Pairing.Approve(body.UserCode, body.ProjectID, body.AgentID); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -261,6 +263,17 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// Persist the issued token in apps/api so it still validates after this
+	// Gateway process restarts (obsidian_memory/08.4's Phase 3 prerequisite).
+	// Best-effort: PollToken already cached it in s.Pairing for this process's
+	// lifetime, so a failure here degrades restart-survival, not this request.
+	if s.APIClient != nil {
+		if err := s.APIClient.RegisterToken(ident.Token, ident.ProjectID, ident.AgentID); err != nil {
+			log.Printf("gateway: failed to persist agent pairing token for project %s: %v", ident.ProjectID, err)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"agent_token": ident.Token,
 		"project_id":  ident.ProjectID,
@@ -302,8 +315,27 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 
 	ident, ok := s.Pairing.LookupToken(token)
 	if !ok {
-		http.Error(w, "invalid agent token", http.StatusUnauthorized)
-		return
+		// Miss on this process's in-memory cache — most commonly because the
+		// token was issued by an earlier Gateway process that has since
+		// restarted (obsidian_memory/08.4's Phase 3 prerequisite: pairing
+		// state used to be in-memory-only, so a restart permanently stranded
+		// every connected Agent). Fall back to apps/api's durable store
+		// before rejecting outright.
+		if s.APIClient == nil {
+			http.Error(w, "invalid agent token", http.StatusUnauthorized)
+			return
+		}
+		projectID, found, err := s.APIClient.ValidateToken(token)
+		if err != nil {
+			log.Printf("gateway: agent %s token validation against apps/api failed: %v", agentID, err)
+			http.Error(w, "invalid agent token", http.StatusUnauthorized)
+			return
+		}
+		if !found {
+			http.Error(w, "invalid agent token", http.StatusUnauthorized)
+			return
+		}
+		ident = pairing.AgentIdentity{ProjectID: projectID, Token: token}
 	}
 
 	ws, err := s.upgrader.Upgrade(w, r, nil)
@@ -359,6 +391,41 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 			log.Printf("gateway: failed to notify apps/api of agent %s DISCONNECTED status: %v", agentID, err)
 		}
 	}
+}
+
+// handleDisconnectAgent closes agentID's live tunnel session immediately, if
+// it has one. Called by apps/api's new agent-revoke endpoint so a revoked
+// agent's connection drops right away instead of waiting for its own next
+// natural disconnect (yamux's ~30-40s keepalive, or a real network drop).
+// Closing the session here reuses handleAgentConnect's existing cleanup path
+// unchanged: its blocked `<-session.CloseChan()` unblocks, it removes the
+// agent from s.agents, and it fires the normal DISCONNECTED notify — the
+// same as any other tunnel death, just triggered on demand rather than
+// discovered. A 404 (not currently connected) is an expected, non-error
+// outcome: apps/api's own DB-side revoke is what actually matters for an
+// agent that isn't live right now, this is a responsiveness nicety on top.
+func (s *Server) handleDisconnectAgent(w http.ResponseWriter, r *http.Request) {
+	if s.RunnerSecret == "" || r.Header.Get("X-Gateway-Runner-Secret") != s.RunnerSecret {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	agentID := r.URL.Query().Get("agent_id")
+	if agentID == "" {
+		http.Error(w, "missing agent_id", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.Lock()
+	as, ok := s.agents[agentID]
+	s.mu.Unlock()
+	if !ok {
+		http.Error(w, "agent not connected", http.StatusNotFound)
+		return
+	}
+
+	as.session.Close()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ---- Runner-side dial (WebSocket in, spliced to a new yamux stream) ----
