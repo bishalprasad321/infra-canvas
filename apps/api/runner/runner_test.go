@@ -141,23 +141,60 @@ func TestSandboxHostsIPReplacement(t *testing.T) {
 	}
 }
 
-func TestLocalAgentHostsINI(t *testing.T) {
-	got := localAgentHostsINI()
-	if !strings.Contains(got, "ansible_host=agent-tunnel ansible_port=2222") {
-		t.Errorf("localAgentHostsINI() = %q, want a placeholder agent-tunnel host entry", got)
+func TestLocalAgentHostsINISingleHostForTerraformCase(t *testing.T) {
+	agentCtx := &AgentContext{AgentID: "agent-abc123", ProjectID: "proj_xyz789", GatewayURL: "https://gateway.example.com"}
+	got := localAgentHostsINI(agentCtx, true)
+
+	if !strings.Contains(got, "agent-tunnel ansible_host=agent-tunnel ansible_port=2222") {
+		t.Errorf("localAgentHostsINI(hasTfNodes=true) = %q, want a single agent-tunnel host entry", got)
+	}
+	if strings.Contains(got, "agent-tunnel-1") || strings.Contains(got, "agent-tunnel-2") {
+		t.Errorf("localAgentHostsINI(hasTfNodes=true) = %q, want no second host for the single-instance Terraform case", got)
+	}
+	if !strings.Contains(got, "--service=ssh:2222") {
+		t.Errorf("localAgentHostsINI(hasTfNodes=true) = %q, want its ProxyCommand to target ssh:2222", got)
 	}
 	if strings.Contains(got, "__COLON__") {
-		t.Errorf("localAgentHostsINI() = %q, want __COLON__ placeholder fully substituted", got)
+		t.Errorf("localAgentHostsINI(hasTfNodes=true) = %q, want __COLON__ placeholder fully substituted", got)
 	}
 }
 
-func TestLocalAgentSSHCommonArgs(t *testing.T) {
+// TestLocalAgentHostsINITwoHostsReachBothSandboxContainers is a regression
+// test for the gap recorded in obsidian_memory/08.4 (found alongside the
+// zero-clone sandbox up item): a pure-Ansible local_agent run previously
+// hardcoded a single host wired to --service=ssh:2222, so a node needing the
+// sandbox's second SSH container (ubuntu_ssh_2, ssh:2223) could never be
+// reached, even though the Agent's own allowlist (Phase 2) already permits
+// it. Mirrors the docker-sandbox path's own !hasTfNodes shape, which already
+// exposes both ubuntu_ssh_1 and ubuntu_ssh_2.
+func TestLocalAgentHostsINITwoHostsReachBothSandboxContainers(t *testing.T) {
 	agentCtx := &AgentContext{AgentID: "agent-abc123", ProjectID: "proj_xyz789", GatewayURL: "https://gateway.example.com"}
-	got := localAgentSSHCommonArgs(agentCtx)
+	got := localAgentHostsINI(agentCtx, false)
 
-	want := `-o StrictHostKeyChecking=no -o ProxyCommand="infracanvas sandbox proxy --agent-id=agent-abc123 --service=ssh:2222 --gateway=https://gateway.example.com --project=proj_xyz789"`
+	if !strings.Contains(got, "agent-tunnel-1 ansible_host=agent-tunnel-1 ansible_port=2222") {
+		t.Errorf("localAgentHostsINI(hasTfNodes=false) = %q, want an agent-tunnel-1 host entry", got)
+	}
+	if !strings.Contains(got, "agent-tunnel-2 ansible_host=agent-tunnel-2 ansible_port=2222") {
+		t.Errorf("localAgentHostsINI(hasTfNodes=false) = %q, want an agent-tunnel-2 host entry", got)
+	}
+	if !strings.Contains(got, "--service=ssh:2222") {
+		t.Errorf("localAgentHostsINI(hasTfNodes=false) = %q, want agent-tunnel-1's ProxyCommand to target ssh:2222", got)
+	}
+	if !strings.Contains(got, "--service=ssh:2223") {
+		t.Errorf("localAgentHostsINI(hasTfNodes=false) = %q, want agent-tunnel-2's ProxyCommand to target ssh:2223 (the previously unreachable container)", got)
+	}
+	if strings.Contains(got, "__COLON__") {
+		t.Errorf("localAgentHostsINI(hasTfNodes=false) = %q, want __COLON__ placeholder fully substituted", got)
+	}
+}
+
+func TestLocalAgentHostSSHCommonArgs(t *testing.T) {
+	agentCtx := &AgentContext{AgentID: "agent-abc123", ProjectID: "proj_xyz789", GatewayURL: "https://gateway.example.com"}
+	got := localAgentHostSSHCommonArgs(agentCtx, "ssh:2223")
+
+	want := `'-o StrictHostKeyChecking=no -o ProxyCommand="infracanvas sandbox proxy --agent-id=agent-abc123 --service=ssh:2223 --gateway=https://gateway.example.com --project=proj_xyz789"'`
 	if got != want {
-		t.Errorf("localAgentSSHCommonArgs() = %q, want %q", got, want)
+		t.Errorf("localAgentHostSSHCommonArgs() = %q, want %q", got, want)
 	}
 }
 

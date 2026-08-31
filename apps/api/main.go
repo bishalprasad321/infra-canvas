@@ -254,6 +254,14 @@ func main() {
 		last_seen_at DATETIME,
 		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
 		FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+	);
+	CREATE TABLE IF NOT EXISTS agent_pairing_tokens (
+		token_hash TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		agent_id TEXT,
+		issued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		revoked_at DATETIME,
+		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 	);`
 	if _, err := db.Exec(schemaQuery); err != nil {
 		log.Fatalf("[DB] Failed to initialize schema: %v\n", err)
@@ -327,8 +335,12 @@ func main() {
 		mux.Handle("POST /api/projects/{id}/agents/register", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleRegisterAgent))))
 		mux.Handle("POST /api/projects/{id}/agents/pair", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handlePairAgent))))
 		mux.Handle("GET /api/projects/{id}/agents/latest", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetLatestAgentStatus))))
+		mux.Handle("GET /api/projects/{id}/agents", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleListAgents))))
+		mux.Handle("POST /api/projects/{id}/agents/{agentId}/revoke", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleRevokeAgent))))
 		mux.Handle("GET /api/projects/{id}/agents/{agentId}", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetAgentStatus))))
 		mux.HandleFunc("POST /api/internal/agents/{agentId}/callback", handleAgentStatusCallback)
+		mux.HandleFunc("POST /api/internal/agent-tokens", handleRegisterAgentToken)
+		mux.HandleFunc("POST /api/internal/agent-tokens/validate", handleValidateAgentToken)
 		log.Println("[SANDBOX AGENT] Beta routes registered (SANDBOX_AGENT_BETA=true)")
 	}
 

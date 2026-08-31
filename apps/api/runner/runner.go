@@ -162,28 +162,62 @@ type AgentContext struct {
 	PrivateKeyPEM string
 }
 
-// localAgentHostsINI is the placeholder Ansible inventory for a local_agent
-// run: the host/port here are never dialed directly over TCP/IP — the
-// ProxyCommand built by localAgentSSHCommonArgs carries the actual connection
-// through the Gateway tunnel.
-func localAgentHostsINI() string {
-	return strings.ReplaceAll(`[webservers]
-agent-tunnel ansible_host=agent-tunnel ansible_port=2222 ansible_user=ubuntu
+// localAgentHostsINI is the Ansible inventory for a local_agent run. The
+// host/port values here are never dialed directly over TCP/IP — each host's
+// own ansible_ssh_common_args carries a ProxyCommand naming that host's
+// --service, which is what actually routes the connection through the
+// Gateway tunnel to a specific local SSH container.
+//
+// Per-host (not global) common-args is required, not a style choice: a
+// single global --ssh-common-args CLI flag can't express two different
+// ProxyCommands for two different hosts, and Ansible's inventory-level vars
+// take precedence over that CLI flag anyway (obsidian_memory/08.4's Phase 1
+// hardening item #4 hit exactly this — a global override for one thing
+// silently discarding another). This previously hardcoded a single
+// "agent-tunnel" host wired to --service=ssh:2222 unconditionally, so a node
+// needing the sandbox's second SSH container (ubuntu_ssh_2, ssh:2223) could
+// never be reached via local_agent even though the Agent's own allowlist
+// (Phase 2) already permits it.
+//
+// Mirrors the docker-sandbox path's own !hasTfNodes shape immediately below
+// this function (both ubuntu_ssh_1 and ubuntu_ssh_2 exposed under one
+// [webservers] group) so a pure-Ansible local_agent run reaches both sandbox
+// SSH containers, not just the first. The hasTfNodes case still targets a
+// single host, matching a real Terraform-provisioned instance's single
+// public IP — there is only ever one such instance today.
+func localAgentHostsINI(agentCtx *AgentContext, hasTfNodes bool) string {
+	hostLine := func(name, service string) string {
+		return fmt.Sprintf("%s ansible_host=%s ansible_port=2222 ansible_user=ubuntu ansible_ssh_common_args=%s\n",
+			name, name, localAgentHostSSHCommonArgs(agentCtx, service))
+	}
 
+	var hosts string
+	if hasTfNodes {
+		hosts = hostLine("agent-tunnel", "ssh:2222")
+	} else {
+		hosts = hostLine("agent-tunnel-1", "ssh:2222") + hostLine("agent-tunnel-2", "ssh:2223")
+	}
+
+	return strings.ReplaceAll(fmt.Sprintf(`[webservers]
+%s
 [all__COLON__vars]
-ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
+ansible_python_interpreter=/usr/bin/python3`, hosts), "__COLON__", ":")
 }
 
-// localAgentSSHCommonArgs builds the --ssh-common-args value that bridges
-// Ansible's SSH connection through the Gateway tunnel via a ProxyCommand,
+// localAgentHostSSHCommonArgs builds one host's ansible_ssh_common_args
+// inventory value: a ProxyCommand that bridges Ansible's SSH connection for
+// that specific host through the Gateway tunnel to the named service,
 // instead of a direct dial (see obsidian_memory/08.4's Phase 1 design).
 // OpenSSH itself spawns this as a subprocess, feeding it stdin/stdout as the
 // transport; the ansible-playbook subprocess model otherwise stays exactly as
-// it is for the live/docker targets.
-func localAgentSSHCommonArgs(agentCtx *AgentContext) string {
-	proxyCommand := fmt.Sprintf("%s sandbox proxy --agent-id=%s --service=ssh:2222 --gateway=%s --project=%s",
-		cliHelperPath(), agentCtx.AgentID, agentCtx.GatewayURL, agentCtx.ProjectID)
-	return fmt.Sprintf("-o StrictHostKeyChecking=no -o ProxyCommand=%q", proxyCommand)
+// it is for the live/docker targets. Single-quote-wrapped to match this
+// file's existing ansible_ssh_common_args='...' convention (see the
+// [all:vars] block below) — required here since the value contains spaces
+// and, via %q, embedded double quotes around the ProxyCommand itself.
+func localAgentHostSSHCommonArgs(agentCtx *AgentContext, service string) string {
+	proxyCommand := fmt.Sprintf("%s sandbox proxy --agent-id=%s --service=%s --gateway=%s --project=%s",
+		cliHelperPath(), agentCtx.AgentID, service, agentCtx.GatewayURL, agentCtx.ProjectID)
+	return fmt.Sprintf("'-o StrictHostKeyChecking=no -o ProxyCommand=%q'", proxyCommand)
 }
 
 // cliHelperPath resolves the `infracanvas` CLI binary used as the SSH
@@ -519,7 +553,7 @@ func RunPipeline(
 		}
 
 		if file.Path == "ansible/hosts.ini" && isLocalAgentRun {
-			content = localAgentHostsINI()
+			content = localAgentHostsINI(agentCtx, hasTfNodes)
 		} else if file.Path == "ansible/hosts.ini" && isSandboxRun && isDocker {
 			if !hasTfNodes {
 				content = strings.ReplaceAll(`[webservers]
@@ -804,10 +838,14 @@ ansible_python_interpreter=/usr/bin/python3`, "__COLON__", ":")
 			return
 		}
 
+		// For a local_agent run, this global default is deliberately left
+		// without a ProxyCommand: every host in a local_agent hosts.ini is
+		// generated by localAgentHostsINI above with its own per-host
+		// ansible_ssh_common_args (a distinct ProxyCommand per host, needed
+		// once a run can address more than one sandbox SSH container), and
+		// Ansible's inventory-level vars take precedence over this CLI flag
+		// regardless.
 		sshCommonArgs := "-o StrictHostKeyChecking=no"
-		if isLocalAgentRun {
-			sshCommonArgs = localAgentSSHCommonArgs(agentCtx)
-		}
 		ansibleArgs := []string{
 			"-i", "hosts.ini",
 			"playbook.yml",

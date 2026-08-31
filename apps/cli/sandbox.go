@@ -179,7 +179,7 @@ func runSandboxUp(cmd *cobra.Command, args []string) {
 	fmt.Printf("Registered agent %s (key fingerprint: %s)\n", agentID, fingerprint)
 
 	fmt.Println("Pairing with the Agent Gateway...")
-	agentToken, err := pairAndFetchToken(cfg, projectID)
+	agentToken, err := pairAndFetchToken(cfg, projectID, agentID)
 	if err != nil {
 		fmt.Printf("Pairing failed: %v\n", err)
 		return
@@ -381,7 +381,7 @@ func pollAgentStatus(cfg *Config, projectID, agentID string, timeout time.Durati
 // project EDITOR access — see handlePairAgent in apps/api/pairing.go, a Phase 1
 // simplification of the browser-approval flow described in
 // obsidian_memory/06.3), then poll the Gateway for the issued agent token.
-func pairAndFetchToken(cfg *Config, projectID string) (string, error) {
+func pairAndFetchToken(cfg *Config, projectID, agentID string) (string, error) {
 	var deviceResp struct {
 		DeviceCode      string `json:"device_code"`
 		UserCode        string `json:"user_code"`
@@ -393,7 +393,7 @@ func pairAndFetchToken(cfg *Config, projectID string) (string, error) {
 	}
 
 	if err := makeRequest("POST", fmt.Sprintf("/api/projects/%s/agents/pair", projectID),
-		map[string]string{"user_code": deviceResp.UserCode}, nil); err != nil {
+		map[string]string{"user_code": deviceResp.UserCode, "agent_id": agentID}, nil); err != nil {
 		return "", fmt.Errorf("approve pairing: %w", err)
 	}
 
