@@ -337,6 +337,7 @@ func main() {
 		mux.Handle("GET /api/projects/{id}/agents/latest", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetLatestAgentStatus))))
 		mux.Handle("GET /api/projects/{id}/agents", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleListAgents))))
 		mux.Handle("POST /api/projects/{id}/agents/{agentId}/revoke", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleRevokeAgent))))
+		mux.Handle("GET /api/projects/{id}/sandbox-migration-status", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetSandboxMigrationStatus))))
 		mux.Handle("GET /api/projects/{id}/agents/{agentId}", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetAgentStatus))))
 		mux.HandleFunc("POST /api/internal/agents/{agentId}/callback", handleAgentStatusCallback)
 		mux.HandleFunc("POST /api/internal/agent-tokens", handleRegisterAgentToken)
@@ -576,6 +577,18 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	agentCtx := resolvePairedAgent(projectID)
+
+	// Phase 3's default flip (obsidian_memory/08.4): a FREE-plan project with
+	// no ACTIVE paired agent would otherwise silently fall through to the
+	// cost-bearing hosted sandbox exactly like it always has — gate that
+	// specific case once SANDBOX_AGENT_DEFAULT_CUTOFF makes it apply to this
+	// user. Deliberately scoped to deploy only, not destroy: a user who
+	// already has hosted-sandbox resources up must always be able to tear
+	// them down, cutoff or not.
+	if runner.IsSandbox(canvasStr) && agentCtx == nil && sandboxDeployGatedForFreeTier(user.ID, user.Plan) {
+		http.Error(w, "Free-tier sandbox deploys now run through your own machine via the local Sandbox Agent. Run `infracanvas sandbox up` to pair one for this project, or upgrade to Pro for a hosted sandbox. See /docs for setup.", http.StatusBadRequest)
+		return
+	}
 
 	runID := generateUUID()
 
