@@ -6,9 +6,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"apps/agent-gateway/internal/apiclient"
 	"apps/agent-gateway/internal/server"
@@ -31,9 +36,31 @@ func main() {
 
 	apiClient := apiclient.New(*apiURL, *runnerSecret)
 	srv := server.New(*verificationURI, apiClient, *runnerSecret, *maxStreamsPerProject, *bytesPerSecPerProject)
+	httpServer := &http.Server{Addr: *listen, Handler: srv.Mux()}
+
+	// Graceful-stop handling: `docker stop`, systemd stop, and a k8s pod
+	// eviction all send SIGTERM (with a grace period) before force-killing —
+	// use that window to tell apps/api every currently-connected Agent just
+	// went DISCONNECTED, closing the gap where stopping the Gateway itself
+	// (as opposed to an Agent's tunnel dying under a still-running Gateway)
+	// left paired_agents.status stuck at ACTIVE forever. A hard crash/SIGKILL
+	// still isn't covered — see Server.Shutdown's doc comment.
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+		<-sigCh
+		log.Println("agent-gateway: shutting down, notifying apps/api of all connected agents...")
+		srv.Shutdown()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(ctx); err != nil {
+			log.Printf("agent-gateway: http shutdown: %v", err)
+		}
+	}()
 
 	log.Printf("agent-gateway: listening on %s (api-url=%s)", *listen, *apiURL)
-	if err := http.ListenAndServe(*listen, srv.Mux()); err != nil {
+	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("agent-gateway: ListenAndServe failed: %v", err)
 	}
 }

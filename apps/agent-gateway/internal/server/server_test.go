@@ -531,3 +531,35 @@ func TestGatewayReportsDisconnectedOnSessionClose(t *testing.T) {
 
 	waitForCallback(t, callbacks, "agent-disconnect", "DISCONNECTED", 2*time.Second)
 }
+
+// TestServerShutdownNotifiesAllConnectedAgents proves the fix for a real gap
+// found via manual testing: stopping the Gateway process itself (not just an
+// Agent's tunnel dying under a still-running Gateway) previously left every
+// connected agent's paired_agents.status stuck at ACTIVE forever, since
+// nothing was left alive to detect or report anything. Server.Shutdown is
+// called from main.go's SIGTERM handler on a graceful stop; this test calls
+// it directly to verify it notifies every currently-connected agent.
+func TestServerShutdownNotifiesAllConnectedAgents(t *testing.T) {
+	apiURL, callbacks := fakeAPIServer(t)
+	apiClient := apiclient.New(apiURL, testRunnerSecret)
+
+	srv := server.New("https://www.infracanvas.dev/pair", apiClient, testRunnerSecret, 10, 1<<20)
+	httpSrv := httptest.NewServer(srv.Mux())
+	t.Cleanup(httpSrv.Close)
+
+	token1 := pairAgent(t, httpSrv.URL, testProjectID)
+	target1 := listenAndHold(t)
+	connectFakeAgent(t, httpSrv.URL, token1, "agent-shutdown-1", map[string]string{"ssh:2222": target1})
+	waitForCallback(t, callbacks, "agent-shutdown-1", "ACTIVE", 2*time.Second)
+
+	const otherProjectID = "proj_test_2"
+	token2 := pairAgent(t, httpSrv.URL, otherProjectID)
+	target2 := listenAndHold(t)
+	connectFakeAgent(t, httpSrv.URL, token2, "agent-shutdown-2", map[string]string{"ssh:2222": target2})
+	waitForCallback(t, callbacks, "agent-shutdown-2", "ACTIVE", 2*time.Second)
+
+	srv.Shutdown()
+
+	waitForCallback(t, callbacks, "agent-shutdown-1", "DISCONNECTED", 2*time.Second)
+	waitForCallback(t, callbacks, "agent-shutdown-2", "DISCONNECTED", 2*time.Second)
+}

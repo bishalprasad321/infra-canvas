@@ -107,6 +107,34 @@ func New(verificationBaseURI string, apiClient *apiclient.Client, runnerSecret s
 	}
 }
 
+// Shutdown notifies apps/api that every currently-connected Agent is
+// DISCONNECTED, best-effort. Call this on a graceful stop (SIGTERM — `docker
+// stop`, systemd stop, a k8s pod eviction, all send this before force-killing)
+// so paired_agents.status doesn't stay stuck at ACTIVE forever the way it
+// otherwise would: the normal disconnect path (handleAgentConnect noticing
+// its own session died) only fires when THIS process stays alive long enough
+// to notice — if the Gateway process itself goes away, there's nothing left
+// to detect or report anything. This closes the common case; a hard crash or
+// SIGKILL still leaves status stale, since nothing runs on that path at all —
+// see obsidian_memory/07.2 for that residual gap, not solved here.
+func (s *Server) Shutdown() {
+	s.mu.Lock()
+	agentIDs := make([]string, 0, len(s.agents))
+	for id := range s.agents {
+		agentIDs = append(agentIDs, id)
+	}
+	s.mu.Unlock()
+
+	if s.APIClient == nil {
+		return
+	}
+	for _, id := range agentIDs {
+		if err := s.APIClient.NotifyStatus(id, "DISCONNECTED"); err != nil {
+			log.Printf("gateway: shutdown: failed to notify apps/api of agent %s DISCONNECTED status: %v", id, err)
+		}
+	}
+}
+
 // acquireStreamSlot reports whether projectID is under MaxStreamsPerProject
 // concurrent /runner/dial streams and, if so, reserves one. Callers that get
 // true back must call releaseStreamSlot exactly once, via a defer placed

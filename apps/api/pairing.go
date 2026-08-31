@@ -197,6 +197,43 @@ func handleGetAgentStatus(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// GET /api/projects/{id}/agents/latest
+// Lets the frontend show a live "Sandbox Agent" status badge (see
+// obsidian_memory/08.4's Phase 2 daemon-install/heartbeat entries) without
+// needing to already know a specific agent_id — the only other status route
+// requires one. Returns 404 when no agent has ever been paired for this
+// project; the frontend treats that as "hide the badge," not an error, the
+// same way it treats a REVOKED status. Deliberately omits key_fingerprint —
+// not needed for a badge, keep this response minimal.
+func handleGetLatestAgentStatus(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+
+	var agentID, status string
+	var lastSeenAt sql.NullString
+	err := db.QueryRow(`SELECT agent_id, status, last_seen_at
+		FROM paired_agents WHERE project_id = ?
+		ORDER BY registered_at DESC LIMIT 1`, projectID).
+		Scan(&agentID, &status, &lastSeenAt)
+	if err == sql.ErrNoRows {
+		http.Error(w, "No paired agent for this project", http.StatusNotFound)
+		return
+	} else if err != nil {
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := map[string]interface{}{
+		"agent_id": agentID,
+		"status":   status,
+	}
+	if lastSeenAt.Valid {
+		resp["last_seen_at"] = lastSeenAt.String
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 // POST /api/internal/agents/{agentId}/callback
 // Called by the Agent Gateway (not a browser/CLI client) once an Agent's
 // tunnel actually connects, authenticated via the shared X-Gateway-Runner-Secret
