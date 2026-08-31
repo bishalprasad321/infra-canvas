@@ -326,6 +326,7 @@ func main() {
 	if os.Getenv("SANDBOX_AGENT_BETA") == "true" {
 		mux.Handle("POST /api/projects/{id}/agents/register", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handleRegisterAgent))))
 		mux.Handle("POST /api/projects/{id}/agents/pair", AuthMiddleware(RequireProjectRole("EDITOR")(http.HandlerFunc(handlePairAgent))))
+		mux.Handle("GET /api/projects/{id}/agents/latest", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetLatestAgentStatus))))
 		mux.Handle("GET /api/projects/{id}/agents/{agentId}", AuthMiddleware(RequireProjectRole("VIEWER")(http.HandlerFunc(handleGetAgentStatus))))
 		mux.HandleFunc("POST /api/internal/agents/{agentId}/callback", handleAgentStatusCallback)
 		log.Println("[SANDBOX AGENT] Beta routes registered (SANDBOX_AGENT_BETA=true)")
