@@ -55,6 +55,7 @@ func sandboxCmd() *cobra.Command {
 		Short: "Stop the local sandbox containers and the Agent process",
 		Run:   runSandboxDown,
 	}
+	downCmd.Flags().Bool("revoke", false, "Also revoke the paired Agent server-side and clear local pairing state, instead of just pausing it for a later `sandbox up`")
 
 	cmd.AddCommand(upCmd, statusCmd, downCmd, sandboxAgentCmd(), sandboxAgentRunCmd(), sandboxAgentServiceRunCmd(), sandboxProxyCmd())
 	return cmd
@@ -133,32 +134,49 @@ func runSandboxUp(cmd *cobra.Command, args []string) {
 	}
 	composeFile := filepath.Join(composeDir, "docker-compose.sandbox.yml")
 
-	agentID := "agent-" + randomHex(8)
-	fmt.Printf("Generating per-installation SSH keypair for %s...\n", agentID)
-	privatePEM, publicKeyLine, err := generateAgentKeyPair()
-	if err != nil {
-		fmt.Printf("Failed to generate keypair: %v\n", err)
-		return
-	}
-
 	stateDir, err := sandboxStateDir()
 	if err != nil {
 		fmt.Printf("Failed to prepare state directory: %v\n", err)
 		return
 	}
-	if err := os.WriteFile(filepath.Join(stateDir, agentID+"_key"), []byte(privatePEM), 0600); err != nil {
-		fmt.Printf("Failed to save private key: %v\n", err)
-		return
-	}
-	if err := os.WriteFile(filepath.Join(stateDir, agentID+"_key.pub"), []byte(publicKeyLine), 0644); err != nil {
-		fmt.Printf("Failed to save public key: %v\n", err)
-		return
+
+	// Reuse a previously paired, not-yet-revoked agent for this exact project
+	// if one is locally tracked, instead of unconditionally minting a new
+	// identity every time — this is what makes `sandbox down` + `sandbox up`
+	// a true pause/resume cycle. Found via real end-user testing that this
+	// was missing entirely: every up/down cycle previously left the old
+	// agent dangling (eventually DISCONNECTED, never cleaned up) and
+	// registered a brand new one, with no way for the developer themselves
+	// to revoke the old ones from the CLI (see the `down --revoke` flag
+	// below) — see obsidian_memory/08.4's Phase 3 section for the full
+	// writeup.
+	var agentID, publicKeyLine, agentToken, privatePEM string
+	if reuseID, reusePub, reuseTok, ok := tryReuseExistingAgent(cfg, projectID); ok {
+		agentID, publicKeyLine, agentToken = reuseID, reusePub, reuseTok
+		fmt.Printf("Reusing previously paired agent %s for this project...\n", agentID)
+	} else {
+		agentID = "agent-" + randomHex(8)
+		fmt.Printf("Generating per-installation SSH keypair for %s...\n", agentID)
+		privatePEM, publicKeyLine, err = generateAgentKeyPair()
+		if err != nil {
+			fmt.Printf("Failed to generate keypair: %v\n", err)
+			return
+		}
+		if err := os.WriteFile(filepath.Join(stateDir, agentID+"_key"), []byte(privatePEM), 0600); err != nil {
+			fmt.Printf("Failed to save private key: %v\n", err)
+			return
+		}
+		if err := os.WriteFile(filepath.Join(stateDir, agentID+"_key.pub"), []byte(publicKeyLine), 0644); err != nil {
+			fmt.Printf("Failed to save public key: %v\n", err)
+			return
+		}
 	}
 
 	// Bake the public half into the local SSH target container(s) — written
 	// fresh into this run's extracted compose directory so the containers only
 	// trust this installation's key, per obsidian_memory/03.6's per-machine key
-	// requirement.
+	// requirement. Identical for a reused agent: the same public key that was
+	// baked in last time.
 	if err := os.WriteFile(filepath.Join(composeDir, "id_rsa.pub"), []byte(publicKeyLine), 0644); err != nil {
 		fmt.Printf("Failed to write id_rsa.pub: %v\n", err)
 		return
@@ -170,33 +188,39 @@ func runSandboxUp(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	fmt.Println("Registering agent key with InfraCanvas...")
-	fingerprint, err := registerAgentKey(cfg, projectID, agentID, publicKeyLine, privatePEM)
-	if err != nil {
-		fmt.Printf("Failed to register agent: %v\n", err)
-		return
-	}
-	fmt.Printf("Registered agent %s (key fingerprint: %s)\n", agentID, fingerprint)
+	// A reused agent is already registered and holds a still-live token —
+	// re-registering would hit a 409 (agent_id is UNIQUE), and re-pairing
+	// would be redundant work against a Gateway that already recognizes it.
+	if agentToken == "" {
+		fmt.Println("Registering agent key with InfraCanvas...")
+		fingerprint, err := registerAgentKey(cfg, projectID, agentID, publicKeyLine, privatePEM)
+		if err != nil {
+			fmt.Printf("Failed to register agent: %v\n", err)
+			return
+		}
+		fmt.Printf("Registered agent %s (key fingerprint: %s)\n", agentID, fingerprint)
 
-	fmt.Println("Pairing with the Agent Gateway...")
-	agentToken, err := pairAndFetchToken(cfg, projectID, agentID)
-	if err != nil {
-		fmt.Printf("Pairing failed: %v\n", err)
-		return
-	}
+		fmt.Println("Pairing with the Agent Gateway...")
+		agentToken, err = pairAndFetchToken(cfg, projectID, agentID)
+		if err != nil {
+			fmt.Printf("Pairing failed: %v\n", err)
+			return
+		}
 
-	// Persisted (mode 0600, same permission pattern as the private key above)
-	// so an installed OS service (`sandbox agent install`) can read it on
-	// every start, including after a reboot long after this process has
-	// exited — see obsidian_memory/08.4's Phase 2 daemon-install entry.
-	tokenPath, err := agentTokenFilePath(agentID)
-	if err != nil {
-		fmt.Printf("Failed to resolve token file path: %v\n", err)
-		return
-	}
-	if err := os.WriteFile(tokenPath, []byte(agentToken), 0600); err != nil {
-		fmt.Printf("Failed to save agent token: %v\n", err)
-		return
+		// Persisted (mode 0600, same permission pattern as the private key
+		// above) so an installed OS service (`sandbox agent install`) can
+		// read it on every start, including after a reboot long after this
+		// process has exited — see obsidian_memory/08.4's Phase 2
+		// daemon-install entry, and so a future `sandbox up` can reuse it too.
+		tokenPath, err := agentTokenFilePath(agentID)
+		if err != nil {
+			fmt.Printf("Failed to resolve token file path: %v\n", err)
+			return
+		}
+		if err := os.WriteFile(tokenPath, []byte(agentToken), 0600); err != nil {
+			fmt.Printf("Failed to save agent token: %v\n", err)
+			return
+		}
 	}
 
 	var pid int
@@ -223,6 +247,57 @@ func runSandboxUp(cmd *cobra.Command, args []string) {
 		return
 	}
 	fmt.Printf("Agent %s is now %s. Sandbox is ready.\n", agentID, status)
+}
+
+// tryReuseExistingAgent looks for a locally-tracked agent from a previous
+// `sandbox up` scoped to this same project and, if it's still usable (not
+// revoked server-side, its cached public key and a live token are both still
+// on disk), returns everything needed to reconnect it instead of minting a
+// brand-new identity. ok is false whenever reuse isn't possible for any
+// reason — every path below falls back to the caller minting a fresh agent,
+// so a failure here is never fatal, only less efficient.
+func tryReuseExistingAgent(cfg *Config, projectID string) (agentID, publicKeyLine, token string, ok bool) {
+	st, err := loadSandboxState()
+	if err != nil || st.ProjectID != projectID {
+		return "", "", "", false
+	}
+
+	status, err := getAgentStatus(cfg, projectID, st.AgentID)
+	if err != nil {
+		fmt.Printf("Could not check status of previously paired agent %s (%v) — pairing a new one.\n", st.AgentID, err)
+		return "", "", "", false
+	}
+	if s, _ := status["status"].(string); s == "REVOKED" {
+		fmt.Printf("Previously paired agent %s was revoked — pairing a new one.\n", st.AgentID)
+		return "", "", "", false
+	}
+
+	stateDir, err := sandboxStateDir()
+	if err != nil {
+		return "", "", "", false
+	}
+	pubKeyBytes, err := os.ReadFile(filepath.Join(stateDir, st.AgentID+"_key.pub"))
+	if err != nil {
+		fmt.Printf("Could not read cached key for agent %s (%v) — pairing a new one.\n", st.AgentID, err)
+		return "", "", "", false
+	}
+
+	tok, err := resolveAgentToken(st.AgentID)
+	if err != nil {
+		// The agent's still registered and not revoked, so re-pairing (not
+		// re-registering — that would 409 on the already-UNIQUE agent_id)
+		// gets a fresh token for the same identity, covering the case where
+		// the cached token file was lost without discarding the whole agent.
+		fmt.Printf("No cached token for agent %s — re-pairing...\n", st.AgentID)
+		newTok, pairErr := pairAndFetchToken(cfg, projectID, st.AgentID)
+		if pairErr != nil {
+			fmt.Printf("Re-pairing failed (%v) — pairing a new agent instead.\n", pairErr)
+			return "", "", "", false
+		}
+		tok = newTok
+	}
+
+	return st.AgentID, string(pubKeyBytes), tok, true
 }
 
 // ---- status ----
@@ -295,6 +370,57 @@ func runSandboxDown(cmd *cobra.Command, args []string) {
 			fmt.Printf("Stopped Agent process (pid %d).\n", st.PID)
 		}
 	}
+
+	revoke, _ := cmd.Flags().GetBool("revoke")
+	if !revoke {
+		fmt.Println("Sandbox paused. Run `infracanvas sandbox up` again to resume with the same paired agent.")
+		return
+	}
+
+	// A developer-initiated way to retire their own agent, mirroring the
+	// project owner's "Revoke" button in Project Settings -> Sandbox Agents
+	// (apps/web/app/components/ProjectSettingsModal.tsx) — found missing
+	// during real end-user testing of that feature (see
+	// obsidian_memory/08.4's Phase 3 section). Without --revoke, `down` only
+	// pauses: the agent stays registered so a later `up` can reconnect it
+	// (see tryReuseExistingAgent above).
+	fmt.Printf("Revoking agent %s...\n", st.AgentID)
+	if err := revokeAgent(cfg, st.ProjectID, st.AgentID); err != nil {
+		fmt.Printf("Failed to revoke agent: %v\n", err)
+		fmt.Println("Local pairing state was left in place — retry `infracanvas sandbox down --revoke`, or revoke it from the project's Settings > Sandbox Agents page instead.")
+		return
+	}
+	fmt.Printf("Agent %s revoked.\n", st.AgentID)
+	clearSandboxState(st.AgentID)
+}
+
+// revokeAgent calls the same server-side revoke endpoint a project Editor or
+// Admin's web UI already exposes (Project Settings -> Sandbox Agents),
+// giving the paired machine itself a way to retire its own agent rather than
+// requiring someone else to do it. Immediately disconnects any live tunnel
+// and invalidates the agent's pairing tokens server-side (see
+// apps/api/pairing.go's handleRevokeAgent) — this call alone is what makes
+// the agent stop being reconnectable, independent of the local cleanup
+// clearSandboxState does afterward.
+func revokeAgent(cfg *Config, projectID, agentID string) error {
+	return makeRequest("POST", fmt.Sprintf("/api/projects/%s/agents/%s/revoke", projectID, agentID), nil, nil)
+}
+
+// clearSandboxState removes every local file tied to a just-revoked agent —
+// its cached keys, its cached token, and the tracked state.json — so a later
+// `sandbox up` can't attempt to reuse a now-revoked identity.
+// tryReuseExistingAgent would also catch this server-side via getAgentStatus
+// even without this cleanup, but doing it here avoids a wasted round-trip
+// and stale per-agent files accumulating in ~/.infracanvas/sandbox/.
+func clearSandboxState(agentID string) {
+	dir, err := sandboxStateDir()
+	if err != nil {
+		return
+	}
+	for _, suffix := range []string{"_key", "_key.pub", "_token"} {
+		_ = os.Remove(filepath.Join(dir, agentID+suffix))
+	}
+	_ = os.Remove(filepath.Join(dir, "state.json"))
 }
 
 // ---- shared helpers ----
