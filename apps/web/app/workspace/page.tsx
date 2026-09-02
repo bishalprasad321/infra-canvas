@@ -87,6 +87,8 @@ interface HeaderProps {
   saveStatus?: 'saved' | 'saving' | 'error' | 'readonly';
   onOpenSettings?: () => void;
   projectDetails?: any;
+  agentStatus?: string | null;
+  migrationStatus?: { gated: boolean; has_active_agent: boolean; grace_period_end: string } | null;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -109,6 +111,8 @@ const Header: React.FC<HeaderProps> = ({
   saveStatus = 'saved',
   onOpenSettings,
   projectDetails,
+  agentStatus = null,
+  migrationStatus = null,
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -164,6 +168,31 @@ const Header: React.FC<HeaderProps> = ({
           {saveStatus === 'readonly' && (
             <span className="ml-2 px-2 py-0.5 bg-amber-500/10 text-amber-400 text-[10px] uppercase tracking-wider font-semibold rounded border border-amber-500/20 flex items-center gap-1" title="Read-Only Mode. Node movements and parameters cannot be saved.">
               <Icon icon="lucide:eye" className="text-[10px]" /> Read-Only
+            </span>
+          )}
+          {agentStatus === 'ACTIVE' && (
+            <span className="ml-2 px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-[10px] uppercase tracking-wider font-semibold rounded border border-emerald-500/20 flex items-center gap-1" title="Local Sandbox Agent is connected — deploys will route through it.">
+              <Icon icon="lucide:server" className="text-[10px]" /> Agent Connected
+            </span>
+          )}
+          {agentStatus === 'PENDING' && (
+            <span className="ml-2 px-2 py-0.5 bg-amber-500/10 text-amber-400 text-[10px] uppercase tracking-wider font-semibold rounded border border-amber-500/20 flex items-center gap-1" title="Local Sandbox Agent pairing has not been approved yet.">
+              <Icon icon="lucide:loader-2" className="animate-spin text-[10px]" /> Agent Pairing…
+            </span>
+          )}
+          {agentStatus === 'DISCONNECTED' && (
+            <span className="ml-2 px-2 py-0.5 bg-rose-500/10 text-rose-400 text-[10px] uppercase tracking-wider font-semibold rounded border border-rose-500/20 flex items-center gap-1" title="Local Sandbox Agent is disconnected. Deploys targeting it will be rejected until it reconnects — run `infracanvas sandbox status` to check, or `infracanvas sandbox up` to re-pair.">
+              <Icon icon="lucide:server-off" className="text-[10px]" /> Agent Disconnected
+            </span>
+          )}
+          {migrationStatus && !migrationStatus.has_active_agent && migrationStatus.gated && (
+            <span className="ml-2 px-2 py-0.5 bg-rose-500/10 text-rose-400 text-[10px] uppercase tracking-wider font-semibold rounded border border-rose-500/20 flex items-center gap-1" title="Free-tier sandbox deploys now require a local Sandbox Agent. Run `infracanvas sandbox up` to pair one, or upgrade to Pro for a hosted sandbox.">
+              <Icon icon="lucide:server-off" className="text-[10px]" /> Sandbox Requires Agent
+            </span>
+          )}
+          {migrationStatus && !migrationStatus.has_active_agent && !migrationStatus.gated && (
+            <span className="ml-2 px-2 py-0.5 bg-amber-500/10 text-amber-400 text-[10px] uppercase tracking-wider font-semibold rounded border border-amber-500/20 flex items-center gap-1" title={`Free-tier sandbox deploys will require a local Sandbox Agent starting ${migrationStatus.grace_period_end}. Run \`infracanvas sandbox up\` to pair one now, or upgrade to Pro for a hosted sandbox.`}>
+              <Icon icon="lucide:clock" className="text-[10px]" /> Sandbox Migration: Pair by {migrationStatus.grace_period_end}
             </span>
           )}
         </div>
@@ -3753,6 +3782,8 @@ function WorkspaceContent() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isCustomNodeOpen, setIsCustomNodeOpen] = useState(false);
   const [availableCredentials, setAvailableCredentials] = useState<any[]>([]);
+  const [agentStatus, setAgentStatus] = useState<string | null>(null);
+  const [migrationStatus, setMigrationStatus] = useState<{ gated: boolean; has_active_agent: boolean; grace_period_end: string } | null>(null);
 
   const [selectedOS, setSelectedOS] = useState("Linux");
   const [zoomLevel, setZoomLevel] = useState(100);
@@ -3942,6 +3973,86 @@ function WorkspaceContent() {
 
     loadProjectAndCanvas();
   }, [projectId, user, setViewport, setNodes, setEdges, setVersion, setSaveStatus, setCustomLibraryNodes, setProjectId]);
+
+  // Poll the paired Sandbox Agent's connection status (see
+  // obsidian_memory/08.4's Phase 2 heartbeat/daemon-install entries) so a
+  // disconnected agent is visible in the header instead of only discovered
+  // via a failed deploy. Polling, not a WebSocket push: the underlying
+  // disconnect detection itself already has a ~30-40s natural delay (yamux's
+  // keepalive), so a live push wouldn't buy more responsiveness than an
+  // interval this size. 404 (route not registered when the beta flag is off,
+  // or no agent ever paired for this project) means "hide the badge," not an
+  // error; any other failure leaves the previous value alone rather than
+  // flickering the badge away on a transient network blip.
+  useEffect(() => {
+    const activeToken = token;
+    if (!activeToken || !projectId || !user) return;
+
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    let cancelled = false;
+
+    const pollAgentStatus = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/projects/${projectId}/agents/latest`, {
+          headers: { 'Authorization': `Bearer ${activeToken}` }
+        });
+        if (cancelled) return;
+        if (res.status === 404) {
+          setAgentStatus(null);
+          return;
+        }
+        if (!res.ok) return;
+        const data = await res.json();
+        setAgentStatus(data.status ?? null);
+      } catch (err) {
+        // Transient network error — leave the previous badge state as-is.
+      }
+    };
+
+    pollAgentStatus();
+    const intervalId = setInterval(pollAgentStatus, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [projectId, user, token]);
+
+  // Polls Phase 3's default-flip migration status (obsidian_memory/08.4) so a
+  // FREE-plan user sees the "pair an agent or upgrade" notice before a deploy
+  // ever gets rejected for it. 404 means "nothing to show" — not on the FREE
+  // plan, or the default-flip isn't configured on this deployment at all —
+  // same badge-hiding convention as the agent-status poll above.
+  useEffect(() => {
+    const activeToken = token;
+    if (!activeToken || !projectId || !user) return;
+
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    let cancelled = false;
+
+    const pollMigrationStatus = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/projects/${projectId}/sandbox-migration-status`, {
+          headers: { 'Authorization': `Bearer ${activeToken}` }
+        });
+        if (cancelled) return;
+        if (res.status === 404) {
+          setMigrationStatus(null);
+          return;
+        }
+        if (!res.ok) return;
+        setMigrationStatus(await res.json());
+      } catch (err) {
+        // Transient network error — leave the previous badge state as-is.
+      }
+    };
+
+    pollMigrationStatus();
+    const intervalId = setInterval(pollMigrationStatus, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [projectId, user, token]);
 
   // Broadcast local canvas state changes to room peers AND auto-save debouncely to REST API
   useEffect(() => {
@@ -4439,6 +4550,8 @@ function WorkspaceContent() {
         saveStatus={saveStatus}
         onOpenSettings={() => setIsSettingsOpen(true)}
         projectDetails={projectDetails}
+        agentStatus={agentStatus}
+        migrationStatus={migrationStatus}
       />
 
       <div className="flex-1 flex overflow-hidden relative">
