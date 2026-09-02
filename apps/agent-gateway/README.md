@@ -1,0 +1,88 @@
+# Agent Gateway
+
+The hosted relay described in [`obsidian_memory/03.6 - Remote Sandbox Agent &
+Bridging Connection
+Protocol`](<../../obsidian_memory/03%20-%20Execution%20Runner%20&%20DevOps%20Sandbox/03.6%20-%20Remote%20Sandbox%20Agent%20&%20Bridging%20Connection%20Protocol.md>),
+built for [`obsidian_memory/08.4`'s Phase
+1](<../../obsidian_memory/08%20-%20Roadmap%20&%20Future%20Development/08.4%20-%20Local%20Sandbox%20Agent%20Rollout%20&%20Migration%20Plan.md>)
+opt-in beta.
+
+It authenticates a local Sandbox Agent's outbound WebSocket connection (see
+`infracanvas sandbox up` / `agent-run` in `apps/cli`), keeps one
+`yamux.Session` per `agent_id`, and — on request from `infracanvas sandbox
+proxy` (the ProxyCommand helper the hosted Runner's `ansible-playbook`
+subprocess spawns) — opens a new logical stream to that Agent and splices it
+through. It never parses SSH, Terraform, or Ansible bytes.
+
+This is an independent, standalone Go module (`go.mod` at this directory),
+following the same pattern already used by `apps/api`, `apps/cli`, and
+`spikes/sandbox-agent-protocol` — no `go.work` ties them together.
+
+## Running it
+
+```bash
+cd apps/agent-gateway
+go run ./cmd/agent-gateway --runner-secret=<shared-secret> --api-url=http://localhost:8080
+```
+
+`apps/api` must be started with the matching `GATEWAY_RUNNER_SECRET` env var
+and `SANDBOX_AGENT_BETA=true` for pairing/status callbacks to work.
+
+`--max-streams-per-project` (default 10) and `--bytes-per-sec-per-project`
+(default 2 MiB/s, i.e. `2097152`) cap concurrent `/runner/dial` streams and
+throughput per `project_id` — see `obsidian_memory/08.4`'s Phase 2
+allowlist/rate-limiting entry for the reasoning behind the defaults.
+
+## Relationship to `apps/api`
+
+The Gateway never touches the database directly. `apps/api` is the single
+source of truth for `paired_agents.status`; the Gateway only calls back into
+it over HTTP (`POST /api/internal/agents/{agentId}/callback`) to report when
+an Agent's tunnel connects — and, as of `obsidian_memory/08.4`'s Phase 2
+heartbeat/reconnect item, when it disconnects too (`DISCONNECTED`), so
+`paired_agents.status` doesn't stay stuck at `ACTIVE` after a dead tunnel.
+
+## Load testing
+
+`internal/server/loadtest_test.go` hammers the Gateway with many concurrent
+agents and, per agent, more concurrent `/runner/dial` attempts than
+`MaxStreamsPerProject` allows — proving the allowlist/rate-limit enforcement
+holds under real concurrent goroutines, not just the sequential calls the
+other tests in that package make. Gated behind an env var so routine
+`go test ./...` stays fast:
+
+```bash
+RUN_GATEWAY_LOAD_TEST=1 go test ./internal/server/... -race -v -run TestGatewayLoad
+```
+
+**Run this with `-race`.** On a Windows host whose gcc can't build the race
+detector's cgo runtime ("sorry, unimplemented: 64-bit mode not compiled in"),
+run it inside a Linux Go container instead, which sidesteps the host
+toolchain entirely:
+
+```bash
+docker run --rm -v "$(pwd):/src" -w /src -e GOTOOLCHAIN=auto -e RUN_GATEWAY_LOAD_TEST=1 \
+  golang:1.25 sh -c "go test ./... -race -v -run TestGatewayLoad"
+```
+
+Use `-count=1` if repeating the command in a loop to check for flakiness —
+`go test` otherwise reports a cached prior result instead of re-running.
+
+## Known Phase 1 limitations (not silent gaps — tracked for Phase 2)
+
+- **`/runner/dial` auth is a single shared secret** (`X-Gateway-Runner-Secret`),
+  not per-Runner-instance credentials. This is the minimum viable
+  authentication to keep the Gateway from being an open relay for this beta;
+  real Runner↔Gateway authentication hardening is Phase 2 scope per
+  `obsidian_memory/08.4`.
+- **In-memory pairing state, partially.** A single Gateway process still holds
+  all pending device-code/user-code handshakes (`byDevice`/`byUser`) in
+  memory only — a ~10 minute window where a restart mid-pairing means
+  re-running `sandbox up`, an accepted edge case. Issued agent *tokens* no
+  longer share this limitation: `apps/api`'s `agent_pairing_tokens` table
+  (via the internal `/api/internal/agent-tokens` endpoints) is now the
+  durable source of truth `handleAgentConnect` falls back to on an in-memory
+  miss, so a Gateway restart no longer strands a previously-paired Agent (see
+  `obsidian_memory/08.4`'s Phase 3 prerequisite entry). Horizontal scaling
+  (multiple concurrent Gateway replicas sharing pairing state) is still out
+  of scope for the beta.

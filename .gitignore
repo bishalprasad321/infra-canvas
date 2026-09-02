@@ -47,3 +47,8 @@ next-env.d.ts
 
 # build
 .turbo
+
+# local dev builds
+/apps/api/data
+/apps/api/dev.db
+

@@ -1,8 +1,11 @@
 services:
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      # Repo root (not ./apps/api) so the build can also reach apps/cli — the
+      # image needs the infracanvas CLI binary on PATH for the local_agent
+      # SSH ProxyCommand bridge (see obsidian_memory/08.4's Phase 1).
+      context: .
+      dockerfile: apps/api/Dockerfile
     container_name: infracanvas-api
     ports:
       - "8080:8080"
