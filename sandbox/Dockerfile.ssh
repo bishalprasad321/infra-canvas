@@ -1,4 +1,4 @@
-FROM ghcr.io/bishalprasad321/infra-canvas-sandbox-base:latest
+FROM ghcr.io/whiparc/whiparc-sandbox-base:latest
 
 # Copy the public key for passwordless authentication
 COPY id_rsa.pub /home/ubuntu/.ssh/authorized_keys
