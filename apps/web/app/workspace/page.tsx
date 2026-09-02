@@ -87,6 +87,8 @@ interface HeaderProps {
   saveStatus?: 'saved' | 'saving' | 'error' | 'readonly';
   onOpenSettings?: () => void;
   projectDetails?: any;
+  agentStatus?: string | null;
+  migrationStatus?: { gated: boolean; has_active_agent: boolean; grace_period_end: string } | null;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -109,6 +111,8 @@ const Header: React.FC<HeaderProps> = ({
   saveStatus = 'saved',
   onOpenSettings,
   projectDetails,
+  agentStatus = null,
+  migrationStatus = null,
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -164,6 +168,31 @@ const Header: React.FC<HeaderProps> = ({
           {saveStatus === 'readonly' && (
             <span className="ml-2 px-2 py-0.5 bg-amber-500/10 text-amber-400 text-[10px] uppercase tracking-wider font-semibold rounded border border-amber-500/20 flex items-center gap-1" title="Read-Only Mode. Node movements and parameters cannot be saved.">
               <Icon icon="lucide:eye" className="text-[10px]" /> Read-Only
+            </span>
+          )}
+          {agentStatus === 'ACTIVE' && (
+            <span className="ml-2 px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-[10px] uppercase tracking-wider font-semibold rounded border border-emerald-500/20 flex items-center gap-1" title="Local Sandbox Agent is connected — deploys will route through it.">
+              <Icon icon="lucide:server" className="text-[10px]" /> Agent Connected
+            </span>
+          )}
+          {agentStatus === 'PENDING' && (
+            <span className="ml-2 px-2 py-0.5 bg-amber-500/10 text-amber-400 text-[10px] uppercase tracking-wider font-semibold rounded border border-amber-500/20 flex items-center gap-1" title="Local Sandbox Agent pairing has not been approved yet.">
+              <Icon icon="lucide:loader-2" className="animate-spin text-[10px]" /> Agent Pairing…
+            </span>
+          )}
+          {agentStatus === 'DISCONNECTED' && (
+            <span className="ml-2 px-2 py-0.5 bg-rose-500/10 text-rose-400 text-[10px] uppercase tracking-wider font-semibold rounded border border-rose-500/20 flex items-center gap-1" title="Local Sandbox Agent is disconnected. Deploys targeting it will be rejected until it reconnects — run `infracanvas sandbox status` to check, or `infracanvas sandbox up` to re-pair.">
+              <Icon icon="lucide:server-off" className="text-[10px]" /> Agent Disconnected
+            </span>
+          )}
+          {migrationStatus && !migrationStatus.has_active_agent && migrationStatus.gated && (
+            <span className="ml-2 px-2 py-0.5 bg-rose-500/10 text-rose-400 text-[10px] uppercase tracking-wider font-semibold rounded border border-rose-500/20 flex items-center gap-1" title="Free-tier sandbox deploys now require a local Sandbox Agent. Run `infracanvas sandbox up` to pair one, or upgrade to Pro for a hosted sandbox.">
+              <Icon icon="lucide:server-off" className="text-[10px]" /> Sandbox Requires Agent
+            </span>
+          )}
+          {migrationStatus && !migrationStatus.has_active_agent && !migrationStatus.gated && (
+            <span className="ml-2 px-2 py-0.5 bg-amber-500/10 text-amber-400 text-[10px] uppercase tracking-wider font-semibold rounded border border-amber-500/20 flex items-center gap-1" title={`Free-tier sandbox deploys will require a local Sandbox Agent starting ${migrationStatus.grace_period_end}. Run \`infracanvas sandbox up\` to pair one now, or upgrade to Pro for a hosted sandbox.`}>
+              <Icon icon="lucide:clock" className="text-[10px]" /> Sandbox Migration: Pair by {migrationStatus.grace_period_end}
             </span>
           )}
         </div>
@@ -1206,9 +1235,12 @@ interface InspectorPanelProps {
   collapsed: boolean;
   onToggle: () => void;
   selectedNode: Node | null;
+  selectedEdge: Edge | null;
   activeTab: string;
   onTabChange: (tab: string) => void;
   updateNodeData: (nodeId: string, newData: any) => void;
+  updateEdgeData: (edgeId: string, label: string, animated: boolean, stroke: string, strokeWidth: number) => void;
+  deleteEdge: (edgeId: string) => void;
   ansiblePlaybook: string;
   nodes: Node[];
   edges: Edge[];
@@ -1223,9 +1255,12 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   collapsed,
   onToggle,
   selectedNode,
+  selectedEdge,
   activeTab,
   onTabChange,
   updateNodeData,
+  updateEdgeData,
+  deleteEdge,
   ansiblePlaybook,
   nodes,
   edges,
@@ -1338,15 +1373,17 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
             >
               Parameters
             </button>
-            <button
-              onClick={() => onTabChange('Live Code Preview')}
-              className={clsx(
-                "flex-1 py-2.5 text-xs font-semibold text-center border-b-2 transition-all cursor-pointer",
-                activeTab === 'Live Code Preview' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Live Code Preview
-            </button>
+            {!selectedEdge && (
+              <button
+                onClick={() => onTabChange('Live Code Preview')}
+                className={clsx(
+                  "flex-1 py-2.5 text-xs font-semibold text-center border-b-2 transition-all cursor-pointer",
+                  activeTab === 'Live Code Preview' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Live Code Preview
+              </button>
+            )}
           </div>
 
           {/* Tab Content */}
@@ -1356,7 +1393,153 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
             onBlurCapture={() => selectedNode && onEndEditing?.(selectedNode.id)}
           >
             {activeTab === 'Parameters' ? (
-              !selectedNode ? (
+              selectedEdge ? (() => {
+                const currentLabel = typeof selectedEdge.label === 'string' ? selectedEdge.label : '';
+                const currentStroke = selectedEdge.style?.stroke || '#8B5CF6';
+                const currentStrokeWidth = typeof selectedEdge.style?.strokeWidth === 'number' ? selectedEdge.style.strokeWidth : 2.5;
+                return (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <div className="flex items-start gap-2.5 p-3 bg-primary/10 border border-primary/20 rounded-xl select-none">
+                      <Icon icon="lucide:link-2" className="text-primary text-base shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-bold text-white">Connection Link Settings</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5 leading-normal">
+                          Configure the style, animation, and flow properties of this connection.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3.5">
+                      {/* Link Label */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Link Label</label>
+                        <input
+                          type="text"
+                          value={currentLabel}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateEdgeData(
+                              selectedEdge.id,
+                              val,
+                              selectedEdge.animated || false,
+                              currentStroke,
+                              currentStrokeWidth
+                            );
+                          }}
+                          placeholder="e.g. Web Traffic"
+                          className="w-full bg-background border border-border rounded-lg py-2 px-3 text-xs text-white placeholder:text-slate-650 outline-none focus:border-primary transition"
+                        />
+                      </div>
+
+                      {/* Animation Toggle */}
+                      <div className="flex items-center justify-between p-2.5 bg-background/30 border border-border/50 rounded-xl">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-semibold text-white">Animate Flow Dash</span>
+                          <span className="text-[9px] text-slate-500 mt-0.5">Show animated pulse lines along the connection</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={selectedEdge.animated || false}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            updateEdgeData(
+                              selectedEdge.id,
+                              currentLabel,
+                              val,
+                              currentStroke,
+                              currentStrokeWidth
+                            );
+                          }}
+                          className="h-4 w-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Link Thickness */}
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex justify-between items-center">
+                          <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Thickness (Width)</label>
+                          <span className="text-xs font-mono text-slate-400">{currentStrokeWidth}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="1"
+                          max="8"
+                          step="0.5"
+                          value={currentStrokeWidth}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            updateEdgeData(
+                              selectedEdge.id,
+                              currentLabel,
+                              selectedEdge.animated || false,
+                              currentStroke,
+                              val
+                            );
+                          }}
+                          className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary"
+                        />
+                      </div>
+
+                      {/* Color Swatches */}
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Link Color</label>
+                        <div className="flex flex-wrap gap-2.5 p-2.5 bg-background/30 border border-border/50 rounded-xl">
+                          {[
+                            { name: 'Indigo', hex: '#6366F1' },
+                            { name: 'Violet', hex: '#8B5CF6' },
+                            { name: 'Amber', hex: '#F59E0B' },
+                            { name: 'Teal', hex: '#14B8A6' },
+                            { name: 'Sky', hex: '#0EA5E9' },
+                            { name: 'Emerald', hex: '#10B981' },
+                            { name: 'Rose', hex: '#F43F5E' },
+                            { name: 'Gray', hex: '#64748B' }
+                          ].map((c) => (
+                            <button
+                              key={c.hex}
+                              type="button"
+                              onClick={() => {
+                                updateEdgeData(
+                                  selectedEdge.id,
+                                  currentLabel,
+                                  selectedEdge.animated || false,
+                                  c.hex,
+                                  currentStrokeWidth
+                                );
+                              }}
+                              className={clsx(
+                                "w-6 h-6 rounded-full border-2 transition-all flex items-center justify-center cursor-pointer hover:scale-110",
+                                currentStroke === c.hex ? "border-white" : "border-transparent"
+                              )}
+                              style={{ backgroundColor: c.hex }}
+                              title={c.name}
+                            >
+                              {currentStroke === c.hex && (
+                                <Icon icon="lucide:check" className="text-xs text-white drop-shadow-md font-bold" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Delete Link Action */}
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm('Are you sure you want to delete this connection link?')) {
+                              deleteEdge(selectedEdge.id);
+                            }
+                          }}
+                          className="w-full flex items-center justify-center gap-2 rounded-xl bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-400 py-2.5 text-xs font-semibold shadow-md transition cursor-pointer"
+                        >
+                          <Icon icon="lucide:trash-2" className="text-sm" />
+                          Delete Connection
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })() : !selectedNode ? (
                 nodes.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground text-xs select-none animate-in fade-in duration-200">
                     <div className="text-2xl mb-2">📋</div>
@@ -3329,7 +3512,9 @@ function WorkspaceCanvas({ deployStatus, peerCursors = {}, handleMouseMove }: Wo
     selectedNodeId, 
     setSelectedNodeId,
     activeTool,
-    saveStatus
+    saveStatus,
+    selectedEdgeId,
+    setSelectedEdgeId
   } = useCanvasStore();
   
   const { screenToFlowPosition, fitView } = useReactFlow();
@@ -3481,8 +3666,18 @@ function WorkspaceCanvas({ deployStatus, peerCursors = {}, handleMouseMove }: Wo
         onEdgesChange={handleEdgesChange}
         onConnect={handleConnect}
         nodeTypes={nodeTypes}
-        onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-        onPaneClick={() => setSelectedNodeId(null)}
+        onNodeClick={(_, node) => {
+          setSelectedEdgeId(null);
+          setSelectedNodeId(node.id);
+        }}
+        onEdgeClick={(_, edge) => {
+          setSelectedNodeId(null);
+          setSelectedEdgeId(edge.id);
+        }}
+        onPaneClick={() => {
+          setSelectedNodeId(null);
+          setSelectedEdgeId(null);
+        }}
         fitView
         nodesDraggable={!isReadOnly && activeTool === 'select'}
         nodesConnectable={!isReadOnly && activeTool !== 'pan'}
@@ -3552,7 +3747,11 @@ function WorkspaceContent() {
     setNodes,
     setEdges,
     setCustomLibraryNodes,
-    setProjectId
+    setProjectId,
+    selectedEdgeId,
+    setSelectedEdgeId,
+    updateEdgeData,
+    deleteEdge
   } = useCanvasStore();
   const { zoomIn, zoomOut, setViewport, getZoom } = useReactFlow();
 
@@ -3583,6 +3782,8 @@ function WorkspaceContent() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isCustomNodeOpen, setIsCustomNodeOpen] = useState(false);
   const [availableCredentials, setAvailableCredentials] = useState<any[]>([]);
+  const [agentStatus, setAgentStatus] = useState<string | null>(null);
+  const [migrationStatus, setMigrationStatus] = useState<{ gated: boolean; has_active_agent: boolean; grace_period_end: string } | null>(null);
 
   const [selectedOS, setSelectedOS] = useState("Linux");
   const [zoomLevel, setZoomLevel] = useState(100);
@@ -3772,6 +3973,86 @@ function WorkspaceContent() {
 
     loadProjectAndCanvas();
   }, [projectId, user, setViewport, setNodes, setEdges, setVersion, setSaveStatus, setCustomLibraryNodes, setProjectId]);
+
+  // Poll the paired Sandbox Agent's connection status (see
+  // obsidian_memory/08.4's Phase 2 heartbeat/daemon-install entries) so a
+  // disconnected agent is visible in the header instead of only discovered
+  // via a failed deploy. Polling, not a WebSocket push: the underlying
+  // disconnect detection itself already has a ~30-40s natural delay (yamux's
+  // keepalive), so a live push wouldn't buy more responsiveness than an
+  // interval this size. 404 (route not registered when the beta flag is off,
+  // or no agent ever paired for this project) means "hide the badge," not an
+  // error; any other failure leaves the previous value alone rather than
+  // flickering the badge away on a transient network blip.
+  useEffect(() => {
+    const activeToken = token;
+    if (!activeToken || !projectId || !user) return;
+
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    let cancelled = false;
+
+    const pollAgentStatus = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/projects/${projectId}/agents/latest`, {
+          headers: { 'Authorization': `Bearer ${activeToken}` }
+        });
+        if (cancelled) return;
+        if (res.status === 404) {
+          setAgentStatus(null);
+          return;
+        }
+        if (!res.ok) return;
+        const data = await res.json();
+        setAgentStatus(data.status ?? null);
+      } catch (err) {
+        // Transient network error — leave the previous badge state as-is.
+      }
+    };
+
+    pollAgentStatus();
+    const intervalId = setInterval(pollAgentStatus, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [projectId, user, token]);
+
+  // Polls Phase 3's default-flip migration status (obsidian_memory/08.4) so a
+  // FREE-plan user sees the "pair an agent or upgrade" notice before a deploy
+  // ever gets rejected for it. 404 means "nothing to show" — not on the FREE
+  // plan, or the default-flip isn't configured on this deployment at all —
+  // same badge-hiding convention as the agent-status poll above.
+  useEffect(() => {
+    const activeToken = token;
+    if (!activeToken || !projectId || !user) return;
+
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    let cancelled = false;
+
+    const pollMigrationStatus = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/projects/${projectId}/sandbox-migration-status`, {
+          headers: { 'Authorization': `Bearer ${activeToken}` }
+        });
+        if (cancelled) return;
+        if (res.status === 404) {
+          setMigrationStatus(null);
+          return;
+        }
+        if (!res.ok) return;
+        setMigrationStatus(await res.json());
+      } catch (err) {
+        // Transient network error — leave the previous badge state as-is.
+      }
+    };
+
+    pollMigrationStatus();
+    const intervalId = setInterval(pollMigrationStatus, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [projectId, user, token]);
 
   // Broadcast local canvas state changes to room peers AND auto-save debouncely to REST API
   useEffect(() => {
@@ -4229,6 +4510,16 @@ function WorkspaceContent() {
     return nodes.find(n => n.id === selectedNodeId) || null;
   }, [nodes, selectedNodeId]);
 
+  const selectedEdge = useMemo(() => {
+    return edges.find(e => e.id === selectedEdgeId) || null;
+  }, [edges, selectedEdgeId]);
+
+  useEffect(() => {
+    if (selectedEdgeId) {
+      setInspectorTab('Parameters');
+    }
+  }, [selectedEdgeId]);
+
   if (!hasProjectParam) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background text-muted-foreground">
@@ -4259,6 +4550,8 @@ function WorkspaceContent() {
         saveStatus={saveStatus}
         onOpenSettings={() => setIsSettingsOpen(true)}
         projectDetails={projectDetails}
+        agentStatus={agentStatus}
+        migrationStatus={migrationStatus}
       />
 
       <div className="flex-1 flex overflow-hidden relative">
@@ -4348,9 +4641,12 @@ function WorkspaceContent() {
           collapsed={rightPanelCollapsed}
           onToggle={toggleRightPanel}
           selectedNode={selectedNode}
+          selectedEdge={selectedEdge}
           activeTab={inspectorTab}
           onTabChange={handleInspectorTabChange}
           updateNodeData={updateNodeData}
+          updateEdgeData={updateEdgeData}
+          deleteEdge={deleteEdge}
           ansiblePlaybook={ansiblePlaybook}
           nodes={nodes}
           edges={edges}
@@ -4368,6 +4664,7 @@ function WorkspaceContent() {
         projectDetails={projectDetails}
         onUpdateProjectDetails={(updated) => setProjectDetails(updated)}
         projectId={projectId}
+        onCredentialsChange={setAvailableCredentials}
       />
 
       <CustomNodeModal

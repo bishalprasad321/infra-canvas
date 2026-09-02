@@ -17,11 +17,13 @@ interface CredentialManagerModalProps {
   onClose: () => void;
   projectId: string;
   token: string | null;
+  onCredentialsChange?: (credentials: any[]) => void;
 }
 
-export default function CredentialManagerModal({ isOpen, onClose, projectId, token }: CredentialManagerModalProps) {
+export default function CredentialManagerModal({ isOpen, onClose, projectId, token, onCredentialsChange }: CredentialManagerModalProps) {
   const [credentials, setCredentials] = useState<CredentialItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
   const [name, setName] = useState<string>('');
   const [provider, setProvider] = useState<'AWS' | 'GCP' | 'SSH'>('AWS');
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
@@ -54,6 +56,9 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
       if (res.ok) {
         const data = await res.json();
         setCredentials(data);
+        if (onCredentialsChange) {
+          onCredentialsChange(data);
+        }
       }
     } catch (err) {
       console.error('Failed to load credentials', err);
@@ -94,6 +99,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
       payloadData = rawTextData.trim();
     }
 
+    setIsSaving(true);
     try {
       const res = await fetch(`http://localhost:8080/api/projects/${projectId}/credentials`, {
         method: 'POST',
@@ -121,6 +127,8 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
       }
     } catch (err) {
       setFeedbackMsg({ type: 'error', text: 'Network connection failed.' });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -314,9 +322,17 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
 
               <button
                 type="submit"
-                className="w-full rounded-lg bg-primary hover:bg-primary/90 py-2.5 text-sm font-semibold text-white shadow-md transition"
+                disabled={isSaving}
+                className="w-full flex items-center justify-center gap-2 rounded-lg bg-primary hover:bg-primary/90 py-2.5 text-sm font-semibold text-white shadow-md transition disabled:opacity-50 cursor-pointer"
               >
-                Save Encrypted Secret
+                {isSaving ? (
+                  <>
+                    <Icon icon="lucide:loader-2" className="animate-spin text-base" />
+                    Encrypting & Saving...
+                  </>
+                ) : (
+                  'Save Encrypted Secret'
+                )}
               </button>
             </form>
           </div>
@@ -369,11 +385,13 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
 interface CredentialManagerTabProps {
   projectId: string;
   token: string | null;
+  onCredentialsChange?: (credentials: any[]) => void;
 }
 
-export function CredentialManagerTab({ projectId, token }: CredentialManagerTabProps) {
+export function CredentialManagerTab({ projectId, token, onCredentialsChange }: CredentialManagerTabProps) {
   const [credentials, setCredentials] = useState<CredentialItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
   const [name, setName] = useState<string>('');
   const [provider, setProvider] = useState<'AWS' | 'GCP' | 'SSH'>('AWS');
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
@@ -405,6 +423,9 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
       if (res.ok) {
         const data = await res.json();
         setCredentials(data);
+        if (onCredentialsChange) {
+          onCredentialsChange(data);
+        }
       }
     } catch (err) {
       console.error('Failed to load credentials', err);
@@ -445,6 +466,7 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
       payloadData = rawTextData.trim();
     }
 
+    setIsSaving(true);
     try {
       const res = await fetch(`http://localhost:8080/api/projects/${projectId}/credentials`, {
         method: 'POST',
@@ -472,6 +494,8 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
       }
     } catch (err) {
       setFeedbackMsg({ type: 'error', text: 'Network connection failed.' });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -642,9 +666,17 @@ export function CredentialManagerTab({ projectId, token }: CredentialManagerTabP
 
             <button
               type="submit"
-              className="w-full rounded-lg bg-primary hover:bg-primary/90 py-2.5 text-sm font-semibold text-white shadow-md transition"
+              disabled={isSaving}
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-primary hover:bg-primary/90 py-2.5 text-sm font-semibold text-white shadow-md transition disabled:opacity-50 cursor-pointer"
             >
-              Save Encrypted Secret
+              {isSaving ? (
+                <>
+                  <Icon icon="lucide:loader-2" className="animate-spin text-base" />
+                  Encrypting & Saving...
+                </>
+              ) : (
+                'Save Encrypted Secret'
+              )}
             </button>
           </form>
         </div>

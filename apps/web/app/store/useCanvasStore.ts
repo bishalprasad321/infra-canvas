@@ -17,6 +17,7 @@ type CanvasState = {
     nodes: Node[];
     edges: Edge[];
     selectedNodeId: string | null;
+    selectedEdgeId: string | null;
     onNodesChange: (changes: NodeChange[]) => void;
     onEdgesChange: (changes: EdgeChange[]) => void;
     onConnect: (connection: Connection) => void;
@@ -25,7 +26,10 @@ type CanvasState = {
     addNode: (node: Node) => void;
     deleteNode: (nodeId: string) => void;
     setSelectedNodeId: (id: string | null) => void;
+    setSelectedEdgeId: (id: string | null) => void;
     updateNodeData: (nodeId: string, newData: any) => void;
+    updateEdgeData: (edgeId: string, label: string, animated: boolean, stroke: string, strokeWidth: number) => void;
+    deleteEdge: (edgeId: string) => void;
     resetCanvas: () => void;
     isExecuting: boolean;
     setIsExecuting: (executing: boolean) => void;
@@ -151,6 +155,7 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
     nodes: [],
     edges: [],
     selectedNodeId: null,
+    selectedEdgeId: null,
     isExecuting: false,
     activeTool: 'select',
     executionStatuses: {},
@@ -171,6 +176,7 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
     setVersion: (version) => set({ version }),
 
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
+    setSelectedEdgeId: (id) => set({ selectedEdgeId: id }),
     
     updateNodeData: (nodeId: string, newData: any) => {
         set((state) => ({
@@ -186,6 +192,35 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
                 }
                 return node;
             }),
+        }));
+    },
+
+    updateEdgeData: (edgeId: string, label: string, animated: boolean, stroke: string, strokeWidth: number) => {
+        set((state) => ({
+            edges: state.edges.map((edge) => {
+                if (edge.id === edgeId) {
+                    return {
+                        ...edge,
+                        label: label || undefined,
+                        animated,
+                        className: animated ? 'animate-dash-flow' : '',
+                        style: {
+                            ...edge.style,
+                            stroke,
+                            strokeWidth
+                        }
+                    };
+                }
+                return edge;
+            })
+        }));
+    },
+
+    deleteEdge: (edgeId: string) => {
+        if (get().isExecuting) return;
+        set((state) => ({
+            edges: state.edges.filter((edge) => edge.id !== edgeId),
+            selectedEdgeId: state.selectedEdgeId === edgeId ? null : state.selectedEdgeId
         }));
     },
 
@@ -210,8 +245,13 @@ const useCanvasStore = create<CanvasState>((set, get) => ({
         });
     },
     onEdgesChange: (changes: EdgeChange[]) => {
+        const nextEdges = applyEdgeChanges(changes, get().edges);
+        const removed = changes.some(c => c.type === 'remove');
+        if (removed && get().selectedEdgeId && !nextEdges.some(e => e.id === get().selectedEdgeId)) {
+            set({ selectedEdgeId: null });
+        }
         set({
-            edges: applyEdgeChanges(changes, get().edges),
+            edges: nextEdges,
         });
     },
     
