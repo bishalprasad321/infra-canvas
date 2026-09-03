@@ -128,7 +128,7 @@ const Header: React.FC<HeaderProps> = ({
             </svg>
           </div>
           <span className="font-heading font-bold text-lg tracking-tight text-white">
-            InfraCanvas
+            Whiparc
           </span>
         </div>
 

@@ -100,7 +100,7 @@ export default function Sidebar() {
     <aside className="w-64 bg-gradient-to-b from-slate-900 to-slate-950 border-r border-border/50 flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="p-4 border-b border-border/50 bg-card/50 backdrop-blur-sm">
-        <h1 className="text-lg font-bold text-white mb-1">InfraCanvas</h1>
+        <h1 className="text-lg font-bold text-white mb-1">Whiparc</h1>
         <p className="text-xs text-slate-400">Drag modules to build infrastructure</p>
       </div>
 

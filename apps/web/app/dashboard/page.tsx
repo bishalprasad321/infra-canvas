@@ -294,7 +294,7 @@ function DashboardContent() {
 							<div className="h-4 w-4 rounded-md bg-gradient-to-br from-primary to-amber-400"></div>
 						</div>
 						<div>
-							<p className="text-sm font-semibold tracking-wide text-white">InfraCanvas</p>
+							<p className="text-sm font-semibold tracking-wide text-white">Whiparc</p>
 							<p className="text-xs text-slate-400">Workspace Dashboard</p>
 						</div>
 					</Link>

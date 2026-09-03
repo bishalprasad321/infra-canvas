@@ -52,7 +52,7 @@ var (
 
 func main() {
 	log.Println("===================================================")
-	log.Println("  InfraCanvas Runner Go Backend Initialization   ")
+	log.Println("  Whiparc Runner Go Backend Initialization   ")
 	log.Println("===================================================")
 
 	// Ensure the db folder exists
