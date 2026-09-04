@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 
 interface CredentialItem {
@@ -17,7 +17,7 @@ interface CredentialManagerModalProps {
   onClose: () => void;
   projectId: string;
   token: string | null;
-  onCredentialsChange?: (credentials: any[]) => void;
+  onCredentialsChange?: (credentials: CredentialItem[]) => void;
 }
 
 export default function CredentialManagerModal({ isOpen, onClose, projectId, token, onCredentialsChange }: CredentialManagerModalProps) {
@@ -39,13 +39,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
 
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  useEffect(() => {
-    if (isOpen && token) {
-      fetchCredentials();
-    }
-  }, [isOpen, token]);
-
-  const fetchCredentials = async () => {
+  const fetchCredentials = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await fetch(`http://localhost:8080/api/projects/${projectId}/credentials`, {
@@ -65,7 +59,15 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [projectId, token, onCredentialsChange]);
+
+  useEffect(() => {
+    if (isOpen && token) {
+      // Fetching on open is the intended synchronization with the credentials API.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchCredentials();
+    }
+  }, [isOpen, token, fetchCredentials]);
 
   const handleCreateCredential = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,7 +128,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
         setFeedbackMsg({ type: 'error', text: `Failed to save: ${errText}` });
       }
     } catch (err) {
-      setFeedbackMsg({ type: 'error', text: 'Network connection failed.' });
+      setFeedbackMsg({ type: 'error', text: 'Network connection failed.' + err });
     } finally {
       setIsSaving(false);
     }
@@ -385,7 +387,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
 interface CredentialManagerTabProps {
   projectId: string;
   token: string | null;
-  onCredentialsChange?: (credentials: any[]) => void;
+  onCredentialsChange?: (credentials: CredentialItem[]) => void;
 }
 
 export function CredentialManagerTab({ projectId, token, onCredentialsChange }: CredentialManagerTabProps) {
@@ -406,13 +408,7 @@ export function CredentialManagerTab({ projectId, token, onCredentialsChange }: 
   const [sshUser, setSshUser] = useState<string>('ubuntu');
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  useEffect(() => {
-    if (projectId && token) {
-      fetchCredentials();
-    }
-  }, [projectId, token]);
-
-  const fetchCredentials = async () => {
+  const fetchCredentials = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await fetch(`http://localhost:8080/api/projects/${projectId}/credentials`, {
@@ -432,7 +428,15 @@ export function CredentialManagerTab({ projectId, token, onCredentialsChange }: 
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [projectId, token, onCredentialsChange]);
+
+  useEffect(() => {
+    if (projectId && token) {
+      // Fetching on mount/prop change is the intended synchronization with the credentials API.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchCredentials();
+    }
+  }, [projectId, token, fetchCredentials]);
 
   const handleCreateCredential = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -493,7 +497,7 @@ export function CredentialManagerTab({ projectId, token, onCredentialsChange }: 
         setFeedbackMsg({ type: 'error', text: `Failed to save: ${errText}` });
       }
     } catch (err) {
-      setFeedbackMsg({ type: 'error', text: 'Network connection failed.' });
+      setFeedbackMsg({ type: 'error', text: 'Network connection failed.' + err });
     } finally {
       setIsSaving(false);
     }

@@ -31,6 +31,7 @@ import { InputWithVariablePicker } from '../components/VariablePicker';
 import { generateAnsibleYAML } from '../lib/exportYaml';
 import { downloadZipBundle, downloadTerraformZip, generateBundleFiles, generateTerraformFiles } from '../lib/bundleGenerator';
 import { DEFAULT_INSTANCE_PARAMS, DEFAULT_SG_PARAMS } from '../lib/terraformDefaults';
+import type { Project } from '../lib/types';
 
 // Define layout components inside the workspace directory for encapsulation
 
@@ -60,8 +61,19 @@ interface LibraryNode {
   isCustom?: boolean;
   rawCode?: string;
   codeType?: 'tf' | 'yml' | 'yaml';
-  parameters?: Record<string, any>;
+  parameters?: Record<string, unknown>;
   outputs?: string[];
+}
+
+// Cloud/SSH credential summary as returned by GET /api/projects/:id/credentials
+// (mirrors CredentialItem in components/CredentialManagerModal.tsx).
+interface Credential {
+  id: string;
+  project_id: string;
+  provider: string;
+  name: string;
+  key_fingerprint: string;
+  created_at: string;
 }
 
 // --- HELPER SUB-COMPONENTS ---
@@ -86,7 +98,7 @@ interface HeaderProps {
   isSyncConnected?: boolean;
   saveStatus?: 'saved' | 'saving' | 'error' | 'readonly';
   onOpenSettings?: () => void;
-  projectDetails?: any;
+  projectDetails?: Project | null;
   agentStatus?: string | null;
   migrationStatus?: { gated: boolean; has_active_agent: boolean; grace_period_end: string } | null;
 }
@@ -489,7 +501,7 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({
 }) => {
   const customLibraryNodes = useCanvasStore((state) => state.customLibraryNodes);
   const mappedCustomNodes: LibraryNode[] = (customLibraryNodes || []).map((cn) => {
-    let parsedMeta: any = {};
+    let parsedMeta: { parameters?: Record<string, unknown> } = {};
     try {
       parsedMeta = JSON.parse(cn.parsed_meta_json || '{}');
     } catch (e) {}
@@ -958,6 +970,7 @@ const LiveCodePreview: React.FC<LiveCodePreviewProps> = ({ selectedNode, nodes, 
   );
 
   // Reset to first tab when node changes
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   React.useEffect(() => { setActiveFile(0); setOverviewFile(null); }, [selectedNode?.id]);
 
   const allFiles = useMemo(() => generateBundleFiles(nodes, edges), [nodes, edges]);
@@ -1238,7 +1251,7 @@ interface InspectorPanelProps {
   selectedEdge: Edge | null;
   activeTab: string;
   onTabChange: (tab: string) => void;
-  updateNodeData: (nodeId: string, newData: any) => void;
+  updateNodeData: (nodeId: string, newData: Record<string, unknown>) => void;
   updateEdgeData: (edgeId: string, label: string, animated: boolean, stroke: string, strokeWidth: number) => void;
   deleteEdge: (edgeId: string) => void;
   ansiblePlaybook: string;
@@ -1248,7 +1261,104 @@ interface InspectorPanelProps {
   isReadOnly?: boolean;
   onStartEditing?: (nodeId: string) => void;
   onEndEditing?: (nodeId: string) => void;
-  availableCredentials?: any[];
+  availableCredentials?: Credential[];
+}
+
+// Union of every field InspectorPanel reads/writes on selectedNode.data.parameters
+// across all node "tech" types (Terraform/Ansible/Kubernetes). The underlying data
+// is loosely-validated per-node JSON, so every field is optional.
+interface InspectorNodeParameters {
+  // EC2 / Terraform instance
+  instanceName?: string;
+  amiId?: string;
+  instanceType?: string;
+  subnetId?: string;
+  securityGroupId?: string;
+  rootVolumeSize?: number;
+  tags?: Tag[];
+  // GCP instance
+  gcpInstanceName?: string;
+  gcpMachineType?: string;
+  gcpImage?: string;
+  gcpNetwork?: string;
+  gcpDiskSize?: number;
+  // Azure instance
+  azureVmName?: string;
+  azureVmSize?: string;
+  azurePublisher?: string;
+  azureOffer?: string;
+  azureSku?: string;
+  azureDiskSize?: number;
+  // Security group
+  sgName?: string;
+  description?: string;
+  httpPort?: number;
+  httpsPort?: number;
+  allowedCidr?: string;
+  vpcId?: string;
+  sshEnabled?: boolean;
+  ingressPorts?: string;
+  // S3
+  bucketName?: string;
+  versioningEnabled?: boolean;
+  forceDestroy?: boolean;
+  // RDS
+  dbName?: string;
+  engineVersion?: string;
+  instanceClass?: string;
+  allocatedStorage?: number;
+  username?: string;
+  password?: string;
+  vpcSecurityGroupIds?: string;
+  dbSubnetGroupName?: string;
+  // VPC
+  vpcName?: string;
+  cidrBlock?: string;
+  enableDnsHostnames?: boolean;
+  // Subnet
+  subnetName?: string;
+  availabilityZone?: string;
+  mapPublicIp?: boolean;
+  // Ansible common
+  ansibleHost?: string;
+  ansibleUser?: string;
+  packages?: string;
+  state?: string;
+  shell?: string;
+  createHome?: boolean;
+  serviceName?: string;
+  enabled?: boolean;
+  repoUrl?: string;
+  destPath?: string;
+  branch?: string;
+  command?: string;
+  chdir?: string;
+  srcPath?: string;
+  owner?: string;
+  mode?: string;
+  // Kubernetes
+  deploymentName?: string;
+  replicas?: number;
+  containerPort?: number;
+  imageName?: string;
+  cpuLimit?: string;
+  memoryLimit?: string;
+  serviceType?: string;
+  port?: number;
+  targetPort?: number;
+  configMapName?: string;
+  dataKey?: string;
+  dataValue?: string;
+  secretName?: string;
+  secretKey?: string;
+  secretValue?: string;
+  ingressName?: string;
+  host?: string;
+  path?: string;
+  servicePort?: number;
+  pvcName?: string;
+  storageSize?: string;
+  storageClass?: string;
 }
 
 const InspectorPanel: React.FC<InspectorPanelProps> = ({
@@ -1275,17 +1385,17 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const [showAddTag, setShowAddTag] = useState(false);
   const [activeVmTab, setActiveVmTab] = useState<'aws' | 'gcp' | 'azure'>('aws');
 
-  const p = selectedNode?.data?.parameters as any || (selectedNode ? getDefaultParametersForNode(selectedNode.id) : {});
+  const p: InspectorNodeParameters = (selectedNode?.data?.parameters as InspectorNodeParameters | undefined) || (selectedNode ? (getDefaultParametersForNode(selectedNode.id) as InspectorNodeParameters) : {});
   const sg = p;
 
-  const handleParameterChange = (key: string, value: any) => {
+  const handleParameterChange = (key: string, value: unknown) => {
     if (!selectedNode || isReadOnly) return;
     updateNodeData(selectedNode.id, {
       parameters: { ...p, [key]: value }
     });
   };
 
-  const handleSgChange = (key: string, value: any) => {
+  const handleSgChange = (key: string, value: unknown) => {
     if (!selectedNode) return;
     updateNodeData(selectedNode.id, {
       parameters: { ...sg, [key]: value }
@@ -1299,7 +1409,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
       updateNodeData(selectedNode.id, {
         parameters: {
           ...p,
-          tags: [...p.tags, { key: newTagKey, value: newTagVal }]
+          tags: [...(p.tags || []), { key: newTagKey, value: newTagVal }]
         }
       });
       setNewTagKey('');
@@ -1313,7 +1423,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
     updateNodeData(selectedNode.id, {
       parameters: {
         ...p,
-        tags: p.tags.filter((_: any, idx: number) => idx !== index)
+        tags: (p.tags || []).filter((_: Tag, idx: number) => idx !== index)
       }
     });
   };
@@ -1692,7 +1802,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
                           <div>
                             <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Tags</label>
                             <div className="flex flex-wrap gap-1.5 p-2 bg-muted border border-border rounded-lg">
-                              {(p.tags || []).map((tag: any, idx: number) => (
+                              {(p.tags || []).map((tag: Tag, idx: number) => (
                                 <span key={idx} className="inline-flex items-center gap-1 bg-card px-2 py-0.5 rounded text-[10px] text-foreground border border-border">
                                   {tag.key}: {tag.value}
                                   <button onClick={() => handleTagDelete(idx)} className="text-muted-foreground hover:text-red-400 transition-colors cursor-pointer">
@@ -3046,7 +3156,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
 };
 
 // --- DEFAULT PARAMETERS FOR NODES ---
-function getDefaultParametersForNode(nodeId: string): any {
+function getDefaultParametersForNode(nodeId: string): Record<string, unknown> {
   if (nodeId.startsWith('aws_instance.web_server')) {
     return {
       instanceName: 'web_server',
@@ -3594,7 +3704,7 @@ function WorkspaceCanvas({ deployStatus, peerCursors = {}, handleMouseMove }: Wo
       position,
       data: {
         label: title,
-        tech: tech as any,
+        tech: tech as LibraryNode['tech'],
         icon,
         categoryLabel: category || (tech === 'Terraform' ? 'AWS Resource' : tech === 'Ansible' ? 'Ansible Task' : tech === 'Source' ? 'Source Code' : tech === 'Target' ? 'Cloud Target' : 'K8s Resource'),
         description,
@@ -3603,7 +3713,7 @@ function WorkspaceCanvas({ deployStatus, peerCursors = {}, handleMouseMove }: Wo
         parameters: parsedParameters,
         isCustom: isCustom ? true : undefined,
         rawCode: isCustom ? rawCode : undefined,
-        codeType: isCustom ? codeType as any : undefined,
+        codeType: isCustom ? (codeType as LibraryNode['codeType']) : undefined,
         port: parsedParameters?.port,
         dbUser: parsedParameters?.dbUser,
         dbPass: parsedParameters?.dbPass,
@@ -3772,16 +3882,16 @@ function WorkspaceContent() {
 
   const syncWsRef = useRef<WebSocket | null>(null);
   const isIncomingSyncRef = useRef<boolean>(false);
-  const lastStateRef = useRef<{ nodes: any[], edges: any[] }>({ nodes: [], edges: [] });
+  const lastStateRef = useRef<{ nodes: Node[], edges: Edge[] }>({ nodes: [], edges: [] });
 
   const [collaborators, setCollaborators] = useState<{ id: string; name: string; color: string }[]>([]);
   const [isSyncConnected, setIsSyncConnected] = useState(false);
   const [peerCursors, setPeerCursors] = useState<Record<string, { x: number; y: number; name: string; color: string }>>({});
   const [peerEdits, setPeerEdits] = useState<Record<string, string>>({}); // maps nodeId -> userName editing it
-  const [projectDetails, setProjectDetails] = useState<any>(null);
+  const [projectDetails, setProjectDetails] = useState<Project | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isCustomNodeOpen, setIsCustomNodeOpen] = useState(false);
-  const [availableCredentials, setAvailableCredentials] = useState<any[]>([]);
+  const [availableCredentials, setAvailableCredentials] = useState<Credential[]>([]);
   const [agentStatus, setAgentStatus] = useState<string | null>(null);
   const [migrationStatus, setMigrationStatus] = useState<{ gated: boolean; has_active_agent: boolean; grace_period_end: string } | null>(null);
 
@@ -3901,7 +4011,7 @@ function WorkspaceContent() {
     return () => {
       ws.close();
     };
-  }, [projectId, user]);
+  }, [projectId, user, token]);
 
   // Load Project Details & Canvas State on mount
   useEffect(() => {
@@ -3972,7 +4082,7 @@ function WorkspaceContent() {
     };
 
     loadProjectAndCanvas();
-  }, [projectId, user, setViewport, setNodes, setEdges, setVersion, setSaveStatus, setCustomLibraryNodes, setProjectId]);
+  }, [projectId, user, setViewport, setNodes, setEdges, setVersion, setSaveStatus, setCustomLibraryNodes, setProjectId, token]);
 
   // Poll the paired Sandbox Agent's connection status (see
   // obsidian_memory/08.4's Phase 2 heartbeat/daemon-install entries) so a
@@ -4006,6 +4116,7 @@ function WorkspaceContent() {
         setAgentStatus(data.status ?? null);
       } catch (err) {
         // Transient network error — leave the previous badge state as-is.
+        console.log("Agent status poll error", err);
       }
     };
 
@@ -4043,6 +4154,7 @@ function WorkspaceContent() {
         setMigrationStatus(await res.json());
       } catch (err) {
         // Transient network error — leave the previous badge state as-is.
+        console.log("Migration status poll error", err);
       }
     };
 
@@ -4127,7 +4239,7 @@ function WorkspaceContent() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [nodes, edges, projectId, version, saveStatus, getZoom, setSaveStatus, setVersion]);
+  }, [nodes, edges, projectId, version, saveStatus, getZoom, setSaveStatus, setVersion, token]);
 
   // Track cursor positions on mousemove (throttled)
   const lastCursorTimeRef = useRef<number>(0);
@@ -4258,7 +4370,7 @@ function WorkspaceContent() {
           }
         } catch (e) {
           // Fallback if message is raw text
-          setLogs(prev => prev + event.data);
+          setLogs(prev => prev + event.data + '\n' + e);
         }
       };
 
@@ -4271,9 +4383,10 @@ function WorkspaceContent() {
         setLogs(prev => prev + `\n[CLIENT] Log stream closed (code: ${event.code}).\n`);
       };
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       setDeployStatus("FAILED");
-      setLogs(prev => prev + `\n[CLIENT_ERROR] Failed to execute deployment: ${err.message || err}\n`);
+      const errMessage = err instanceof Error ? err.message : String(err);
+      setLogs(prev => prev + `\n[CLIENT_ERROR] Failed to execute deployment: ${errMessage}\n`);
     }
   };
 
@@ -4335,7 +4448,7 @@ function WorkspaceContent() {
             useCanvasStore.getState().setNodeExecutionStatus(wsData.nodeId, wsData.status);
           }
         } catch (e) {
-          setLogs(prev => prev + event.data);
+          setLogs(prev => prev + event.data + '\n' + e);
         }
       };
 
@@ -4348,9 +4461,10 @@ function WorkspaceContent() {
         setLogs(prev => prev + `\n[CLIENT] Log stream closed (code: ${event.code}).\n`);
       };
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       setDeployStatus("FAILED");
-      setLogs(prev => prev + `\n[CLIENT_ERROR] Failed to execute destroy: ${err.message || err}\n`);
+      const errMessage = err instanceof Error ? err.message : String(err);
+      setLogs(prev => prev + `\n[CLIENT_ERROR] Failed to execute destroy: ${errMessage}\n`);
     }
   };
 
@@ -4362,7 +4476,9 @@ function WorkspaceContent() {
         if (currentZoom) {
           setZoomLevel(Math.round(currentZoom * 100));
         }
-      } catch (e) {}
+      } catch (e) {
+        console.log("Error fetching zoom level:", e);
+      }
     }, 500);
 
     return () => clearInterval(checkZoom);
@@ -4407,7 +4523,7 @@ function WorkspaceContent() {
 
   const handleCanvasToolSelect = (tool: string) => {
     if (deployStatus === 'PENDING' || deployStatus === 'RUNNING') return;
-    setActiveTool(tool as any);
+    setActiveTool(tool as 'select' | 'pan' | 'link');
   };
 
   const handleAddNodeToCanvas = (libNode: LibraryNode) => {
@@ -4516,6 +4632,7 @@ function WorkspaceContent() {
 
   useEffect(() => {
     if (selectedEdgeId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setInspectorTab('Parameters');
     }
   }, [selectedEdgeId]);
@@ -4661,7 +4778,7 @@ function WorkspaceContent() {
       <ProjectSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        projectDetails={projectDetails}
+        projectDetails={projectDetails as Project}
         onUpdateProjectDetails={(updated) => setProjectDetails(updated)}
         projectId={projectId}
         onCredentialsChange={setAvailableCredentials}

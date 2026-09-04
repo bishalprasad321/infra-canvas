@@ -10,6 +10,7 @@ import useCanvasStore from '../store/useCanvasStore';
 import { useAuthStore } from '../store/useAuthStore';
 import ProfileMenu from '../components/ProfileMenu';
 import { generateBundleFiles, downloadZipBundle, FileItem } from '../lib/bundleGenerator';
+import type { Project } from '../lib/types';
 
 // --- SUB-COMPONENTS ---
 
@@ -180,7 +181,7 @@ function ExportCodeContent() {
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(true);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
-  const [projectDetails, setProjectDetails] = useState<any>(null);
+  const [projectDetails, setProjectDetails] = useState<Project | null>(null);
   const [isLoadingCanvas, setIsLoadingCanvas] = useState<boolean>(true);
 
   // Bare /export-code has no project context to export from
@@ -243,9 +244,10 @@ function ExportCodeContent() {
   // Auto-select first file whenever the file list changes
   useEffect(() => {
     if (bundleFiles.length > 0 && (!selectedFilePath || !bundleFiles.find(f => f.path === selectedFilePath))) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedFilePath(bundleFiles[0].path);
     }
-  }, [bundleFiles]);
+  }, [bundleFiles, setSelectedFilePath, selectedFilePath]);
 
   const activeFile = useMemo(
     () => bundleFiles.find(f => f.path === selectedFilePath) ?? bundleFiles[0],
