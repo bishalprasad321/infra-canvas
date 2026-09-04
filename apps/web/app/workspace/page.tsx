@@ -4011,7 +4011,7 @@ function WorkspaceContent() {
     return () => {
       ws.close();
     };
-  }, [projectId, user]);
+  }, [projectId, user, token]);
 
   // Load Project Details & Canvas State on mount
   useEffect(() => {
@@ -4082,7 +4082,7 @@ function WorkspaceContent() {
     };
 
     loadProjectAndCanvas();
-  }, [projectId, user, setViewport, setNodes, setEdges, setVersion, setSaveStatus, setCustomLibraryNodes, setProjectId]);
+  }, [projectId, user, setViewport, setNodes, setEdges, setVersion, setSaveStatus, setCustomLibraryNodes, setProjectId, token]);
 
   // Poll the paired Sandbox Agent's connection status (see
   // obsidian_memory/08.4's Phase 2 heartbeat/daemon-install entries) so a
@@ -4116,6 +4116,7 @@ function WorkspaceContent() {
         setAgentStatus(data.status ?? null);
       } catch (err) {
         // Transient network error — leave the previous badge state as-is.
+        console.log("Agent status poll error", err);
       }
     };
 
@@ -4153,6 +4154,7 @@ function WorkspaceContent() {
         setMigrationStatus(await res.json());
       } catch (err) {
         // Transient network error — leave the previous badge state as-is.
+        console.log("Migration status poll error", err);
       }
     };
 
@@ -4237,7 +4239,7 @@ function WorkspaceContent() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [nodes, edges, projectId, version, saveStatus, getZoom, setSaveStatus, setVersion]);
+  }, [nodes, edges, projectId, version, saveStatus, getZoom, setSaveStatus, setVersion, token]);
 
   // Track cursor positions on mousemove (throttled)
   const lastCursorTimeRef = useRef<number>(0);
@@ -4368,7 +4370,7 @@ function WorkspaceContent() {
           }
         } catch (e) {
           // Fallback if message is raw text
-          setLogs(prev => prev + event.data);
+          setLogs(prev => prev + event.data + '\n' + e);
         }
       };
 
@@ -4446,7 +4448,7 @@ function WorkspaceContent() {
             useCanvasStore.getState().setNodeExecutionStatus(wsData.nodeId, wsData.status);
           }
         } catch (e) {
-          setLogs(prev => prev + event.data);
+          setLogs(prev => prev + event.data + '\n' + e);
         }
       };
 
@@ -4474,7 +4476,9 @@ function WorkspaceContent() {
         if (currentZoom) {
           setZoomLevel(Math.round(currentZoom * 100));
         }
-      } catch (e) {}
+      } catch (e) {
+        console.log("Error fetching zoom level:", e);
+      }
     }, 500);
 
     return () => clearInterval(checkZoom);

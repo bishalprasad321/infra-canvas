@@ -247,7 +247,7 @@ function ExportCodeContent() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedFilePath(bundleFiles[0].path);
     }
-  }, [bundleFiles]);
+  }, [bundleFiles, setSelectedFilePath, selectedFilePath]);
 
   const activeFile = useMemo(
     () => bundleFiles.find(f => f.path === selectedFilePath) ?? bundleFiles[0],

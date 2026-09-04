@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@iconify/react';
@@ -80,7 +80,7 @@ function DashboardContent() {
 	}, [searchParams, router]);
 
 	// Fetch teams, projects, and pending requests
-	const fetchData = async () => {
+	const fetchData = useCallback(async () => {
 		const activeToken = token;
 		if (!activeToken) return;
 
@@ -134,7 +134,7 @@ function DashboardContent() {
 		} finally {
 			setIsLoadingData(false);
 		}
-	};
+	}, [token]);
 
 	useEffect(() => {
 		if (user) {
@@ -142,7 +142,7 @@ function DashboardContent() {
 			// eslint-disable-next-line react-hooks/set-state-in-effect
 			fetchData();
 		}
-	}, [user]);
+	}, [user, fetchData]);
 
 	const handleOpenWorkspace = (projectId: string) => {
 		router.push(`/workspace?project=${projectId}`);
