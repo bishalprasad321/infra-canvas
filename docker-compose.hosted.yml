@@ -67,8 +67,12 @@ services:
       - localstack
 
   agent-gateway:
-    build:
-      context: ./apps/agent-gateway
+    # Built and published by whiparc/cloud's publish-agent-gateway.yml workflow
+    # (apps/agent-gateway was extracted there with full history preserved via
+    # `git subtree`, and now lives at github.com/whiparc/cloud/agent-gateway).
+    # Requires `docker login ghcr.io` with read:packages on the whiparc org,
+    # since whiparc/cloud is a private repo.
+    image: ghcr.io/whiparc/cloud/agent-gateway:latest
     container_name: infracanvas-agent-gateway-hosted
     ports:
       - "9090:9090"

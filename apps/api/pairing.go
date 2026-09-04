@@ -358,7 +358,7 @@ func disconnectAgentOnGateway(agentID string) error {
 // POST /api/internal/agents/{agentId}/callback
 // Called by the Agent Gateway (not a browser/CLI client) once an Agent's
 // tunnel actually connects, authenticated via the shared X-Gateway-Runner-Secret
-// rather than a user JWT — the Gateway has no concept of InfraCanvas user
+// rather than a user JWT — the Gateway has no concept of Whiparc user
 // sessions. This is a deliberately minimal, known Phase-1 auth boundary; see
 // apps/agent-gateway/README.md.
 func handleAgentStatusCallback(w http.ResponseWriter, r *http.Request) {

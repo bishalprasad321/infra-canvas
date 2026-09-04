@@ -312,7 +312,7 @@ function ExportCodeContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M14 15h5M14 19h5" />
               </svg>
             </div>
-            <span className="font-heading font-bold text-lg tracking-tight text-white">InfraCanvas</span>
+            <span className="font-heading font-bold text-lg tracking-tight text-white">Whiparc</span>
           </div>
           <div className="h-4 w-[1px] bg-border"></div>
           <div className="flex items-center gap-2 text-sm">

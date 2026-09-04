@@ -125,7 +125,7 @@ export default function DocsPage() {
                 <div className="h-4 w-4 rounded-md bg-gradient-to-br from-primary to-amber-500"></div>
               </div>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold tracking-wide text-white">InfraCanvas</p>
+                <p className="truncate text-sm font-semibold tracking-wide text-white">Whiparc</p>
                 <p className="truncate text-xs text-slate-400">Documentation</p>
               </div>
             </Link>
@@ -228,9 +228,9 @@ export default function DocsPage() {
           {/* SECTION 1: INTRO */}
           {activeSection === 'intro' && (
             <section className="space-y-6">
-              <h1 className="text-3xl font-bold tracking-tight text-white lg:text-4xl">InfraCanvas CLI</h1>
+              <h1 className="text-3xl font-bold tracking-tight text-white lg:text-4xl">Whiparc CLI</h1>
               <p className="text-lg text-slate-400 leading-relaxed">
-                The InfraCanvas Command-Line Interface (`infracanvas`) is a powerful tool designed to integrate visual configuration layouts directly with native infrastructure-as-code manifests. With the CLI, platform teams can synchronize local directories, query workspace settings, and stream deployment pipelines from their local terminals or CI/CD pipelines.
+                The Whiparc Command-Line Interface (`infracanvas`) is a powerful tool designed to integrate visual configuration layouts directly with native infrastructure-as-code manifests. With the CLI, platform teams can synchronize local directories, query workspace settings, and stream deployment pipelines from their local terminals or CI/CD pipelines.
               </p>
 
               <div className="rounded-2xl border border-border bg-card/60 p-6 backdrop-blur-md">
@@ -446,7 +446,7 @@ export default function DocsPage() {
             <section className="space-y-6">
               <h1 className="text-3xl font-bold tracking-tight text-white lg:text-4xl">Why a Local Sandbox?</h1>
               <p className="text-lg text-slate-400 leading-relaxed">
-                Every deploy that targets the built-in sandbox (LocalStack + simulated SSH targets, no real cloud account needed) has to run *somewhere*. Historically that meant InfraCanvas’s own servers — free for you, but a real, unbounded compute cost on our side for every user who never upgrades. The <strong>Sandbox Agent</strong> moves that compute onto your own machine instead: a small `infracanvas` process opens an outbound connection to InfraCanvas, and your deploys run against Docker containers on your own laptop or workstation, driven the exact same way from the visual canvas.
+                Every deploy that targets the built-in sandbox (LocalStack + simulated SSH targets, no real cloud account needed) has to run *somewhere*. Historically that meant Whiparc’s own servers — free for you, but a real, unbounded compute cost on our side for every user who never upgrades. The <strong>Sandbox Agent</strong> moves that compute onto your own machine instead: a small `infracanvas` process opens an outbound connection to Whiparc, and your deploys run against Docker containers on your own laptop or workstation, driven the exact same way from the visual canvas.
               </p>
 
               <div className="rounded-2xl border border-border bg-card/60 p-6 backdrop-blur-md space-y-3">
@@ -475,7 +475,7 @@ export default function DocsPage() {
                   Docker Desktop is free for individuals, small businesses, education, and open-source use — but requires a paid subscription at larger companies. If that applies to you, <strong>Podman</strong>, <strong>Colima</strong>, and <strong>Rancher Desktop</strong> are all compatible alternatives; the sandbox only needs a working Docker-compatible socket, not Docker Desktop specifically.
                 </p>
                 <p className="text-sm text-slate-400 pt-1">
-                  <strong>Windows</strong> users: Docker Desktop with the WSL2 backend is the supported path. Most “it just doesn’t work” reports on Windows trace back to WSL2 not being enabled, not InfraCanvas itself.
+                  <strong>Windows</strong> users: Docker Desktop with the WSL2 backend is the supported path. Most “it just doesn’t work” reports on Windows trace back to WSL2 not being enabled, not Whiparc itself.
                 </p>
               </div>
 
@@ -517,11 +517,11 @@ export default function DocsPage() {
                 </p>
                 <CodeBlock code="infracanvas sandbox up --project <project-id>" />
                 <p className="text-sm text-slate-400">
-                  This generates a fresh SSH keypair for this installation, builds and starts the local sandbox containers via Docker, registers the key with InfraCanvas, and pairs an Agent — all in one step, no browser approval needed. You’ll see output like:
+                  This generates a fresh SSH keypair for this installation, builds and starts the local sandbox containers via Docker, registers the key with Whiparc, and pairs an Agent — all in one step, no browser approval needed. You’ll see output like:
                 </p>
                 <CodeBlock code={`Generating per-installation SSH keypair for agent-a1b2c3d4...
 Building and starting local sandbox containers (docker compose)...
-Registering agent key with InfraCanvas...
+Registering agent key with Whiparc...
 Registered agent agent-a1b2c3d4 (key fingerprint: SHA256:...)
 Pairing with the Agent Gateway...
 Starting the local Agent process...
@@ -758,7 +758,7 @@ Agent agent-a1b2c3d4 is now ACTIVE. Sandbox is ready.`} />
       {/* FOOTER */}
       <footer className="border-t border-border/80 bg-background/80 py-8 relative z-10">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 text-sm text-slate-500 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-10">
-          <p>© 2026 InfraCanvas. All rights reserved.</p>
+          <p>© 2026 Whiparc. All rights reserved.</p>
           <div className="flex gap-5">
             <Link href="/" className="hover:text-slate-300 transition">Home</Link>
             <span className="cursor-not-allowed">Terms</span>

@@ -22,7 +22,7 @@ COPY apps/cli ./apps/cli
 RUN cd apps/cli && GOTOOLCHAIN=auto CGO_ENABLED=0 GOOS=linux go build -o /out/infracanvas .
 
 # Pull prebuilt tools baseline from GHCR (installs nothing locally)
-FROM ghcr.io/bishalprasad321/infra-canvas-runner-base:latest
+FROM ghcr.io/whiparc/whiparc-runner-base:latest
 ENV IS_DOCKER=true
 ENV PORT=8080
 

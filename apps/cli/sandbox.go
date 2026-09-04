@@ -192,7 +192,7 @@ func runSandboxUp(cmd *cobra.Command, args []string) {
 	// re-registering would hit a 409 (agent_id is UNIQUE), and re-pairing
 	// would be redundant work against a Gateway that already recognizes it.
 	if agentToken == "" {
-		fmt.Println("Registering agent key with InfraCanvas...")
+		fmt.Println("Registering agent key with Whiparc...")
 		fingerprint, err := registerAgentKey(cfg, projectID, agentID, publicKeyLine, privatePEM)
 		if err != nil {
 			fmt.Printf("Failed to register agent: %v\n", err)

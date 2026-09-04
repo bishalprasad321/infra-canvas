@@ -243,7 +243,7 @@ function LoginForm() {
             </p>
           ) : (
             <p>
-              New to InfraCanvas?{' '}
+              New to Whiparc?{' '}
               <button 
                 type="button" 
                 onClick={() => router.push('/login?mode=signup')}

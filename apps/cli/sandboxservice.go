@@ -33,8 +33,8 @@ const agentServiceName = "infracanvas-sandbox-agent"
 func agentServiceConfig(agentID, gatewayURL string) *service.Config {
 	return &service.Config{
 		Name:        agentServiceName,
-		DisplayName: "InfraCanvas Sandbox Agent",
-		Description: "Bridges a local InfraCanvas DevOps Sandbox to the hosted Runner (see infracanvas sandbox up).",
+		DisplayName: "Whiparc Sandbox Agent",
+		Description: "Bridges a local Whiparc DevOps Sandbox to the hosted Runner (see infracanvas sandbox up).",
 		Arguments:   []string{"sandbox", "agent-service-run", "--agent-id=" + agentID, "--gateway=" + gatewayURL},
 		Option: service.KeyValue{
 			// Installs as a per-user systemd unit / launchd agent on
