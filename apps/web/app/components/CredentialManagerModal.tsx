@@ -17,7 +17,7 @@ interface CredentialManagerModalProps {
   onClose: () => void;
   projectId: string;
   token: string | null;
-  onCredentialsChange?: (credentials: any[]) => void;
+  onCredentialsChange?: (credentials: CredentialItem[]) => void;
 }
 
 export default function CredentialManagerModal({ isOpen, onClose, projectId, token, onCredentialsChange }: CredentialManagerModalProps) {
@@ -38,12 +38,6 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
   const [sshUser, setSshUser] = useState<string>('ubuntu');
 
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  useEffect(() => {
-    if (isOpen && token) {
-      fetchCredentials();
-    }
-  }, [isOpen, token]);
 
   const fetchCredentials = async () => {
     setIsLoading(true);
@@ -66,6 +60,14 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isOpen && token) {
+      // Fetching on open is the intended synchronization with the credentials API.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchCredentials();
+    }
+  }, [isOpen, token]);
 
   const handleCreateCredential = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -385,7 +387,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
 interface CredentialManagerTabProps {
   projectId: string;
   token: string | null;
-  onCredentialsChange?: (credentials: any[]) => void;
+  onCredentialsChange?: (credentials: CredentialItem[]) => void;
 }
 
 export function CredentialManagerTab({ projectId, token, onCredentialsChange }: CredentialManagerTabProps) {
@@ -405,12 +407,6 @@ export function CredentialManagerTab({ projectId, token, onCredentialsChange }: 
   const [rawTextData, setRawTextData] = useState<string>('');
   const [sshUser, setSshUser] = useState<string>('ubuntu');
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  useEffect(() => {
-    if (projectId && token) {
-      fetchCredentials();
-    }
-  }, [projectId, token]);
 
   const fetchCredentials = async () => {
     setIsLoading(true);
@@ -433,6 +429,14 @@ export function CredentialManagerTab({ projectId, token, onCredentialsChange }: 
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (projectId && token) {
+      // Fetching on mount/prop change is the intended synchronization with the credentials API.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchCredentials();
+    }
+  }, [projectId, token]);
 
   const handleCreateCredential = async (e: React.FormEvent) => {
     e.preventDefault();

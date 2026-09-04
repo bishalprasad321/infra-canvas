@@ -3,14 +3,39 @@ import { useRouter } from 'next/navigation';
 import { Icon } from '@iconify/react';
 import { useAuthStore } from '../store/useAuthStore';
 import { CredentialManagerTab } from './CredentialManagerModal';
+import type { Project } from '../lib/types';
+
+interface Member {
+  user_id: string;
+  user_name: string;
+  email: string;
+  role: string;
+}
+
+interface SandboxAgent {
+  agent_id: string;
+  name: string;
+  status: string;
+  registered_at: string;
+  last_seen_at?: string;
+}
+
+interface CredentialItem {
+  id: string;
+  project_id: string;
+  provider: string;
+  name: string;
+  key_fingerprint: string;
+  created_at: string;
+}
 
 interface ProjectSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  projectDetails: any;
-  onUpdateProjectDetails: (updated: any) => void;
+  projectDetails: Project;
+  onUpdateProjectDetails: (updated: Project) => void;
   projectId: string;
-  onCredentialsChange?: (credentials: any[]) => void;
+  onCredentialsChange?: (credentials: CredentialItem[]) => void;
 }
 
 export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
@@ -25,13 +50,13 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   const [name, setName] = useState(projectDetails?.name || '');
   const [description, setDescription] = useState(projectDetails?.description || '');
   const [visibility, setVisibility] = useState(projectDetails?.visibility || 'PRIVATE');
-  const [members, setMembers] = useState<any[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('VIEWER');
   const [loading, setLoading] = useState(false);
   const [membersLoading, setMembersLoading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
-  const [agents, setAgents] = useState<any[]>([]);
+  const [agents, setAgents] = useState<SandboxAgent[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
   const [agentsSupported, setAgentsSupported] = useState(true);
   const [revokingAgentId, setRevokingAgentId] = useState<string | null>(null);
@@ -45,6 +70,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   // Sync state if project details loaded after mount
   useEffect(() => {
     if (projectDetails) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(projectDetails.name || '');
       setDescription(projectDetails.description || '');
       setVisibility(projectDetails.visibility || 'PRIVATE');
@@ -518,14 +544,14 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
             <div className="space-y-3">
               <div>
                 <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Paired Sandbox Agents</h4>
-                <p className="text-xs text-slate-500 mt-1">Machines paired via `infracanvas sandbox up` that can run this project's deploys locally. Revoking disconnects an agent immediately and invalidates its pairing token.</p>
+                <p className="text-xs text-slate-500 mt-1">Machines paired via `infracanvas sandbox up` that can run this project&apos;s deploys locally. Revoking disconnects an agent immediately and invalidates its pairing token.</p>
               </div>
               {agentsLoading ? (
                 <div className="py-6 flex justify-center text-slate-400">
                   <Icon icon="lucide:loader-2" className="animate-spin text-xl text-primary" />
                 </div>
               ) : !agentsSupported ? (
-                <div className="py-6 text-center text-sm text-slate-400">Local Sandbox Agents aren't enabled on this deployment.</div>
+                <div className="py-6 text-center text-sm text-slate-400">Local Sandbox Agents aren&apos;t enabled on this deployment.</div>
               ) : agents.length === 0 ? (
                 <div className="py-6 text-center text-sm text-slate-400">No sandbox agents have been paired to this project yet.</div>
               ) : (
