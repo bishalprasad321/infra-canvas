@@ -16,7 +16,6 @@ body:
         - apps/web (canvas UI)
         - apps/api (backend/runner)
         - apps/cli
-        - apps/agent-gateway
         - sandbox (local dev environment)
         - Other / not sure
     validations:

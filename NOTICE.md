@@ -9,7 +9,6 @@ to the code you're looking at) before reusing something.
 | :--- | :--- | :--- |
 | `apps/web/` | [Business Source License 1.1](LICENSE) | The visual canvas and Terraform/Ansible/Kubernetes compilers — the core product. |
 | `apps/api/` | [Business Source License 1.1](LICENSE) | The Go runner, orchestration engine, RBAC, realtime collaboration backend, and credential vault. |
-| `apps/agent-gateway/` | [Business Source License 1.1](LICENSE) | The hosted relay that pairs with a user's local Sandbox Agent — part of the managed control plane. |
 | `apps/cli/` | [MIT](apps/cli/LICENSE) | The `infracanvas` CLI and local Sandbox Agent client. Safe to audit and easy to contribute to. |
 | `sandbox/` | [MIT](sandbox/LICENSE) | Docker Compose / Dockerfile configs for the local DevOps sandbox (LocalStack + SSH targets). |
 | `spikes/` | [MIT](spikes/LICENSE) | Experimental / exploratory code, not part of the shipped product. |
@@ -30,10 +29,17 @@ to the code you're looking at) before reusing something.
 
 ## Contributing under this split
 
-Pull requests that touch a BSL-licensed path (`apps/web/`, `apps/api/`,
-`apps/agent-gateway/`) require signing the [Contributor License Agreement](CLA.md)
-before merge. PRs limited to MIT-licensed paths (`apps/cli/`, `sandbox/`,
-`spikes/`, docs) do not require a CLA. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Pull requests that touch a BSL-licensed path (`apps/web/`, `apps/api/`)
+require signing the [Contributor License Agreement](CLA.md) before merge.
+PRs limited to MIT-licensed paths (`apps/cli/`, `sandbox/`, `spikes/`, docs)
+do not require a CLA. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Note: the hosted Sandbox Agent Gateway that used to live at
+`apps/agent-gateway/` in this repo has moved to a separate, fully private
+Whiparc repository — it was never a good fit for either bucket above (it's
+hosted-only infrastructure, not something meant to be publicly readable or
+self-hostable at all), so it doesn't appear in this repo's tree or history
+anymore.
 
 This file is a plain-language summary for convenience; the license files
 themselves are the actual legal terms and control in the event of any

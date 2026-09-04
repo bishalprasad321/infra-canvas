@@ -11,7 +11,7 @@ Read [NOTICE.md](NOTICE.md) for the full breakdown. Short version:
 
 - `apps/cli/`, `sandbox/`, `spikes/`, and documentation are **MIT** — the
   easiest, lowest-friction place to contribute. No CLA required.
-- `apps/web/`, `apps/api/`, and `apps/agent-gateway/` are **Business Source
+- `apps/web/` and `apps/api/` are **Business Source
   License 1.1** — the core product. PRs touching these paths require
   signing the [Contributor License Agreement](CLA.md); a bot will prompt
   you on your first such PR.
@@ -42,7 +42,7 @@ containers, OAuth app registration, running each service independently).
   # web
   cd apps/web && npm run lint && npm run build
 
-  # any Go module (apps/api, apps/cli, apps/agent-gateway)
+  # any Go module (apps/api, apps/cli)
   cd apps/api && go vet ./... && go test ./...
   ```
 - If your PR touches a BSL-licensed path, the CLA check will comment with

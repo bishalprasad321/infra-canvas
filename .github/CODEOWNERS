@@ -6,7 +6,6 @@
 # --- Business Source License 1.1 paths (core product) ---
 /apps/web/              @bishalprasad321
 /apps/api/               @bishalprasad321
-/apps/agent-gateway/     @bishalprasad321
 
 # --- MIT paths (permissive shell) ---
 /apps/cli/               @bishalprasad321

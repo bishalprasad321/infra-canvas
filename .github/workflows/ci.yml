@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: [apps/api, apps/cli, apps/agent-gateway]
+        module: [apps/api, apps/cli]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

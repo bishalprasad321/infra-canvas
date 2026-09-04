@@ -25,6 +25,6 @@
 - [ ] Lint/build/tests pass locally (`npm run lint`/`npm run build` for
       `apps/web`, `go vet ./... && go test ./...` for any Go module touched)
 - [ ] Docs updated if behavior or setup steps changed
-- [ ] If this touches `apps/web/`, `apps/api/`, or `apps/agent-gateway/`,
+- [ ] If this touches `apps/web/` or `apps/api/`,
       I understand the CLA bot will ask me to sign the
       [CLA](../CLA.md) before merge

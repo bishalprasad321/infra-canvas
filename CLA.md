@@ -2,7 +2,7 @@
 
 This Contributor License Agreement ("Agreement") applies to contributions
 you make to the Business Source License 1.1-licensed portions of this
-repository — currently `apps/web/`, `apps/api/`, and `apps/agent-gateway/`
+repository — currently `apps/web/` and `apps/api/`
 (see [NOTICE.md](NOTICE.md) for the current path list, which may grow as the
 project does).
 

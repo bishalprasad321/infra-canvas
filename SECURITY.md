@@ -27,7 +27,6 @@ unless you'd prefer to stay anonymous.
 | :--- | :--- |
 | `apps/web/` (canvas UI, compilers) | Yes |
 | `apps/api/` (auth, RBAC, credential vault, runner, WebSockets) | Yes |
-| `apps/agent-gateway/` (hosted sandbox-agent relay) | Yes |
 | `apps/cli/` (CLI, local Sandbox Agent client) | Yes |
 | `sandbox/` (local dev LocalStack/SSH containers) | **No** — this is a
   development-only simulated environment, not a security boundary. Its

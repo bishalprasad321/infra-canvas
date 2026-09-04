@@ -51,10 +51,9 @@ that executes deployment bundles in a simulated sandbox environment.
 ## Directory Structure
 
 ```text
-infra-canvas/
+whiparc/
 ├── apps/
 │   ├── api/                 # Go runner API backend (BSL 1.1)
-│   ├── agent-gateway/       # Hosted Sandbox Agent relay (BSL 1.1)
 │   ├── cli/                 # infracanvas CLI + local Sandbox Agent (MIT)
 │   └── web/                 # Next.js web workspace frontend (BSL 1.1)
 ├── sandbox/                 # Mock DevOps cloud environment configuration (MIT)
@@ -129,10 +128,10 @@ Docker, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## License
 
-Whiparc is **open-core**: the canvas, compilers, runner, and hosted
-sandbox-agent relay (`apps/web/`, `apps/api/`, `apps/agent-gateway/`) are
-under the **Business Source License 1.1** (source-available; free to
-self-host, not free to resell as a competing hosted service). The CLI,
+Whiparc is **open-core**: the canvas, compilers, and runner
+(`apps/web/`, `apps/api/`) are under the **Business Source License 1.1**
+(source-available; free to self-host, not free to resell as a competing
+hosted service). The CLI,
 sandbox configs, and experimental code (`apps/cli/`, `sandbox/`,
 `spikes/`) are **MIT**.
 

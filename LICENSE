@@ -4,11 +4,9 @@ Parameters
 
 Licensor:              Whiparc
 Licensed Work:         Whiparc core (the Whiparc web application and
-                        compilers in `apps/web/`, the Go runner API, RBAC,
+                        compilers in `apps/web/`, and the Go runner API, RBAC,
                         realtime collaboration backend, and credential vault
-                        in `apps/api/`, and the hosted Sandbox Agent Gateway
-                        in `apps/agent-gateway/`). The Licensed Work is
-                        (c) 2026 Whiparc.
+                        in `apps/api/`). The Licensed Work is (c) 2026 Whiparc.
 
                         Code under `apps/cli/`, `sandbox/`, and `spikes/`
                         is NOT part of the Licensed Work and is licensed

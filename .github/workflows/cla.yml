@@ -1,7 +1,7 @@
 name: CLA Check
 
 # Only required for contributions touching the Business Source License 1.1
-# paths (apps/web, apps/api, apps/agent-gateway) — see CLA.md and NOTICE.md.
+# paths (apps/web, apps/api) — see CLA.md and NOTICE.md.
 # MIT-licensed paths (apps/cli, sandbox, spikes, docs) never require this.
 #
 # Setup required before this workflow is live:
@@ -39,7 +39,6 @@ jobs:
             bsl:
               - 'apps/web/**'
               - 'apps/api/**'
-              - 'apps/agent-gateway/**'
 
   cla-check:
     name: CLA Assistant

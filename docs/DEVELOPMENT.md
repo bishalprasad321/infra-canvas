@@ -119,20 +119,6 @@ DevOps sandbox) in containerized form:
 docker compose up --build
 ```
 
-## Running the Agent Gateway (optional, sandbox-agent beta)
-
-`apps/agent-gateway` is an independent Go module (its own `go.mod`, no
-`go.work` ties to the rest of the monorepo):
-
-```bash
-cd apps/agent-gateway
-go run ./cmd/agent-gateway --runner-secret=<shared-secret> --api-url=http://localhost:8080
-```
-
-`apps/api` must be started with the matching `GATEWAY_RUNNER_SECRET` env var
-and `SANDBOX_AGENT_BETA=true` for pairing/status callbacks to work. See
-`apps/agent-gateway/README.md` for flag details.
-
 ## CI
 
 Pull requests run `.github/workflows/ci.yml` (lint/build for `apps/web`,
