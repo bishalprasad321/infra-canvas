@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 
 interface CredentialItem {
@@ -39,7 +39,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
 
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const fetchCredentials = async () => {
+  const fetchCredentials = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await fetch(`http://localhost:8080/api/projects/${projectId}/credentials`, {
@@ -59,7 +59,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [projectId, token, onCredentialsChange]);
 
   useEffect(() => {
     if (isOpen && token) {
@@ -67,7 +67,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
       // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchCredentials();
     }
-  }, [isOpen, token]);
+  }, [isOpen, token, fetchCredentials]);
 
   const handleCreateCredential = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,7 +128,7 @@ export default function CredentialManagerModal({ isOpen, onClose, projectId, tok
         setFeedbackMsg({ type: 'error', text: `Failed to save: ${errText}` });
       }
     } catch (err) {
-      setFeedbackMsg({ type: 'error', text: 'Network connection failed.' });
+      setFeedbackMsg({ type: 'error', text: 'Network connection failed.' + err });
     } finally {
       setIsSaving(false);
     }
@@ -408,7 +408,7 @@ export function CredentialManagerTab({ projectId, token, onCredentialsChange }: 
   const [sshUser, setSshUser] = useState<string>('ubuntu');
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const fetchCredentials = async () => {
+  const fetchCredentials = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await fetch(`http://localhost:8080/api/projects/${projectId}/credentials`, {
@@ -428,7 +428,7 @@ export function CredentialManagerTab({ projectId, token, onCredentialsChange }: 
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [projectId, token, onCredentialsChange]);
 
   useEffect(() => {
     if (projectId && token) {
@@ -436,7 +436,7 @@ export function CredentialManagerTab({ projectId, token, onCredentialsChange }: 
       // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchCredentials();
     }
-  }, [projectId, token]);
+  }, [projectId, token, fetchCredentials]);
 
   const handleCreateCredential = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -497,7 +497,7 @@ export function CredentialManagerTab({ projectId, token, onCredentialsChange }: 
         setFeedbackMsg({ type: 'error', text: `Failed to save: ${errText}` });
       }
     } catch (err) {
-      setFeedbackMsg({ type: 'error', text: 'Network connection failed.' });
+      setFeedbackMsg({ type: 'error', text: 'Network connection failed.' + err });
     } finally {
       setIsSaving(false);
     }
