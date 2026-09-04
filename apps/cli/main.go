@@ -52,7 +52,7 @@ var (
 func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "infracanvas",
-		Short: "InfraCanvas CLI - provision, validate, and manage workspaces.",
+		Short: "Whiparc CLI - provision, validate, and manage workspaces.",
 	}
 
 	rootCmd.PersistentFlags().StringVar(&apiURLFlag, "api-url", "", "Override API backend URL (default is http://localhost:8080 or config value)")
