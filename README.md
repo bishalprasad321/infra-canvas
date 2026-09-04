@@ -4,6 +4,10 @@
 [![CI](https://github.com/whiparc/whiparc/actions/workflows/ci.yml/badge.svg)](https://github.com/whiparc/whiparc/actions/workflows/ci.yml)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="Whiparc demo: dragging nodes onto the visual canvas, connecting a source repository to a VM to an AWS target, and viewing the generated Terraform" width="960">
+</p>
+
 Whiparc (formerly InfraCanvas) is a visual orchestration web
 platform designed to unify infrastructure-as-code provisioning (Terraform),
 configuration management (Ansible), and container orchestration (Kubernetes)
