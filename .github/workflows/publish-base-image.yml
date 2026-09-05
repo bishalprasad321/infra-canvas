@@ -9,14 +9,6 @@ on:
       - 'apps/api/Dockerfile.base'
       - 'sandbox/Dockerfile.ssh.base'
       - '.github/workflows/publish-base-image.yml'
-  pull_request:
-    branches:
-      - main
-      - dev
-    paths:
-      - 'apps/api/Dockerfile.base'
-      - 'sandbox/Dockerfile.ssh.base'
-      - '.github/workflows/publish-base-image.yml'
   workflow_dispatch:
 
 # Avoid two pushes to the same branch racing to publish/tag the same image.

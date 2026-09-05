@@ -1,12 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
-# Which published tag of whiparc-runner-base to build on top of. Defaults to
-# `latest` (the only tag published before this change) so existing local
-# setups keep working unmodified. Once the publish-base-image workflow has
-# backfilled a `:dev` tag (push/dispatch it on the dev branch), switch this
-# default to `dev` so local builds track the same base image contributors'
-# changes land on. Override per-build meanwhile with
-# `--build-arg BASE_IMAGE_TAG=dev`.
+# Which published tag of whiparc-runner-base to build on top of. Tracks the
+# dev-branch build by default, so local builds pick up base-image changes as
+# soon as they land on dev. Requires publish-base-image.yml to have actually
+# published a `:dev` tag — until then this fails to resolve. Override with
+# `--build-arg BASE_IMAGE_TAG=latest` (or `=main`) for a production-style
+# build.
 ARG BASE_IMAGE_TAG=dev
 
 # Build context is the repo root (see docker-compose.yml) so this stage can
